@@ -792,12 +792,22 @@
     renderEntryHistory();
   }
   function renderEntryHistory() {
-    const fcc = $("#eh-cc").value, du = $("#eh-du").value, au = $("#eh-au").value;
+    const fcc = $("#eh-cc").value;
     const q = $("#eh-search").value.trim().toLowerCase();
-    const list = db.entries.filter((x) => {
-      if (fcc === "NONE" ? x.cc : fcc !== "ALL" && x.cc !== fcc) return false;
-      if (du && (x.date || "") < du) return false;
-      if (au && (x.date || "") > au) return false;
+    const byCc = db.entries.filter((x) => !(fcc === "NONE" ? x.cc : fcc !== "ALL" && x.cc !== fcc));
+
+    // Liste des dates d'entrée disponibles (selon le CC choisi)
+    const sel = $("#eh-date");
+    const curDate = sel.value;
+    const dates = Array.from(new Set(byCc.map((x) => x.date || ""))).sort().reverse();
+    sel.innerHTML = '<option value="">Toutes les dates</option>' +
+      dates.map((d) => '<option value="' + esc(d) + '">' + (d ? cap(fmtLong(d)) : "Sans date") + "</option>").join("");
+    sel.value = dates.includes(curDate) ? curDate : "";
+    const fdate = sel.value;
+    if (fdate) openDays.add(fdate);
+
+    const list = byCc.filter((x) => {
+      if (fdate && (x.date || "") !== fdate) return false;
       if (q) {
         const p = productByCode(x.code);
         if (!((p ? p.nom : "") + " " + x.code + " " + (x.obs || "") + " " + (x.saisiPar || "")).toLowerCase().includes(q)) return false;
@@ -843,7 +853,7 @@
           esc(x.saisiPar || "—") + "</td><td>" + esc(x.obs) + '</td><td class="keep">' + actions + "</td></tr>";
       }).join("") + "</tbody></table>";
   }
-  ["#eh-cc", "#eh-du", "#eh-au"].forEach((id) => $(id).addEventListener("change", renderEntryHistory));
+  ["#eh-cc", "#eh-date"].forEach((id) => $(id).addEventListener("change", renderEntryHistory));
   $("#eh-search").addEventListener("input", renderEntryHistory);
 
   $("#e-add").addEventListener("click", (ev) => {
