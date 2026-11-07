@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.bgteam.boutique",
+      "sha256_cert_fingerprints": [
+        "92:CC:7D:A6:43:CA:2F:AD:28:82:58:62:7E:F1:A3:49:DC:DA:2E:8A:3C:C3:2D:83:2D:28:8B:E0:52:2E:63:12"
+      ]
+    }
+  }
+]
