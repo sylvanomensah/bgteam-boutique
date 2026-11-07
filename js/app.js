@@ -999,7 +999,14 @@
     const id = el.closest("tr").dataset.uid;
     const patch = {};
     patch[el.dataset.uf] = el.value.trim() || (el.dataset.uf === "cc" ? null : "");
-    updateUser(id, patch, "Utilisateur mis à jour.");
+    updateUser(id, patch, "Utilisateur mis à jour.").then((r) => {
+      // Un CC sans nom prend automatiquement le nom du vendeur qu'on lui lie.
+      if (!r.ok || el.dataset.uf !== "cc" || !patch.cc) return;
+      const cc = ccByCode(patch.cc);
+      const u = db.users.find((x) => x.id === id);
+      const nom = u && (u.nom || "").trim();
+      if (cc && nom && !currentAgent(cc)) setCcName(cc.code, nom, ccLabel(cc.code) + " lié à " + nom + ".");
+    });
   });
   $("#u-rows").addEventListener("click", (e) => {
     const b = e.target.closest("[data-uactif]");
@@ -1018,7 +1025,8 @@
         ? c.agents.map((a) => esc(a.nom) + " : " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui")).join("<br>")
         : "Aucun vendeur affecté";
       const hasSales = db.sales.some((s) => s.cc === c.code);
-      return "<tr><td><b>" + ccLabel(c.code) + "</b></td><td>" + (esc(currentAgent(c)) || '<span class="muted">—</span>') + "</td><td>" +
+      return "<tr><td><b>" + ccLabel(c.code) + "</b></td><td>" +
+        '<input class="inline-input" data-cc-nom="' + esc(c.code) + '" value="' + esc(currentAgent(c)) + '" placeholder="Nom du CC" title="Nom affiché à côté du CC (Entrée pour valider)">' + "</td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
         '</td><td class="hist">' + hist + '</td><td class="num">' + money(ca) + '</td><td class="wrap">' +
         '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
@@ -1065,6 +1073,29 @@
       }
     }
   }
+  // Nomme un CC : renomme le vendeur actuel, ou en crée un à partir d'aujourd'hui.
+  // Les ventes passées gardent le nom qu'elles avaient.
+  function setCcName(code, nom, msg) {
+    const cc = ccByCode(code);
+    if (!cc) return Promise.resolve({ ok: false });
+    const before = JSON.parse(JSON.stringify(cc.agents));
+    const after = JSON.parse(JSON.stringify(cc.agents));
+    const open = after.filter((a) => !a.fin).pop();
+    if (open) open.nom = nom;
+    else after.push({ nom, debut: today(), fin: "" });
+    return act(async () => {
+      await freezeVendeurs(cc.code, before);
+      chk(await sb.from("ccs").update({ agents: after }).eq("code", cc.code));
+    }, msg || ccLabel(cc.code) + " — " + nom);
+  }
+  $("#cc-rows").addEventListener("change", (e) => {
+    const inp = e.target.closest("[data-cc-nom]");
+    if (!inp) return;
+    const nom = inp.value.trim();
+    if (!nom) { inp.value = currentAgent(ccByCode(inp.dataset.ccNom)); return toast("Le nom ne peut pas être vide."); }
+    if (nom === currentAgent(ccByCode(inp.dataset.ccNom))) return;
+    setCcName(inp.dataset.ccNom, nom);
+  });
   $("#cc-new").addEventListener("click", () => openCc("new"));
   $("#cc-rows").addEventListener("click", (e) => {
     const b = e.target.closest("button");
