@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BGTeam Boutique</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar no-print">
+    <div class="brand">
+      <span class="logo">BG</span>
+      <div>
+        <strong id="brand-name">BGTeam</strong>
+        <small>Gestion de boutique</small>
+      </div>
+    </div>
+    <nav id="nav">
+      <button data-view="dashboard" class="active">Accueil</button>
+      <button data-view="caisse">Caisse</button>
+      <button data-view="ventes">Ventes</button>
+      <button data-view="stock">Stock</button>
+      <button data-view="entrees">Entrées stock</button>
+      <button data-view="facture">Facturation</button>
+      <button data-view="parametres">Paramètres</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ACCUEIL -->
+    <section id="view-dashboard" class="view active">
+      <h1>Tableau de bord</h1>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid2">
+        <div class="card">
+          <h2>Alertes stock</h2>
+          <div id="alerts"></div>
+        </div>
+        <div class="card">
+          <h2>Meilleures ventes</h2>
+          <div id="top-products"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Règles de fonctionnement</h2>
+        <ol class="rules">
+          <li>Les produits et leurs stocks de départ sont conservés dans <b>Stock</b>.</li>
+          <li>Une entrée <b>Validée</b> augmente le stock. Une entrée <b>Annulée</b> reste dans l'historique mais ne compte pas.</li>
+          <li>Une vente <b>OUI</b> (validée) diminue le stock et alimente les statistiques.</li>
+          <li>Une vente <b>NON</b> est ignorée dans les calculs.</li>
+          <li>La facture se construit à partir du numéro de ticket choisi.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- CAISSE -->
+    <section id="view-caisse" class="view">
+      <h1>Caisse — nouvelle vente</h1>
+      <div class="grid2">
+        <div class="card">
+          <h2>Informations du ticket</h2>
+          <div class="form">
+            <label>Date<input type="date" id="c-date"></label>
+            <label>Code commercial (CC)<select id="c-cc"></select></label>
+            <label class="full">Client<input id="c-client" list="clients-list" value="CLIENT COMPTOIR"></label>
+            <label>N° client<input id="c-numclient" placeholder="Optionnel"></label>
+            <label>Adresse client<input id="c-adresse" placeholder="Optionnel"></label>
+          </div>
+          <datalist id="clients-list"></datalist>
+          <h2>Ajouter un produit</h2>
+          <div class="form">
+            <label class="full">Produit<select id="c-product"></select></label>
+            <label>Quantité<input type="number" id="c-qte" min="1" value="1"></label>
+            <label>Prix unitaire<input type="number" id="c-pu" min="0"></label>
+          </div>
+          <p class="hint" id="c-stock-info"></p>
+          <button class="btn primary" id="c-add">+ Ajouter au ticket</button>
+        </div>
+        <div class="card">
+          <h2>Ticket en cours <span class="muted" id="c-ticket-num"></span></h2>
+          <table class="table">
+            <thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">PU</th><th class="num">Total</th><th></th></tr></thead>
+            <tbody id="c-cart"></tbody>
+          </table>
+          <div class="total-line">Total : <strong id="c-total">0</strong></div>
+          <div class="form">
+            <label>Montant remis<input type="number" id="c-remis" min="0" placeholder="Optionnel"></label>
+            <label>Reliquat<input id="c-reliquat" readonly></label>
+          </div>
+          <div class="actions">
+            <button class="btn" id="c-clear">Vider</button>
+            <button class="btn success" id="c-validate">Valider la vente</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VENTES -->
+    <section id="view-ventes" class="view">
+      <h1>Historique des ventes &amp; rapports</h1>
+      <div class="grid3">
+        <div class="card">
+          <h2>Rapport journalier</h2>
+          <div class="form">
+            <label>Du<input type="date" id="r-du"></label>
+            <label>Au<input type="date" id="r-au"></label>
+          </div>
+          <div class="report" id="r-jour"></div>
+        </div>
+        <div class="card">
+          <h2>Rapport mensuel</h2>
+          <div class="form">
+            <label class="full">Mois<input type="month" id="r-mois"></label>
+          </div>
+          <div class="report" id="r-mois-res"></div>
+        </div>
+        <div class="card">
+          <h2>Filtre CC</h2>
+          <div class="form">
+            <label class="full">Commercial<select id="r-cc"></select></label>
+          </div>
+          <p class="hint">Le filtre CC s'applique aux deux rapports et à l'historique.</p>
+          <button class="btn" id="v-export">Exporter les ventes (CSV)</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="toolbar">
+          <h2>Historique</h2>
+          <input id="v-search" placeholder="Rechercher (client, produit, ticket…)">
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr>
+              <th>Date</th><th class="num">Ticket</th><th>Client</th><th>Produit</th><th>Code</th>
+              <th class="num">Qté</th><th class="num">PU</th><th class="num">Total</th><th>CC</th><th>Validation</th><th></th>
+            </tr></thead>
+            <tbody id="v-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- STOCK -->
+    <section id="view-stock" class="view">
+      <h1>Stock &amp; catalogue</h1>
+      <p class="hint">STOCK ACTUEL = Stock initial + Entrées validées − Ventes validées.</p>
+      <div class="kpis" id="stock-kpis"></div>
+      <div class="card">
+        <div class="toolbar">
+          <h2>Produits</h2>
+          <input id="s-search" placeholder="Rechercher un produit">
+          <button class="btn primary" id="s-new">+ Nouveau produit</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr>
+              <th>Code</th><th>Désignation</th><th>Catégorie</th><th class="num">PU achat</th><th class="num">PU vente</th>
+              <th class="num">Stock initial</th><th class="num">Stock min</th><th class="num">Entrées</th><th class="num">Ventes</th>
+              <th class="num">Stock actuel</th><th>Statut</th><th></th>
+            </tr></thead>
+            <tbody id="s-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ENTREES -->
+    <section id="view-entrees" class="view">
+      <h1>Entrées de stock</h1>
+      <div class="card">
+        <h2>Nouvelle entrée</h2>
+        <div class="form form-inline">
+          <label>Date<input type="date" id="e-date"></label>
+          <label>Produit<select id="e-product"></select></label>
+          <label>Quantité<input type="number" id="e-qte" min="1" value="1"></label>
+          <label>Observation<input id="e-obs" value="Réapprovisionnement"></label>
+          <button class="btn primary" id="e-add">Enregistrer</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Historique des entrées</h2>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Date</th><th>Article</th><th>Code</th><th class="num">Quantité</th><th>Statut</th><th>Observation</th><th></th></tr></thead>
+            <tbody id="e-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- FACTURATION -->
+    <section id="view-facture" class="view">
+      <h1 class="no-print">Facturation</h1>
+      <div class="card no-print">
+        <div class="form form-inline">
+          <label>Ticket N°<select id="f-ticket"></select></label>
+          <label>Montant remis<input type="number" id="f-remis" min="0"></label>
+          <button class="btn primary" id="f-print">Imprimer</button>
+        </div>
+      </div>
+      <div class="receipt" id="receipt"></div>
+    </section>
+
+    <!-- PARAMETRES -->
+    <section id="view-parametres" class="view">
+      <h1>Paramètres</h1>
+      <div class="grid2">
+        <div class="card">
+          <h2>Informations du commerce</h2>
+          <div class="form" id="p-form">
+            <label class="full">Nom du commerce<input data-k="nom"></label>
+            <label class="full">Domaine<input data-k="domaine"></label>
+            <label>Téléphone<input data-k="tel"></label>
+            <label>E-mail<input data-k="email"></label>
+            <label class="full">Adresse<input data-k="adresse"></label>
+            <label>RCCM/NIF<input data-k="rccm"></label>
+            <label>Devise<input data-k="devise"></label>
+            <label class="full">Codes commerciaux (séparés par des virgules)<input id="p-ccs"></label>
+          </div>
+          <button class="btn primary" id="p-save">Enregistrer</button>
+        </div>
+        <div class="card">
+          <h2>Sauvegarde des données</h2>
+          <p class="hint">Les données sont enregistrées dans ce navigateur. Faites régulièrement une sauvegarde pour ne rien perdre ou pour les transférer sur un autre appareil.</p>
+          <div class="actions col">
+            <button class="btn" id="p-export">Télécharger une sauvegarde (.json)</button>
+            <label class="btn file">Restaurer une sauvegarde<input type="file" id="p-import" accept=".json,application/json"></label>
+            <button class="btn danger" id="p-reset">Réinitialiser avec les données d'origine (Excel)</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal produit -->
+  <dialog id="product-dialog">
+    <form method="dialog" id="product-form">
+      <h2 id="pd-title">Produit</h2>
+      <div class="form">
+        <label>Code article<input name="code" required></label>
+        <label>Catégorie<input name="categorie" list="cat-list"></label>
+        <label class="full">Désignation<input name="nom" required></label>
+        <label>PU achat<input type="number" name="pa" min="0" value="0"></label>
+        <label>PU vente<input type="number" name="pv" min="0" value="0"></label>
+        <label>Stock initial<input type="number" name="stockInitial" value="0"></label>
+        <label>Stock minimum<input type="number" name="stockMin" min="0" value="5"></label>
+      </div>
+      <datalist id="cat-list"></datalist>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
