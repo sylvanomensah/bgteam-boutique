@@ -19,6 +19,7 @@
       <button data-view="dashboard" class="active">Accueil</button>
       <button data-view="caisse">Caisse</button>
       <button data-view="ventes">Ventes</button>
+      <button data-view="stats">Statistiques</button>
       <button data-view="stock">Stock</button>
       <button data-view="entrees">Entrées stock</button>
       <button data-view="facture">Facturation</button>
@@ -30,17 +31,46 @@
     <!-- ACCUEIL -->
     <section id="view-dashboard" class="view active">
       <h1>Tableau de bord</h1>
-      <div class="kpis" id="kpis"></div>
-      <div class="grid2">
-        <div class="card">
-          <h2>Alertes stock</h2>
-          <div id="alerts"></div>
+      <div class="card filterbar">
+        <div class="seg" id="d-periode">
+          <button data-p="jour" class="active">Jour</button>
+          <button data-p="semaine">Semaine</button>
+          <button data-p="mois">Mois</button>
+          <button data-p="annee">Année</button>
+          <button data-p="tout">Tout</button>
         </div>
-        <div class="card">
-          <h2>Meilleures ventes</h2>
-          <div id="top-products"></div>
+        <div class="nav-date" id="d-nav">
+          <button class="btn small" id="d-prev" title="Période précédente">◀</button>
+          <input type="date" id="d-ref">
+          <button class="btn small" id="d-next" title="Période suivante">▶</button>
+          <button class="btn small" id="d-today">Aujourd'hui</button>
+        </div>
+        <label class="cc-filter">Code commercial<select id="d-cc"></select></label>
+      </div>
+      <p class="period-label" id="d-label"></p>
+      <div class="kpis" id="kpis"></div>
+      <div class="card">
+        <h2>Ventes par code commercial <span class="muted" id="d-cc-title"></span></h2>
+        <p class="hint">Cliquez sur une ligne pour filtrer le tableau de bord sur ce CC.</p>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>CC</th><th>Vendeur(s) sur la période</th><th>Statut</th><th class="num">Tickets</th><th class="num">Quantités</th><th class="num">Chiffre d'affaires</th><th class="num">Part</th></tr></thead>
+            <tbody id="d-cc-rows"></tbody>
+          </table>
         </div>
       </div>
+      <div class="grid2">
+        <div class="card">
+          <h2>Meilleures ventes <span class="muted">(période et CC choisis)</span></h2>
+          <div id="top-products"></div>
+        </div>
+        <div class="card">
+          <h2>Alertes stock <span class="muted">(stock actuel)</span></h2>
+          <div id="alerts"></div>
+        </div>
+      </div>
+      <h2>Stock (situation actuelle)</h2>
+      <div class="kpis" id="stock-kpis-dash"></div>
       <div class="card">
         <h2>Règles de fonctionnement</h2>
         <ol class="rules">
@@ -140,6 +170,51 @@
       </div>
     </section>
 
+    <!-- STATISTIQUES -->
+    <section id="view-stats" class="view">
+      <h1>Statistiques de ventes</h1>
+      <div class="card">
+        <div class="form form-inline">
+          <label>Regrouper par
+            <select id="st-group">
+              <option value="jour">Jour</option>
+              <option value="semaine">Semaine</option>
+              <option value="mois" selected>Mois</option>
+              <option value="annee">Année</option>
+            </select>
+          </label>
+          <label>Du<input type="date" id="st-du"></label>
+          <label>Au<input type="date" id="st-au"></label>
+          <label>Code commercial<select id="st-cc"></select></label>
+          <label>Colonnes
+            <select id="st-cols">
+              <option value="cc">Par code commercial</option>
+              <option value="vendeur">Par vendeur</option>
+            </select>
+          </label>
+          <label>Indicateur
+            <select id="st-metric">
+              <option value="ca">Chiffre d'affaires</option>
+              <option value="qte">Quantités vendues</option>
+              <option value="tickets">Nombre de tickets</option>
+            </select>
+          </label>
+        </div>
+        <div class="actions">
+          <button class="btn small" data-st-range="mois">Ce mois</button>
+          <button class="btn small" data-st-range="annee">Cette année</button>
+          <button class="btn small" data-st-range="tout">Tout l'historique</button>
+          <button class="btn" id="st-export">Exporter (CSV)</button>
+        </div>
+      </div>
+      <div class="kpis" id="st-kpis"></div>
+      <div class="card">
+        <div class="table-wrap">
+          <table class="table" id="st-table"></table>
+        </div>
+      </div>
+    </section>
+
     <!-- STOCK -->
     <section id="view-stock" class="view">
       <h1>Stock &amp; catalogue</h1>
@@ -215,7 +290,6 @@
             <label class="full">Adresse<input data-k="adresse"></label>
             <label>RCCM/NIF<input data-k="rccm"></label>
             <label>Devise<input data-k="devise"></label>
-            <label class="full">Codes commerciaux (séparés par des virgules)<input id="p-ccs"></label>
           </div>
           <button class="btn primary" id="p-save">Enregistrer</button>
         </div>
@@ -225,8 +299,21 @@
           <div class="actions col">
             <button class="btn" id="p-export">Télécharger une sauvegarde (.json)</button>
             <label class="btn file">Restaurer une sauvegarde<input type="file" id="p-import" accept=".json,application/json"></label>
-            <button class="btn danger" id="p-reset">Réinitialiser avec les données d'origine (Excel)</button>
+            <button class="btn danger" id="p-reset">Réinitialiser (catalogue d'origine, sans ventes)</button>
           </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="toolbar">
+          <h2>Codes commerciaux (CC) &amp; vendeurs</h2>
+          <button class="btn primary" id="cc-new">+ Nouveau CC</button>
+        </div>
+        <p class="hint">Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant.</p>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>CC</th><th>Vendeur actuel</th><th>Statut</th><th>Historique des vendeurs</th><th class="num">Ventes (CA total)</th><th></th></tr></thead>
+            <tbody id="cc-rows"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -246,6 +333,23 @@
         <label>Stock minimum<input type="number" name="stockMin" min="0" value="5"></label>
       </div>
       <datalist id="cat-list"></datalist>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal CC -->
+  <dialog id="cc-dialog">
+    <form method="dialog" id="cc-form">
+      <h2 id="cc-title">Code commercial</h2>
+      <p class="hint" id="cc-help"></p>
+      <div class="form">
+        <label id="cc-code-wrap">Code CC<input name="code" inputmode="numeric"></label>
+        <label id="cc-nom-wrap">Nom du vendeur<input name="nom"></label>
+        <label id="cc-date-wrap">Date<input type="date" name="date"></label>
+      </div>
       <div class="actions">
         <button class="btn" value="cancel" formnovalidate>Annuler</button>
         <button class="btn primary" value="ok">Enregistrer</button>

@@ -151,6 +151,25 @@ input[readonly] { background: var(--bg); }
 .receipt .r { text-align: right; }
 .receipt .big { font-size: 16px; font-weight: 700; }
 
+/* Filtres tableau de bord */
+.filterbar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; border: 0; background: #fff; padding: 8px 14px; cursor: pointer; color: var(--text); border-right: 1px solid var(--border); }
+.seg button:last-child { border-right: 0; }
+.seg button:hover { background: var(--bg); }
+.seg button.active { background: var(--primary); color: #fff; }
+.nav-date { display: flex; gap: 6px; align-items: center; }
+.nav-date input { width: auto; }
+.cc-filter { min-width: 220px; }
+.period-label { font-size: 1.05rem; font-weight: 600; margin: 0 0 12px; color: var(--primary); }
+tr.clickable { cursor: pointer; }
+tr.clickable:hover td { background: var(--primary-soft); }
+tr.selected td { background: var(--primary-soft); font-weight: 600; }
+tr.total td { font-weight: 700; background: #fafbfc; }
+.sub { display: block; color: var(--muted); font-size: .78rem; }
+.hist { white-space: normal !important; font-size: .82rem; color: var(--muted); min-width: 220px; }
+.table td.wrap { white-space: normal; }
+
 /* Dialog */
 dialog { border: 0; border-radius: var(--radius); padding: 20px; width: min(520px, 94vw); }
 dialog::backdrop { background: rgba(20, 33, 61, .45); }
@@ -167,6 +186,11 @@ dialog::backdrop { background: rgba(20, 33, 61, .45); }
   .topbar { padding: 10px 12px; gap: 10px; }
   nav button { padding: 6px 8px; font-size: .85rem; }
   .toolbar input { min-width: 0; width: 100%; }
+  .seg { width: 100%; }
+  .seg button { flex: 1; padding: 8px 4px; }
+  .nav-date { width: 100%; }
+  .nav-date input { flex: 1; }
+  .cc-filter { width: 100%; }
 }
 
 @media print {

@@ -8,13 +8,20 @@ Aucune installation : c'est une page web (HTML/CSS/JavaScript) qui fonctionne da
 
 | Écran | Rôle (équivalent Excel) |
 |---|---|
-| **Accueil** | Tableau de bord : chiffre d'affaires, ventes du jour, marge estimée, stock total, alertes de rupture / stock faible, meilleures ventes |
+| **Accueil** | Tableau de bord filtrable par période (jour, semaine, mois, année, tout) et par code commercial (CC) : chiffre d'affaires, tickets, quantités, panier moyen, marge, ventes par CC, meilleures ventes, alertes stock |
+| **Statistiques** | Ventes regroupées par jour / semaine / mois / année, en colonnes par CC ou par vendeur, export CSV |
 | **Caisse** | Saisie rapide d'une vente : plusieurs produits par ticket, client, code commercial (CC), montant remis et reliquat (feuille `VENTES`) |
 | **Ventes** | Historique, validation OUI/NON, rapport journalier (du… au…) et mensuel filtrables par CC, export CSV |
 | **Stock** | Catalogue et stock actuel calculé automatiquement, ajout / modification de produits (feuille `STOCK`) |
 | **Entrées stock** | Réapprovisionnements, statut Validée / Annulée (feuille `ENTREES_STOCK`) |
 | **Facturation** | Ticket de caisse imprimable à partir d'un numéro de ticket (feuille `FACTURATION`) |
-| **Paramètres** | Informations du commerce, codes commerciaux, sauvegarde / restauration des données |
+| **Paramètres** | Informations du commerce, gestion des CC et des vendeurs (affectation datée, départ, nouveau CC), sauvegarde / restauration |
+
+## Codes commerciaux (CC) et vendeurs
+
+- Chaque vente enregistre son CC **et le nom du vendeur** à la date de la vente.
+- *Départ / désactiver* : le vendeur quitte l'entreprise, le CC disparaît de la caisse mais toutes ses ventes restent dans les statistiques.
+- *Nouveau CC* : pour un nouveau vendeur (recommandé), ou *Changer de vendeur* pour réaffecter un CC existant à partir d'une date.
 
 ## Règles de calcul
 

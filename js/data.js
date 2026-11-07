@@ -10,7 +10,11 @@ window.SEED_DATA = {
     email: "bgteam@gmail.com",
     rccm: "TG-LFW-01-2024-A10-00206/1001901691",
     devise: "FCFA",
-    ccs: ["1", "2", "3"]
+    ccList: [
+      { code: "1", actif: true, agents: [] },
+      { code: "2", actif: true, agents: [] },
+      { code: "3", actif: true, agents: [] }
+    ]
   },
   products: [
     { code: "ART-001", nom: "BIG COCK+ ANA", categorie: "Boisson", pa: 200, pv: 200, stockInitial: 10, stockMin: 5 },

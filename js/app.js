@@ -5,8 +5,9 @@
   const $ = (sel) => document.querySelector(sel);
 
   // ---------- Données ----------
-  let db = load();
+  let db = normalize(load());
   let cart = [];
+  const dash = { periode: "jour", ref: today(), cc: "ALL" };
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
@@ -16,6 +17,26 @@
       if (raw) return JSON.parse(raw);
     } catch (e) { /* stockage indisponible */ }
     return clone(window.SEED_DATA);
+  }
+
+  // Met à niveau les anciennes données (liste "ccs" simple) vers la gestion des CC avec vendeurs.
+  function normalize(d) {
+    d.settings = d.settings || {};
+    d.products = Array.isArray(d.products) ? d.products : [];
+    d.sales = Array.isArray(d.sales) ? d.sales : [];
+    d.entries = Array.isArray(d.entries) ? d.entries : [];
+    if (!Array.isArray(d.settings.ccList)) {
+      const codes = Array.isArray(d.settings.ccs) ? d.settings.ccs.map(String) : ["1", "2", "3"];
+      d.settings.ccList = codes.map((c) => ({ code: c, actif: true, agents: [] }));
+    }
+    delete d.settings.ccs;
+    d.settings.ccList.forEach((c) => { c.code = String(c.code); c.agents = Array.isArray(c.agents) ? c.agents : []; c.actif = c.actif !== false; });
+    d.sales.forEach((s) => {
+      s.cc = String(s.cc);
+      if (!d.settings.ccList.some((c) => c.code === s.cc)) d.settings.ccList.push({ code: s.cc, actif: false, agents: [] });
+    });
+    d.settings.ccList.sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code));
+    return d;
   }
 
   function save() {
@@ -31,15 +52,20 @@
   }
   function num(n) { return Number(n || 0).toLocaleString("fr-FR"); }
   function money(n) { return num(n) + " " + (db.settings.devise || "FCFA"); }
-  function today() {
-    const d = new Date();
-    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-  }
-  function fmtDate(iso) {
-    if (!iso) return "—";
-    const [y, m, d] = iso.split("-");
+  function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function parse(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d, 12); }
+  function today() { return iso(new Date()); }
+  function addDays(s, n) { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); }
+  function addMonths(s, n) { const d = parse(s); d.setDate(1); d.setMonth(d.getMonth() + n); return iso(d); }
+  function mondayOf(s) { const d = parse(s); const wd = (d.getDay() + 6) % 7; d.setDate(d.getDate() - wd); return iso(d); }
+  function lastDayOfMonth(s) { const d = parse(s); return iso(new Date(d.getFullYear(), d.getMonth() + 1, 0, 12)); }
+  function fmtDate(s) {
+    if (!s) return "—";
+    const [y, m, d] = s.split("-");
     return d + "/" + m + "/" + y;
   }
+  function fmtLong(s) { return parse(s).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); }
+  function fmtMonth(s) { return parse(s.slice(0, 7) + "-01").toLocaleDateString("fr-FR", { month: "long", year: "numeric" }); }
   function toast(msg) {
     const t = $("#toast");
     t.textContent = msg;
@@ -48,11 +74,41 @@
     toast._t = setTimeout(() => t.classList.remove("show"), 2600);
   }
   function productByCode(code) { return db.products.find((p) => p.code === code); }
-  function ccLabel(cc) { return "CC " + String(cc).padStart(2, "0"); }
+
+  // ---------- Codes commerciaux & vendeurs ----------
+  function ccByCode(code) { return db.settings.ccList.find((c) => c.code === String(code)); }
+  function ccLabel(code) { return "CC " + String(code).padStart(2, "0"); }
+  function currentAgent(cc) {
+    if (!cc) return "";
+    const open = cc.agents.filter((a) => !a.fin);
+    return open.length ? open[open.length - 1].nom : "";
+  }
+  function agentAt(cc, date) {
+    if (!cc || !cc.agents.length) return "";
+    const a = cc.agents.filter((x) => (!x.debut || x.debut <= date) && (!x.fin || x.fin >= date)).pop();
+    return a ? a.nom : "";
+  }
+  function vendeurOf(s) { return s.vendeur || agentAt(ccByCode(s.cc), s.date) || ""; }
+  function ccName(code) {
+    const cc = ccByCode(code);
+    const nom = currentAgent(cc);
+    return ccLabel(code) + (nom ? " — " + nom : "") + (cc && !cc.actif ? " (inactif)" : "");
+  }
+  function ccOptions(withAll, selected, activeOnly) {
+    let h = withAll ? '<option value="ALL">Tous les CC</option>' : "";
+    h += db.settings.ccList
+      .filter((c) => !activeOnly || c.actif)
+      .map((c) => '<option value="' + esc(c.code) + '"' + (c.code === selected ? " selected" : "") + ">" + esc(ccName(c.code)) + "</option>").join("");
+    return h;
+  }
+  function fillCcSelect(sel, withAll, activeOnly) {
+    const cur = sel.value;
+    sel.innerHTML = ccOptions(withAll, cur, activeOnly);
+    if (cur && Array.from(sel.options).some((o) => o.value === cur)) sel.value = cur;
+  }
 
   // ---------- Calculs (équivalents des formules Excel) ----------
-  function isCountedSale(s) { return s.valide === "OUI" && db.settings.ccs.includes(String(s.cc)); }
-
+  function isCountedSale(s) { return s.valide === "OUI"; }
   function totalEntrees(code) {
     return db.entries.filter((e) => e.code === code && e.statut === "Validée").reduce((a, e) => a + Number(e.qte), 0);
   }
@@ -72,19 +128,18 @@
   }
   function lineTotal(s) { return Number(s.qte) * Number(s.pu); }
   function nextTicket() { return db.sales.reduce((m, s) => Math.max(m, Number(s.ticket) || 0), 0) + 1; }
-
-  function salesForReport(filterFn) {
-    const cc = $("#r-cc").value;
-    return db.sales.filter((s) => s.valide === "OUI" && (cc === "ALL" ? db.settings.ccs.includes(String(s.cc)) : String(s.cc) === cc) && filterFn(s));
-  }
-  function reportHtml(list) {
-    const total = list.reduce((a, s) => a + lineTotal(s), 0);
-    const tickets = new Set(list.map((s) => s.ticket)).size;
+  function summarize(list) {
+    const ca = list.reduce((a, s) => a + lineTotal(s), 0);
     const qte = list.reduce((a, s) => a + Number(s.qte), 0);
-    return '<div><span>Vente totale</span><strong>' + money(total) + "</strong></div>" +
-      '<div><span>Tickets</span><strong>' + tickets + "</strong></div>" +
-      '<div><span>Quantités</span><strong>' + num(qte) + "</strong></div>" +
-      '<div><span>Lignes</span><strong>' + list.length + "</strong></div>";
+    const tickets = new Set(list.map((s) => s.ticket)).size;
+    const marge = list.reduce((a, s) => {
+      const p = productByCode(s.code);
+      return a + (p ? (Number(s.pu) - Number(p.pa)) * Number(s.qte) : 0);
+    }, 0);
+    return { ca, qte, tickets, marge, lignes: list.length };
+  }
+  function kpiHtml(items) {
+    return items.map(([l, v, c]) => '<div class="kpi ' + (c || "") + '"><div class="label">' + l + '</div><div class="value">' + v + "</div></div>").join("");
   }
 
   // ---------- Navigation ----------
@@ -106,15 +161,12 @@
       dashboard: renderDashboard,
       caisse: renderCaisse,
       ventes: renderVentes,
+      stats: renderStats,
       stock: renderStock,
       entrees: renderEntrees,
       facture: renderFacture,
       parametres: renderParametres
     })[view]();
-  }
-  function currentView() {
-    const v = document.querySelector(".view.active");
-    return v ? v.id.replace("view-", "") : "dashboard";
   }
 
   function productOptions(selected) {
@@ -122,45 +174,71 @@
       '<option value="' + esc(p.code) + '"' + (p.code === selected ? " selected" : "") + ">" +
       esc(p.nom) + " (" + esc(p.code) + ")</option>").join("");
   }
-  function ccOptions(withAll, selected) {
-    let h = withAll ? '<option value="ALL">Tous (ALL)</option>' : "";
-    h += db.settings.ccs.map((c) => '<option value="' + esc(c) + '"' + (c === selected ? " selected" : "") + ">" + ccLabel(c) + "</option>").join("");
-    return h;
+
+  // ---------- Accueil : filtres période + CC ----------
+  function periodRange(p, ref) {
+    if (p === "jour") return [ref, ref];
+    if (p === "semaine") { const m = mondayOf(ref); return [m, addDays(m, 6)]; }
+    if (p === "mois") { const f = ref.slice(0, 7) + "-01"; return [f, lastDayOfMonth(f)]; }
+    if (p === "annee") return [ref.slice(0, 4) + "-01-01", ref.slice(0, 4) + "-12-31"];
+    return ["0000-01-01", "9999-12-31"];
+  }
+  function periodLabel(p, ref) {
+    const [du, au] = periodRange(p, ref);
+    if (p === "jour") return (ref === today() ? "Aujourd'hui — " : "") + fmtLong(ref);
+    if (p === "semaine") return "Semaine du " + fmtDate(du) + " au " + fmtDate(au);
+    if (p === "mois") return fmtMonth(ref).replace(/^./, (c) => c.toUpperCase());
+    if (p === "annee") return "Année " + ref.slice(0, 4);
+    return "Tout l'historique";
   }
 
-  // ---------- Accueil ----------
   function renderDashboard() {
-    const counted = db.sales.filter(isCountedSale);
-    const ca = counted.reduce((a, s) => a + lineTotal(s), 0);
-    const qte = counted.reduce((a, s) => a + Number(s.qte), 0);
-    const caJour = counted.filter((s) => s.date === today()).reduce((a, s) => a + lineTotal(s), 0);
-    const stockTotal = db.products.reduce((a, p) => a + stockActuel(p), 0);
-    const ruptures = db.products.filter((p) => statutStock(p) === "RUPTURE");
-    const faibles = db.products.filter((p) => statutStock(p) === "STOCK FAIBLE");
-    const entrees = db.entries.filter((e) => e.statut === "Validée").reduce((a, e) => a + Number(e.qte), 0);
-    const marge = counted.reduce((a, s) => {
-      const p = productByCode(s.code);
-      return a + (p ? (Number(s.pu) - Number(p.pa)) * Number(s.qte) : 0);
-    }, 0);
+    fillCcSelect($("#d-cc"), true, false);
+    $("#d-cc").value = dash.cc;
+    if ($("#d-cc").value !== dash.cc) { dash.cc = "ALL"; $("#d-cc").value = "ALL"; }
+    $("#d-ref").value = dash.ref;
+    document.querySelectorAll("#d-periode button").forEach((b) => b.classList.toggle("active", b.dataset.p === dash.periode));
+    $("#d-nav").style.visibility = dash.periode === "tout" ? "hidden" : "visible";
 
-    $("#kpis").innerHTML = [
-      ["Chiffre d'affaires", money(ca)],
-      ["Ventes du jour", money(caJour)],
-      ["Marge brute estimée", money(marge)],
-      ["Quantités vendues", num(qte)],
-      ["Stock total", num(stockTotal)],
-      ["Entrées validées", num(entrees)],
-      ["Produits en rupture", ruptures.length, ruptures.length ? "danger" : ""],
-      ["Produits sous seuil", faibles.length, faibles.length ? "warn" : ""]
-    ].map(([l, v, c]) => '<div class="kpi ' + (c || "") + '"><div class="label">' + l + '</div><div class="value">' + v + "</div></div>").join("");
+    const [du, au] = periodRange(dash.periode, dash.ref);
+    const inPeriod = db.sales.filter((s) => isCountedSale(s) && s.date >= du && s.date <= au);
+    const list = inPeriod.filter((s) => dash.cc === "ALL" || s.cc === dash.cc);
+    const r = summarize(list);
 
-    const alerts = ruptures.concat(faibles);
-    $("#alerts").innerHTML = alerts.length
-      ? alerts.map((p) => '<div class="list-row"><span>' + esc(p.nom) + ' <span class="muted">' + esc(p.code) + "</span></span><span>" + num(stockActuel(p)) + " " + statutBadge(statutStock(p)) + "</span></div>").join("")
-      : '<div class="empty">Aucune alerte, tous les stocks sont OK.</div>';
+    $("#d-label").textContent = periodLabel(dash.periode, dash.ref) + " · " + (dash.cc === "ALL" ? "Tous les CC" : ccName(dash.cc));
+    $("#kpis").innerHTML = kpiHtml([
+      ["Chiffre d'affaires", money(r.ca)],
+      ["Tickets", num(r.tickets)],
+      ["Quantités vendues", num(r.qte)],
+      ["Panier moyen", money(r.tickets ? Math.round(r.ca / r.tickets) : 0)],
+      ["Marge brute estimée", money(r.marge)]
+    ]);
 
+    // Ventes par CC sur la période
+    const totalCa = inPeriod.reduce((a, s) => a + lineTotal(s), 0);
+    const rows = db.settings.ccList
+      .map((c) => {
+        const ls = inPeriod.filter((s) => s.cc === c.code);
+        return { c, ls, sum: summarize(ls) };
+      })
+      .filter((x) => x.ls.length || x.c.actif);
+    const vendeurs = (ls, c) => {
+      const names = Array.from(new Set(ls.map(vendeurOf).filter(Boolean)));
+      return names.length ? names.join(", ") : (currentAgent(c) || "—");
+    };
+    $("#d-cc-title").textContent = "(" + periodLabel(dash.periode, dash.ref) + ")";
+    $("#d-cc-rows").innerHTML = rows.length ? rows.map(({ c, ls, sum }) =>
+      '<tr class="clickable' + (dash.cc === c.code ? " selected" : "") + '" data-cc="' + esc(c.code) + '"><td>' + ccLabel(c.code) + "</td><td>" + esc(vendeurs(ls, c)) + "</td><td>" +
+      (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
+      '</td><td class="num">' + num(sum.tickets) + '</td><td class="num">' + num(sum.qte) + '</td><td class="num">' + money(sum.ca) +
+      '</td><td class="num">' + (totalCa ? Math.round((sum.ca / totalCa) * 100) : 0) + " %</td></tr>"
+    ).join("") + '<tr class="total clickable' + (dash.cc === "ALL" ? " selected" : "") + '" data-cc="ALL"><td>Total</td><td>Tous les CC</td><td></td><td class="num">' +
+      num(new Set(inPeriod.map((s) => s.ticket)).size) + '</td><td class="num">' + num(inPeriod.reduce((a, s) => a + Number(s.qte), 0)) + '</td><td class="num">' + money(totalCa) + '</td><td class="num">100 %</td></tr>'
+      : '<tr><td colspan="7" class="empty">Aucun code commercial.</td></tr>';
+
+    // Meilleures ventes (période + CC)
     const byProd = {};
-    counted.forEach((s) => {
+    list.forEach((s) => {
       byProd[s.code] = byProd[s.code] || { nom: s.nom, qte: 0, ca: 0 };
       byProd[s.code].qte += Number(s.qte);
       byProd[s.code].ca += lineTotal(s);
@@ -168,8 +246,119 @@
     const top = Object.values(byProd).sort((a, b) => b.ca - a.ca).slice(0, 8);
     $("#top-products").innerHTML = top.length
       ? top.map((t) => '<div class="list-row"><span>' + esc(t.nom) + ' <span class="muted">× ' + num(t.qte) + "</span></span><strong>" + money(t.ca) + "</strong></div>").join("")
-      : '<div class="empty">Aucune vente pour le moment.</div>';
+      : '<div class="empty">Aucune vente sur cette période.</div>';
+
+    // Stock (global)
+    const ruptures = db.products.filter((p) => statutStock(p) === "RUPTURE");
+    const faibles = db.products.filter((p) => statutStock(p) === "STOCK FAIBLE");
+    const alerts = ruptures.concat(faibles);
+    $("#alerts").innerHTML = alerts.length
+      ? alerts.map((p) => '<div class="list-row"><span>' + esc(p.nom) + ' <span class="muted">' + esc(p.code) + "</span></span><span>" + num(stockActuel(p)) + " " + statutBadge(statutStock(p)) + "</span></div>").join("")
+      : '<div class="empty">Aucune alerte, tous les stocks sont OK.</div>';
+    $("#stock-kpis-dash").innerHTML = kpiHtml([
+      ["Stock total", num(db.products.reduce((a, p) => a + stockActuel(p), 0))],
+      ["Entrées validées", num(db.entries.filter((e) => e.statut === "Validée").reduce((a, e) => a + Number(e.qte), 0))],
+      ["Produits en rupture", ruptures.length, ruptures.length ? "danger" : ""],
+      ["Produits sous seuil", faibles.length, faibles.length ? "warn" : ""]
+    ]);
   }
+  $("#d-periode").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-p]");
+    if (!b) return;
+    dash.periode = b.dataset.p;
+    renderDashboard();
+  });
+  function shiftRef(dir) {
+    if (dash.periode === "jour") dash.ref = addDays(dash.ref, dir);
+    else if (dash.periode === "semaine") dash.ref = addDays(dash.ref, 7 * dir);
+    else if (dash.periode === "mois") dash.ref = addMonths(dash.ref, dir);
+    else if (dash.periode === "annee") dash.ref = (Number(dash.ref.slice(0, 4)) + dir) + "-01-01";
+    renderDashboard();
+  }
+  $("#d-prev").addEventListener("click", () => shiftRef(-1));
+  $("#d-next").addEventListener("click", () => shiftRef(1));
+  $("#d-today").addEventListener("click", () => { dash.ref = today(); renderDashboard(); });
+  $("#d-ref").addEventListener("change", () => { if ($("#d-ref").value) { dash.ref = $("#d-ref").value; renderDashboard(); } });
+  $("#d-cc").addEventListener("change", () => { dash.cc = $("#d-cc").value; renderDashboard(); });
+  $("#d-cc-rows").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-cc]");
+    if (!tr) return;
+    dash.cc = tr.dataset.cc === dash.cc ? "ALL" : tr.dataset.cc;
+    renderDashboard();
+  });
+
+  // ---------- Statistiques ----------
+  function groupKey(group, date) {
+    if (group === "jour") return date;
+    if (group === "semaine") return mondayOf(date);
+    if (group === "mois") return date.slice(0, 7);
+    return date.slice(0, 4);
+  }
+  function groupLabel(group, key) {
+    if (group === "jour") return fmtLong(key);
+    if (group === "semaine") return "Semaine du " + fmtDate(key) + " au " + fmtDate(addDays(key, 6));
+    if (group === "mois") return fmtMonth(key).replace(/^./, (c) => c.toUpperCase());
+    return key;
+  }
+  function setStatsRange(kind) {
+    const t = today();
+    if (kind === "mois") { $("#st-du").value = t.slice(0, 7) + "-01"; $("#st-au").value = lastDayOfMonth(t); }
+    else if (kind === "annee") { $("#st-du").value = t.slice(0, 4) + "-01-01"; $("#st-au").value = t.slice(0, 4) + "-12-31"; }
+    else {
+      const dates = db.sales.map((s) => s.date).filter(Boolean).sort();
+      $("#st-du").value = dates[0] || t;
+      $("#st-au").value = dates.length && dates[dates.length - 1] > t ? dates[dates.length - 1] : t;
+    }
+  }
+  function statsData() {
+    const group = $("#st-group").value, cols = $("#st-cols").value, cc = $("#st-cc").value, metric = $("#st-metric").value;
+    const du = $("#st-du").value || "0000-01-01", au = $("#st-au").value || "9999-12-31";
+    const list = db.sales.filter((s) => isCountedSale(s) && s.date >= du && s.date <= au && (cc === "ALL" || s.cc === cc));
+    const colKey = (s) => (cols === "cc" ? s.cc : vendeurOf(s) || "(sans nom) " + ccLabel(s.cc));
+    let colKeys = Array.from(new Set(list.map(colKey)));
+    if (cols === "cc") colKeys.sort((a, b) => Number(a) - Number(b));
+    else colKeys.sort((a, b) => a.localeCompare(b));
+    const colTitle = (k) => (cols === "cc" ? ccName(k) : k);
+    const rowKeys = Array.from(new Set(list.map((s) => groupKey(group, s.date)))).sort().reverse();
+    const value = (ls) => { const r = summarize(ls); return metric === "ca" ? r.ca : metric === "qte" ? r.qte : r.tickets; };
+    const fmt = (v) => (metric === "ca" ? money(v) : num(v));
+    const rows = rowKeys.map((rk) => {
+      const inRow = list.filter((s) => groupKey(group, s.date) === rk);
+      return { label: groupLabel(group, rk), cells: colKeys.map((ck) => value(inRow.filter((s) => colKey(s) === ck))), total: value(inRow) };
+    });
+    const totals = colKeys.map((ck) => value(list.filter((s) => colKey(s) === ck)));
+    return { list, colKeys, colTitle, rows, totals, total: value(list), fmt, group };
+  }
+  function renderStats() {
+    fillCcSelect($("#st-cc"), true, false);
+    if (!$("#st-du").value || !$("#st-au").value) setStatsRange("annee");
+    const d = statsData();
+    const r = summarize(d.list);
+    $("#st-kpis").innerHTML = kpiHtml([
+      ["Chiffre d'affaires", money(r.ca)],
+      ["Tickets", num(r.tickets)],
+      ["Quantités vendues", num(r.qte)],
+      ["Panier moyen", money(r.tickets ? Math.round(r.ca / r.tickets) : 0)],
+      ["Marge brute estimée", money(r.marge)]
+    ]);
+    if (!d.rows.length) { $("#st-table").innerHTML = '<tbody><tr><td class="empty">Aucune vente validée sur cette période.</td></tr></tbody>'; return; }
+    const head = "<thead><tr><th>Période</th>" + d.colKeys.map((k) => '<th class="num">' + esc(d.colTitle(k)) + "</th>").join("") + (d.colKeys.length > 1 ? '<th class="num">Total</th>' : "") + "</tr></thead>";
+    const body = "<tbody>" + d.rows.map((row) =>
+      "<tr><td>" + esc(row.label) + "</td>" + row.cells.map((v) => '<td class="num">' + (v ? d.fmt(v) : '<span class="muted">—</span>') + "</td>").join("") +
+      (d.colKeys.length > 1 ? '<td class="num"><b>' + d.fmt(row.total) + "</b></td>" : "") + "</tr>").join("") +
+      '<tr class="total"><td>Total</td>' + d.totals.map((v) => '<td class="num">' + d.fmt(v) + "</td>").join("") + (d.colKeys.length > 1 ? '<td class="num">' + d.fmt(d.total) + "</td>" : "") + "</tr></tbody>";
+    $("#st-table").innerHTML = head + body;
+  }
+  ["#st-group", "#st-du", "#st-au", "#st-cc", "#st-cols", "#st-metric"].forEach((id) => $(id).addEventListener("change", renderStats));
+  document.querySelectorAll("[data-st-range]").forEach((b) => b.addEventListener("click", () => { setStatsRange(b.dataset.stRange); renderStats(); }));
+  $("#st-export").addEventListener("click", () => {
+    const d = statsData();
+    const metricName = $("#st-metric").selectedOptions[0].textContent;
+    const head = ["Période"].concat(d.colKeys.map(d.colTitle), ["Total"]);
+    const lines = d.rows.map((r) => [r.label].concat(r.cells, [r.total]));
+    lines.push(["Total"].concat(d.totals, [d.total]));
+    download("statistiques-" + metricName.replace(/\W+/g, "-") + "-" + today() + ".csv", "﻿" + toCsv([head].concat(lines)), "text/csv;charset=utf-8");
+  });
 
   // ---------- Caisse ----------
   function clientNames() {
@@ -179,8 +368,7 @@
   }
   function renderCaisse() {
     if (!$("#c-date").value) $("#c-date").value = today();
-    const ccSel = $("#c-cc").value;
-    $("#c-cc").innerHTML = ccOptions(false, ccSel);
+    fillCcSelect($("#c-cc"), false, true);
     const prodSel = $("#c-product").value;
     $("#c-product").innerHTML = productOptions(prodSel);
     $("#clients-list").innerHTML = clientNames().map((c) => '<option value="' + esc(c) + '">').join("");
@@ -231,13 +419,16 @@
   $("#c-clear").addEventListener("click", () => { cart = []; $("#c-remis").value = ""; updateProductInfo(false); renderCart(); });
   $("#c-validate").addEventListener("click", () => {
     if (!cart.length) return toast("Le ticket est vide.");
+    const cc = $("#c-cc").value;
+    if (!cc) return toast("Aucun code commercial actif : créez-en un dans Paramètres.");
     const date = $("#c-date").value || today();
     const client = $("#c-client").value.trim() || "CLIENT COMPTOIR";
+    const vendeur = agentAt(ccByCode(cc), date) || currentAgent(ccByCode(cc));
     const ticket = nextTicket();
     cart.forEach((l) => {
       db.sales.push({
         id: uid("s"), date, ticket, client, code: l.code, nom: l.nom, qte: l.qte, pu: l.pu,
-        cc: $("#c-cc").value, valide: "OUI",
+        cc, vendeur, valide: "OUI",
         numClient: $("#c-numclient").value.trim(), adresseClient: $("#c-adresse").value.trim()
       });
     });
@@ -260,10 +451,20 @@
   });
 
   // ---------- Ventes ----------
+  function salesForReport(filterFn) {
+    const cc = $("#r-cc").value;
+    return db.sales.filter((s) => isCountedSale(s) && (cc === "ALL" || s.cc === cc) && filterFn(s));
+  }
+  function reportHtml(list) {
+    const r = summarize(list);
+    return '<div><span>Vente totale</span><strong>' + money(r.ca) + "</strong></div>" +
+      '<div><span>Tickets</span><strong>' + r.tickets + "</strong></div>" +
+      '<div><span>Quantités</span><strong>' + num(r.qte) + "</strong></div>" +
+      '<div><span>Lignes</span><strong>' + r.lignes + "</strong></div>";
+  }
   function renderVentes() {
-    const ccSel = $("#r-cc").value || "ALL";
-    $("#r-cc").innerHTML = ccOptions(true, ccSel);
-    $("#r-cc").value = ccSel;
+    if (!$("#r-cc").value) $("#r-cc").innerHTML = '<option value="ALL">Tous les CC</option>';
+    fillCcSelect($("#r-cc"), true, false);
     if (!$("#r-du").value) $("#r-du").value = today();
     if (!$("#r-au").value) $("#r-au").value = today();
     if (!$("#r-mois").value) $("#r-mois").value = today().slice(0, 7);
@@ -276,14 +477,15 @@
     const cc = $("#r-cc").value;
     const rows = db.sales
       .map((s, i) => ({ s, i }))
-      .filter(({ s }) => cc === "ALL" || String(s.cc) === cc)
-      .filter(({ s }) => !q || [s.client, s.nom, s.code, String(s.ticket), s.date].some((v) => String(v || "").toLowerCase().includes(q)))
+      .filter(({ s }) => cc === "ALL" || s.cc === cc)
+      .filter(({ s }) => !q || [s.client, s.nom, s.code, String(s.ticket), s.date, vendeurOf(s)].some((v) => String(v || "").toLowerCase().includes(q)))
       .sort((a, b) => (b.s.date || "").localeCompare(a.s.date || "") || b.s.ticket - a.s.ticket || b.i - a.i);
 
     $("#v-rows").innerHTML = rows.length ? rows.map(({ s }) =>
       '<tr class="' + (s.valide === "OUI" ? "" : "off") + '">' +
       "<td>" + fmtDate(s.date) + '</td><td class="num">' + s.ticket + "</td><td>" + esc(s.client) + "</td><td>" + esc(s.nom) + "</td><td>" + esc(s.code) +
       '</td><td class="num">' + num(s.qte) + '</td><td class="num">' + num(s.pu) + '</td><td class="num">' + num(lineTotal(s)) + "</td><td>" + ccLabel(s.cc) +
+      (vendeurOf(s) ? '<span class="sub">' + esc(vendeurOf(s)) + "</span>" : "") +
       '</td><td class="keep"><button class="btn small" data-toggle="' + s.id + '">' + (s.valide === "OUI" ? '<span class="badge ok">OUI</span>' : '<span class="badge mute">NON</span>') + "</button>" +
       '</td><td><button class="btn small danger" data-del="' + s.id + '" title="Supprimer">✕</button></td></tr>'
     ).join("") : '<tr><td colspan="11" class="empty">Aucune vente.</td></tr>';
@@ -305,11 +507,13 @@
       save(); renderVentes();
     }
   });
+  function toCsv(rows) {
+    return rows.map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(";")).join("\r\n");
+  }
   $("#v-export").addEventListener("click", () => {
-    const head = ["Date", "Ticket", "Client", "Produit", "Code_Produit", "Quantite", "PU_Vente", "Total_Vente", "Code_CC", "Validation", "N_Client", "Adresse_Client"];
-    const lines = db.sales.map((s) => [s.date, s.ticket, s.client, s.nom, s.code, s.qte, s.pu, lineTotal(s), s.cc, s.valide, s.numClient || "", s.adresseClient || ""]);
-    const csv = [head].concat(lines).map((r) => r.map((v) => '"' + String(v).replace(/"/g, '""') + '"').join(";")).join("\r\n");
-    download("ventes-" + today() + ".csv", "﻿" + csv, "text/csv;charset=utf-8");
+    const head = ["Date", "Ticket", "Client", "Produit", "Code_Produit", "Quantite", "PU_Vente", "Total_Vente", "Code_CC", "Vendeur", "Validation", "N_Client", "Adresse_Client"];
+    const lines = db.sales.map((s) => [s.date, s.ticket, s.client, s.nom, s.code, s.qte, s.pu, lineTotal(s), s.cc, vendeurOf(s), s.valide, s.numClient || "", s.adresseClient || ""]);
+    download("ventes-" + today() + ".csv", "﻿" + toCsv([head].concat(lines)), "text/csv;charset=utf-8");
   });
 
   // ---------- Stock ----------
@@ -318,13 +522,13 @@
     const list = db.products.filter((p) => !q || (p.nom + " " + p.code + " " + p.categorie).toLowerCase().includes(q));
     const stockTotal = db.products.reduce((a, p) => a + stockActuel(p), 0);
     const valeur = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p)) * Number(p.pa), 0);
-    $("#stock-kpis").innerHTML = [
+    $("#stock-kpis").innerHTML = kpiHtml([
       ["Produits", db.products.length],
       ["Stock total", num(stockTotal)],
       ["Valeur du stock (achat)", money(valeur)],
       ["En rupture", db.products.filter((p) => statutStock(p) === "RUPTURE").length, "danger"],
       ["Sous seuil", db.products.filter((p) => statutStock(p) === "STOCK FAIBLE").length, "warn"]
-    ].map(([l, v, c]) => '<div class="kpi ' + (c || "") + '"><div class="label">' + l + '</div><div class="value">' + v + "</div></div>").join("");
+    ]);
 
     $("#s-rows").innerHTML = list.length ? list.map((p) =>
       "<tr><td>" + esc(p.code) + "</td><td>" + esc(p.nom) + "</td><td>" + esc(p.categorie) + '</td><td class="num">' + num(p.pa) + '</td><td class="num">' + num(p.pv) +
@@ -361,8 +565,8 @@
       save(); renderStock();
     }
   });
-  $("#product-dialog").addEventListener("close", () => {
-    if ($("#product-dialog").returnValue !== "ok") return;
+  $("#product-form").addEventListener("submit", (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
     const f = $("#product-form");
     const p = {
       code: f.elements.code.value.trim(),
@@ -373,9 +577,9 @@
       stockInitial: Number(f.elements.stockInitial.value) || 0,
       stockMin: Number(f.elements.stockMin.value) || 0
     };
-    if (!p.code || !p.nom) return toast("Code et désignation obligatoires.");
+    if (!p.code || !p.nom) { e.preventDefault(); return toast("Code et désignation obligatoires."); }
     const clash = db.products.find((x) => x.code === p.code && x.code !== editingCode);
-    if (clash) return alert("Le code " + p.code + " existe déjà.");
+    if (clash) { e.preventDefault(); return toast("Le code " + p.code + " existe déjà."); }
     if (editingCode) {
       const i = db.products.findIndex((x) => x.code === editingCode);
       if (editingCode !== p.code) {
@@ -448,13 +652,14 @@
     const remisRaw = $("#f-remis").value;
     const remis = Number(remisRaw);
     const now = new Date();
+    const vendeur = vendeurOf(first);
     $("#receipt").innerHTML =
       '<div class="center"><h3>' + esc(st.nom) + "</h3><div>" + esc(st.domaine) + "</div><div>Tel: " + esc(st.tel) + "</div><div>Adresse: " + esc(st.adresse) +
       "</div><div>Email: " + esc(st.email) + "</div><div>RCCM/NIF : " + esc(st.rccm) + "</div></div><hr>" +
       '<div class="center big">TICKET DE CAISSE</div><hr>' +
       "<table><tr><td>N° " + t + '</td><td class="r">Date : ' + fmtDate(first.date) + "</td></tr>" +
       "<tr><td>Client : " + esc(first.client) + '</td><td class="r">Heure : ' + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</td></tr>" +
-      "<tr><td>" + ccLabel(first.cc) + "</td><td></td></tr>" +
+      "<tr><td colspan=2>" + ccLabel(first.cc) + (vendeur ? " — Vendeur : " + esc(vendeur) : "") + "</td></tr>" +
       (first.numClient ? "<tr><td colspan=2>N° client : " + esc(first.numClient) + "</td></tr>" : "") +
       (first.adresseClient ? "<tr><td colspan=2>Adresse : " + esc(first.adresseClient) + "</td></tr>" : "") +
       "</table><hr>" +
@@ -473,13 +678,103 @@
   // ---------- Paramètres ----------
   function renderParametres() {
     document.querySelectorAll("#p-form [data-k]").forEach((i) => { i.value = db.settings[i.dataset.k] || ""; });
-    $("#p-ccs").value = db.settings.ccs.join(", ");
+    renderCcTable();
   }
+  function renderCcTable() {
+    $("#cc-rows").innerHTML = db.settings.ccList.length ? db.settings.ccList.map((c) => {
+      const ca = db.sales.filter((s) => isCountedSale(s) && s.cc === c.code).reduce((a, s) => a + lineTotal(s), 0);
+      const hist = c.agents.length
+        ? c.agents.map((a) => esc(a.nom) + " : " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui")).join("<br>")
+        : "Aucun vendeur affecté";
+      const hasSales = db.sales.some((s) => s.cc === c.code);
+      return "<tr><td><b>" + ccLabel(c.code) + "</b></td><td>" + (esc(currentAgent(c)) || '<span class="muted">—</span>') + "</td><td>" +
+        (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
+        '</td><td class="hist">' + hist + '</td><td class="num">' + money(ca) + '</td><td class="wrap">' +
+        '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
+        (c.actif
+          ? '<button class="btn small" data-cc-depart="' + esc(c.code) + '">Départ / désactiver</button> '
+          : '<button class="btn small" data-cc-reactiver="' + esc(c.code) + '">Réactiver</button> ') +
+        (hasSales ? "" : '<button class="btn small danger" data-cc-del="' + esc(c.code) + '">✕</button>') +
+        "</td></tr>";
+    }).join("") : '<tr><td colspan="6" class="empty">Aucun code commercial.</td></tr>';
+  }
+
+  let ccMode = null, ccTarget = null;
+  function openCc(mode, code) {
+    ccMode = mode; ccTarget = code || null;
+    const f = $("#cc-form");
+    const cc = ccByCode(code);
+    f.elements.code.value = mode === "new" ? String(db.settings.ccList.reduce((m, c) => Math.max(m, Number(c.code) || 0), 0) + 1) : code;
+    f.elements.nom.value = "";
+    f.elements.date.value = today();
+    $("#cc-code-wrap").style.display = mode === "new" ? "" : "none";
+    $("#cc-nom-wrap").style.display = mode === "depart" ? "none" : "";
+    $("#cc-title").textContent = mode === "new" ? "Nouveau code commercial" : mode === "assign" ? "Vendeur du " + ccLabel(code) : "Départ — " + ccName(code);
+    $("#cc-help").textContent = mode === "new"
+      ? "Le vendeur sera rattaché à ce CC à partir de la date indiquée."
+      : mode === "assign"
+        ? (currentAgent(cc) ? "Le vendeur actuel (" + currentAgent(cc) + ") sera clôturé la veille de cette date. Ses ventes restent à son nom." : "Le vendeur sera rattaché à ce CC à partir de cette date.")
+        : "Date de départ du vendeur. Le CC devient inactif (il n'apparaît plus en caisse) mais toutes ses ventes restent dans les statistiques.";
+    $("#cc-dialog").returnValue = "";
+    $("#cc-dialog").showModal();
+  }
+  function closeOpenAgents(cc, finDate) {
+    cc.agents.forEach((a) => { if (!a.fin) a.fin = a.debut && a.debut > finDate ? a.debut : finDate; });
+  }
+  // Fige le nom du vendeur sur les ventes passées avant tout changement d'affectation.
+  function freezeVendeurs(code) {
+    db.sales.forEach((s) => { if (s.cc === code && !s.vendeur) { const v = agentAt(ccByCode(code), s.date); if (v) s.vendeur = v; } });
+  }
+  $("#cc-new").addEventListener("click", () => openCc("new"));
+  $("#cc-rows").addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.ccAssign) openCc("assign", b.dataset.ccAssign);
+    else if (b.dataset.ccDepart) openCc("depart", b.dataset.ccDepart);
+    else if (b.dataset.ccReactiver) {
+      ccByCode(b.dataset.ccReactiver).actif = true;
+      save(); renderCcTable();
+      toast(ccLabel(b.dataset.ccReactiver) + " réactivé. Pensez à lui affecter un vendeur.");
+    } else if (b.dataset.ccDel) {
+      if (!confirm("Supprimer " + ccLabel(b.dataset.ccDel) + " ? (aucune vente associée)")) return;
+      db.settings.ccList = db.settings.ccList.filter((c) => c.code !== b.dataset.ccDel);
+      save(); renderCcTable();
+    }
+  });
+  $("#cc-form").addEventListener("submit", (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
+    const f = $("#cc-form");
+    const nom = f.elements.nom.value.trim();
+    const date = f.elements.date.value || today();
+    const stay = (msg) => { e.preventDefault(); toast(msg); };
+    if (ccMode === "new") {
+      const code = f.elements.code.value.trim().replace(/^0+(?=\d)/, "");
+      if (!code) return stay("Indiquez un code.");
+      if (ccByCode(code)) return stay(ccLabel(code) + " existe déjà : utilisez « Changer de vendeur ».");
+      db.settings.ccList.push({ code, actif: true, agents: nom ? [{ nom, debut: date, fin: "" }] : [] });
+      db.settings.ccList.sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code));
+      toast(ccLabel(code) + " créé.");
+    } else if (ccMode === "assign") {
+      if (!nom) return stay("Indiquez le nom du vendeur.");
+      const cc = ccByCode(ccTarget);
+      freezeVendeurs(cc.code);
+      closeOpenAgents(cc, addDays(date, -1));
+      cc.agents.push({ nom, debut: date, fin: "" });
+      cc.actif = true;
+      freezeVendeurs(cc.code);
+      toast(nom + " affecté(e) au " + ccLabel(cc.code) + ".");
+    } else if (ccMode === "depart") {
+      const cc = ccByCode(ccTarget);
+      freezeVendeurs(cc.code);
+      closeOpenAgents(cc, date);
+      cc.actif = false;
+      toast(ccLabel(cc.code) + " désactivé. Ses ventes sont conservées.");
+    }
+    save(); renderCcTable();
+  });
+
   $("#p-save").addEventListener("click", () => {
     document.querySelectorAll("#p-form [data-k]").forEach((i) => { db.settings[i.dataset.k] = i.value.trim(); });
-    const ccs = $("#p-ccs").value.split(",").map((s) => s.trim().replace(/^0+(?=\d)/, "")).filter(Boolean);
-    if (!ccs.length) return toast("Indiquez au moins un code commercial.");
-    db.settings.ccs = Array.from(new Set(ccs));
     save(); render("parametres");
     toast("Paramètres enregistrés.");
   });
@@ -500,10 +795,10 @@
     const r = new FileReader();
     r.onload = () => {
       try {
-        const data = JSON.parse(r.result);
+        const data = JSON.parse(String(r.result).replace(/^﻿/, ""));
         if (!data.settings || !Array.isArray(data.products) || !Array.isArray(data.sales) || !Array.isArray(data.entries)) throw new Error("format");
         if (!confirm("Remplacer toutes les données actuelles par cette sauvegarde ?")) return;
-        db = data;
+        db = normalize(data);
         save(); show("dashboard");
         toast("Sauvegarde restaurée.");
       } catch (err) {
@@ -515,8 +810,8 @@
     r.readAsText(file);
   });
   $("#p-reset").addEventListener("click", () => {
-    if (!confirm("Effacer toutes les données et revenir aux données d'origine du fichier Excel ?\nPensez à télécharger une sauvegarde avant.")) return;
-    db = clone(window.SEED_DATA);
+    if (!confirm("Effacer toutes les données (ventes, entrées, CC) et revenir au catalogue d'origine ?\nPensez à télécharger une sauvegarde avant.")) return;
+    db = normalize(clone(window.SEED_DATA));
     cart = [];
     save(); show("dashboard");
     toast("Données réinitialisées.");
