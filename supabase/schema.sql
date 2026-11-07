@@ -25,18 +25,32 @@ language sql stable security definer set search_path = public as $$
   select exists (select 1 from public.profiles where id = auth.uid() and actif and role = 'admin');
 $$;
 
+-- Configuration privée (aucun accès depuis l'application) : e-mail de l'owner.
+--   insert into public.app_config (key, value) values ('owner_email', 'votre@email.com');
+create table if not exists public.app_config (
+  key text primary key,
+  value text not null
+);
+alter table public.app_config enable row level security;
+revoke all on public.app_config from anon, authenticated;
+
+-- Le compte créé avec l'e-mail de l'owner devient administrateur actif ;
+-- tous les autres sont des vendeurs en attente de validation.
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare first_user boolean;
+declare is_owner boolean;
 begin
-  select not exists (select 1 from public.profiles where role = 'admin') into first_user;
+  select exists (
+    select 1 from public.app_config
+    where key = 'owner_email' and lower(value) = lower(new.email)
+  ) into is_owner;
   insert into public.profiles (id, email, nom, role, actif)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'nom', ''),
-    case when first_user then 'admin' else 'vendeur' end,
-    first_user
+    case when is_owner then 'admin' else 'vendeur' end,
+    is_owner
   );
   return new;
 end $$;
