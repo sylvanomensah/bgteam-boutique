@@ -307,16 +307,25 @@
           <label>Date<input type="date" id="e-date"></label>
           <label>Produit<select id="e-product"></select></label>
           <label>Quantité<input type="number" id="e-qte" min="1" value="1"></label>
+          <label>CC<select id="e-cc"></select></label>
           <label>Observation<input id="e-obs" value="Réapprovisionnement"></label>
           <button class="btn primary" id="e-add">Enregistrer</button>
         </div>
+        <p class="hint">Un vendeur peut modifier ou annuler ses propres entrées pendant <b>2 heures</b>. Passé ce délai, seul l'administrateur peut le faire.</p>
       </div>
       <div class="card">
         <h2>Historique des entrées</h2>
+        <div class="form form-inline">
+          <label>Code commercial<select id="eh-cc"></select></label>
+          <label>Du<input type="date" id="eh-du"></label>
+          <label>Au<input type="date" id="eh-au"></label>
+          <label>Produit / saisi par<input id="eh-search" placeholder="Rechercher"></label>
+        </div>
+        <p class="hint">Cliquez sur une date pour voir tous les produits entrés ce jour-là.</p>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>Date</th><th>Article</th><th>Code</th><th class="num">Quantité</th><th>Statut</th><th>Observation</th><th></th></tr></thead>
-            <tbody id="e-rows"></tbody>
+            <thead><tr><th></th><th>Date</th><th class="num">Produits</th><th class="num">Quantité totale</th><th>CC</th><th>Saisi par</th></tr></thead>
+            <tbody id="e-days"></tbody>
           </table>
         </div>
       </div>
@@ -417,6 +426,24 @@
         <label id="cc-code-wrap">Code CC<input name="code" inputmode="numeric"></label>
         <label id="cc-nom-wrap">Nom du vendeur<input name="nom"></label>
         <label id="cc-date-wrap">Date<input type="date" name="date"></label>
+      </div>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal entrée de stock -->
+  <dialog id="entry-dialog">
+    <form method="dialog" id="entry-form">
+      <h2>Modifier l'entrée de stock</h2>
+      <p class="hint" id="ed-help"></p>
+      <div class="form">
+        <label class="full">Produit<select name="code"></select></label>
+        <label>Quantité<input type="number" name="qte" min="1"></label>
+        <label id="ed-date-wrap">Date<input type="date" name="date"></label>
+        <label class="full">Observation<input name="obs"></label>
       </div>
       <div class="actions">
         <button class="btn" value="cancel" formnovalidate>Annuler</button>

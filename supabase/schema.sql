@@ -107,6 +107,40 @@ create table if not exists public.entries (
   created_by uuid default auth.uid() references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
+alter table public.entries add column if not exists cc text references public.ccs(code) on update cascade;
+alter table public.entries add column if not exists saisi_par text not null default '';
+create index if not exists entries_date_idx on public.entries (date);
+
+-- Renseigne automatiquement l'auteur, son CC et l'heure de saisie ;
+-- empêche un vendeur de changer ces informations ou d'antidater une entrée.
+create or replace function public.entries_before_write() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare prof public.profiles%rowtype;
+begin
+  select * into prof from public.profiles where id = auth.uid();
+  if tg_op = 'INSERT' then
+    new.created_by := auth.uid();
+    new.created_at := now();
+    new.saisi_par := coalesce(nullif(prof.nom, ''), prof.email, '');
+    if not public.is_admin() then
+      new.cc := prof.cc;
+      new.date := current_date;
+      new.statut := 'Validée';
+    end if;
+  else
+    new.created_by := old.created_by;
+    new.created_at := old.created_at;
+    new.saisi_par := old.saisi_par;
+    if not public.is_admin() then
+      new.cc := old.cc;
+      new.date := old.date;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists entries_before_write on public.entries;
+create trigger entries_before_write before insert or update on public.entries
+  for each row execute function public.entries_before_write();
 
 -- ---------- Ventes ----------
 create sequence if not exists public.ticket_seq;
@@ -215,13 +249,16 @@ end $$;
 drop policy if exists product_costs_admin on public.product_costs;
 create policy product_costs_admin on public.product_costs for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
--- Entrées : tous les membres lisent et ajoutent ; seul l'admin annule/supprime.
+-- Entrées : tous les membres lisent et ajoutent. Un vendeur peut modifier / annuler
+-- SES entrées pendant 2 heures ; ensuite seul l'admin peut le faire. Suppression : admin.
 drop policy if exists entries_select on public.entries;
 create policy entries_select on public.entries for select to authenticated using (public.is_member());
 drop policy if exists entries_insert on public.entries;
 create policy entries_insert on public.entries for insert to authenticated with check (public.is_member() and statut = 'Validée');
 drop policy if exists entries_update on public.entries;
-create policy entries_update on public.entries for update to authenticated using (public.is_admin()) with check (public.is_admin());
+create policy entries_update on public.entries for update to authenticated
+  using (public.is_admin() or (public.is_member() and created_by = auth.uid() and created_at > now() - interval '2 hours'))
+  with check (public.is_admin() or (public.is_member() and created_by = auth.uid()));
 drop policy if exists entries_delete on public.entries;
 create policy entries_delete on public.entries for delete to authenticated using (public.is_admin());
 

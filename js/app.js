@@ -112,7 +112,10 @@
         code: p.code, nom: p.nom, categorie: p.categorie, pa: pa[p.code] || 0, pv: Number(p.pv),
         stockInitial: Number(p.stock_initial), stockMin: Number(p.stock_min)
       })),
-      entries: entries.map((x) => ({ id: x.id, date: x.date || "", code: x.code, qte: Number(x.qte), statut: x.statut, obs: x.obs })),
+      entries: entries.map((x) => ({
+        id: x.id, date: x.date || "", code: x.code, qte: Number(x.qte), statut: x.statut, obs: x.obs,
+        cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at
+      })),
       sales: sales.map((s) => ({
         id: s.id, date: s.date, ticket: Number(s.ticket), client: s.client, code: s.code, nom: s.nom, qte: Number(s.qte), pu: Number(s.pu),
         cc: String(s.cc), vendeur: s.vendeur || "", valide: s.valide, numClient: s.num_client || "", adresseClient: s.adresse_client || ""
@@ -751,39 +754,158 @@
   });
 
   // ---------- Entrées ----------
+  const EDIT_WINDOW_MS = 2 * 3600 * 1000; // délai de modification pour un vendeur (vérifié aussi par la base)
+  const openDays = new Set();
+  let entriesFirstRender = true;
+
+  function canEditEntry(x) {
+    if (isAdmin()) return true;
+    return x.createdBy === me.id && x.createdAt && Date.now() - new Date(x.createdAt).getTime() < EDIT_WINDOW_MS;
+  }
+  function remainingTime(x) {
+    const min = Math.max(0, Math.ceil((EDIT_WINDOW_MS - (Date.now() - new Date(x.createdAt).getTime())) / 60000));
+    return min >= 60 ? Math.floor(min / 60) + " h " + String(min % 60).padStart(2, "0") : min + " min";
+  }
   function renderEntrees() {
-    if (!$("#e-date").value) $("#e-date").value = today();
+    const admin = isAdmin();
+    if (!$("#e-date").value || !admin) $("#e-date").value = today();
+    $("#e-date").readOnly = !admin;
     const sel = $("#e-product").value;
     $("#e-product").innerHTML = productOptions(sel);
-    const admin = isAdmin();
-    const rows = db.entries.map((x, i) => ({ x, i })).sort((a, b) => (b.x.date || "").localeCompare(a.x.date || "") || b.i - a.i);
-    $("#e-rows").innerHTML = rows.length ? rows.map(({ x }) => {
-      const p = productByCode(x.code);
-      const badge = x.statut === "Validée" ? '<span class="badge ok">Validée</span>' : '<span class="badge mute">Annulée</span>';
-      return '<tr class="' + (x.statut === "Validée" ? "" : "off") + '"><td>' + fmtDate(x.date) + "</td><td>" + esc(p ? p.nom : "?") + "</td><td>" + esc(x.code) +
-        '</td><td class="num">' + num(x.qte) + '</td><td class="keep">' + (admin ? '<button class="btn small" data-etoggle="' + x.id + '">' + badge + "</button>" : badge) +
-        "</td><td>" + esc(x.obs) + "</td><td>" + (admin ? '<button class="btn small danger" data-edel="' + x.id + '">✕</button>' : "") + "</td></tr>";
-    }).join("") : '<tr><td colspan="7" class="empty">Aucune entrée.</td></tr>';
+
+    const ecc = $("#e-cc");
+    if (admin) {
+      const cur = ecc.value;
+      ecc.innerHTML = '<option value="">— Aucun (admin) —</option>' + ccOptions(false, cur, true);
+      ecc.value = Array.from(ecc.options).some((o) => o.value === cur) ? cur : "";
+      ecc.disabled = false;
+    } else {
+      ecc.innerHTML = me.cc ? '<option value="' + esc(me.cc) + '">' + esc(ccName(me.cc)) + "</option>" : '<option value="">— Aucun CC lié —</option>';
+      ecc.disabled = true;
+    }
+
+    const fcur = $("#eh-cc").value || "ALL";
+    $("#eh-cc").innerHTML = '<option value="ALL">Tous les CC</option>' +
+      db.settings.ccList.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("") +
+      '<option value="NONE">Sans CC (admin)</option>';
+    $("#eh-cc").value = Array.from($("#eh-cc").options).some((o) => o.value === fcur) ? fcur : "ALL";
+    renderEntryHistory();
   }
+  function renderEntryHistory() {
+    const fcc = $("#eh-cc").value, du = $("#eh-du").value, au = $("#eh-au").value;
+    const q = $("#eh-search").value.trim().toLowerCase();
+    const list = db.entries.filter((x) => {
+      if (fcc === "NONE" ? x.cc : fcc !== "ALL" && x.cc !== fcc) return false;
+      if (du && (x.date || "") < du) return false;
+      if (au && (x.date || "") > au) return false;
+      if (q) {
+        const p = productByCode(x.code);
+        if (!((p ? p.nom : "") + " " + x.code + " " + (x.obs || "") + " " + (x.saisiPar || "")).toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+    const days = {};
+    list.forEach((x) => { (days[x.date || ""] = days[x.date || ""] || []).push(x); });
+    const keys = Object.keys(days).sort().reverse();
+    if (entriesFirstRender && keys.length) { openDays.add(keys[0]); entriesFirstRender = false; }
+    if (!keys.length) { $("#e-days").innerHTML = '<tr><td colspan="6" class="empty">Aucune entrée.</td></tr>'; return; }
+
+    $("#e-days").innerHTML = keys.map((d) => {
+      const ls = days[d].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+      const valid = ls.filter((x) => x.statut === "Validée");
+      const ccs = Array.from(new Set(ls.map((x) => (x.cc ? ccLabel(x.cc) : "Admin")))).join(", ");
+      const who = Array.from(new Set(ls.map((x) => x.saisiPar).filter(Boolean))).join(", ") || "—";
+      const open = openDays.has(d);
+      let h = '<tr class="clickable' + (open ? " selected" : "") + '" data-day="' + esc(d) + '"><td class="caret">' + (open ? "▾" : "▸") + "</td><td><b>" +
+        (d ? cap(fmtLong(d)) : "Sans date") + '</b></td><td class="num">' + new Set(valid.map((x) => x.code)).size + '</td><td class="num">' +
+        num(valid.reduce((a, x) => a + Number(x.qte), 0)) + "</td><td>" + esc(ccs) + "</td><td>" + esc(who) + "</td></tr>";
+      if (open) h += '<tr class="detail"><td colspan="6">' + entryDetail(ls) + "</td></tr>";
+      return h;
+    }).join("");
+  }
+  function entryDetail(ls) {
+    const admin = isAdmin();
+    return '<table class="table inner"><thead><tr><th>Heure</th><th>Article</th><th>Code</th><th class="num">Quantité</th><th>Statut</th><th>CC</th><th>Saisi par</th><th>Observation</th><th></th></tr></thead><tbody>' +
+      ls.map((x) => {
+        const p = productByCode(x.code);
+        const heure = x.createdAt ? new Date(x.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
+        const badge = x.statut === "Validée" ? '<span class="badge ok">Validée</span>' : '<span class="badge mute">Annulée</span>';
+        let actions;
+        if (canEditEntry(x)) {
+          actions = '<button class="btn small" data-eedit="' + x.id + '">Modifier</button> ' +
+            '<button class="btn small" data-etoggle="' + x.id + '">' + (x.statut === "Validée" ? "Annuler" : "Rétablir") + "</button> " +
+            (admin ? '<button class="btn small danger" data-edel="' + x.id + '">✕</button>' : '<span class="sub">modifiable encore ' + remainingTime(x) + "</span>");
+        } else {
+          actions = '<span class="muted">🔒 Verrouillée</span>';
+        }
+        return '<tr class="' + (x.statut === "Validée" ? "" : "off") + '"><td>' + heure + "</td><td>" + esc(p ? p.nom : "?") + "</td><td>" + esc(x.code) +
+          '</td><td class="num">' + num(x.qte) + '</td><td class="keep">' + badge + "</td><td>" + (x.cc ? esc(ccName(x.cc)) : "Admin") + "</td><td>" +
+          esc(x.saisiPar || "—") + "</td><td>" + esc(x.obs) + '</td><td class="keep">' + actions + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+  ["#eh-cc", "#eh-du", "#eh-au"].forEach((id) => $(id).addEventListener("change", renderEntryHistory));
+  $("#eh-search").addEventListener("input", renderEntryHistory);
+
   $("#e-add").addEventListener("click", (ev) => {
     const qte = Number($("#e-qte").value);
     const code = $("#e-product").value;
     if (!code) return toast("Choisissez un produit.");
     if (!(qte > 0)) return toast("Quantité invalide.");
-    const row = { date: $("#e-date").value || today(), code, qte, statut: "Validée", obs: $("#e-obs").value.trim() };
+    const row = { date: isAdmin() ? ($("#e-date").value || today()) : today(), code, qte, statut: "Validée", obs: $("#e-obs").value.trim() };
+    if (isAdmin()) row.cc = $("#e-cc").value || null;
+    openDays.add(row.date);
     act(async () => chk(await sb.from("entries").insert(row)), "Entrée enregistrée, stock mis à jour.", ev.currentTarget)
       .then((r) => { if (r.ok) $("#e-qte").value = 1; });
   });
-  $("#e-rows").addEventListener("click", (e) => {
+
+  // Mise à jour d'une entrée : la base refuse silencieusement si le délai est dépassé, on le détecte.
+  async function updateEntry(id, patch) {
+    const rows = chk(await sb.from("entries").update(patch).eq("id", id).select("id"));
+    if (!rows || !rows.length) throw new Error("Délai de 2 heures dépassé : seul l'administrateur peut modifier cette entrée.");
+  }
+  let editingEntry = null;
+  function openEntry(x) {
+    editingEntry = x;
+    const f = $("#entry-form");
+    f.elements.code.innerHTML = productOptions(x.code);
+    f.elements.qte.value = x.qte;
+    f.elements.date.value = x.date || today();
+    f.elements.obs.value = x.obs || "";
+    $("#ed-date-wrap").style.display = isAdmin() ? "" : "none";
+    $("#ed-help").textContent = isAdmin()
+      ? "Saisie par " + (x.saisiPar || "—") + (x.cc ? " (" + ccLabel(x.cc) + ")" : "") + "."
+      : "Vous pouvez encore modifier cette entrée pendant " + remainingTime(x) + ".";
+    $("#entry-dialog").showModal();
+  }
+  $("#entry-form").addEventListener("submit", (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
+    const f = e.target;
+    const qte = Number(f.elements.qte.value);
+    if (!(qte > 0)) { e.preventDefault(); return toast("Quantité invalide."); }
+    const patch = { code: f.elements.code.value, qte, obs: f.elements.obs.value.trim() };
+    if (isAdmin()) patch.date = f.elements.date.value || editingEntry.date || null;
+    const id = editingEntry.id;
+    act(() => updateEntry(id, patch), "Entrée modifiée.");
+  });
+  $("#e-days").addEventListener("click", (e) => {
+    const ed = e.target.closest("[data-eedit]");
     const t = e.target.closest("[data-etoggle]");
     const d = e.target.closest("[data-edel]");
+    if (ed) return openEntry(db.entries.find((y) => y.id === ed.dataset.eedit));
     if (t) {
       const x = db.entries.find((y) => y.id === t.dataset.etoggle);
       const statut = x.statut === "Validée" ? "Annulée" : "Validée";
-      act(async () => chk(await sb.from("entries").update({ statut }).eq("id", x.id)), "Entrée : " + statut, t);
-    } else if (d) {
-      if (!confirm("Supprimer définitivement cette entrée ?\nAstuce : passez-la plutôt à Annulée pour garder l'historique.")) return;
-      act(async () => chk(await sb.from("entries").delete().eq("id", d.dataset.edel)), "Entrée supprimée.", d);
+      return act(() => updateEntry(x.id, { statut }), "Entrée : " + statut, t);
+    }
+    if (d) {
+      if (!confirm("Supprimer définitivement cette entrée ?\nAstuce : utilisez plutôt « Annuler » pour garder l'historique.")) return;
+      return act(async () => chk(await sb.from("entries").delete().eq("id", d.dataset.edel)), "Entrée supprimée.", d);
+    }
+    const row = e.target.closest("tr[data-day]");
+    if (row) {
+      const day = row.dataset.day;
+      if (openDays.has(day)) openDays.delete(day); else openDays.add(day);
+      renderEntryHistory();
     }
   });
 
