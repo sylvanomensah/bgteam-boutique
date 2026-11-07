@@ -7,6 +7,52 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <!-- Chargement -->
+  <div id="loading-screen" class="screen center-screen">
+    <div class="auth-card"><span class="logo">BG</span><p id="loading-msg">Chargement…</p></div>
+  </div>
+
+  <!-- Connexion / inscription -->
+  <div id="auth-screen" class="screen center-screen hidden">
+    <div class="auth-card">
+      <div class="brand brand-big">
+        <span class="logo">BG</span>
+        <div><strong>BGTeam</strong><small>Gestion de boutique</small></div>
+      </div>
+      <div class="seg auth-tabs" id="auth-tabs">
+        <button data-tab="login" class="active">Connexion</button>
+        <button data-tab="signup">Créer un compte</button>
+      </div>
+      <form id="login-form" class="auth-form">
+        <label>E-mail<input type="email" name="email" required autocomplete="username"></label>
+        <label>Mot de passe<input type="password" name="password" required autocomplete="current-password"></label>
+        <button class="btn primary">Se connecter</button>
+      </form>
+      <form id="signup-form" class="auth-form hidden">
+        <label>Nom complet<input name="nom" required autocomplete="name"></label>
+        <label>E-mail<input type="email" name="email" required autocomplete="username"></label>
+        <label>Mot de passe (8 caractères minimum)<input type="password" name="password" minlength="8" required autocomplete="new-password"></label>
+        <button class="btn primary">Créer mon compte</button>
+        <p class="hint">Votre compte devra être validé par l'administrateur avant de pouvoir utiliser l'application.</p>
+      </form>
+      <p id="auth-msg" class="auth-msg"></p>
+    </div>
+  </div>
+
+  <!-- Compte en attente -->
+  <div id="pending-screen" class="screen center-screen hidden">
+    <div class="auth-card">
+      <span class="logo">BG</span>
+      <h2>Compte en attente de validation</h2>
+      <p>Le compte <b id="pending-email"></b> a bien été créé. L'administrateur doit le valider avant que vous puissiez utiliser l'application.</p>
+      <div class="actions">
+        <button class="btn" id="pending-retry">Réessayer</button>
+        <button class="btn" data-logout>Se déconnecter</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" class="screen hidden">
   <header class="topbar no-print">
     <div class="brand">
       <span class="logo">BG</span>
@@ -16,15 +62,21 @@
       </div>
     </div>
     <nav id="nav">
-      <button data-view="dashboard" class="active">Accueil</button>
+      <button data-view="dashboard" class="admin-only">Accueil</button>
       <button data-view="caisse">Caisse</button>
       <button data-view="ventes">Ventes</button>
-      <button data-view="stats">Statistiques</button>
+      <button data-view="stats" class="admin-only">Statistiques</button>
       <button data-view="stock">Stock</button>
       <button data-view="entrees">Entrées stock</button>
       <button data-view="facture">Facturation</button>
-      <button data-view="parametres">Paramètres</button>
+      <button data-view="parametres" class="admin-only">Paramètres</button>
     </nav>
+    <div class="user-box">
+      <span id="user-name"></span>
+      <button class="link" id="btn-refresh" title="Actualiser les données">⟳</button>
+      <button class="link" id="btn-pwd">Mot de passe</button>
+      <button class="link" data-logout>Déconnexion</button>
+    </div>
   </header>
 
   <main>
@@ -224,12 +276,12 @@
         <div class="toolbar">
           <h2>Produits</h2>
           <input id="s-search" placeholder="Rechercher un produit">
-          <button class="btn primary" id="s-new">+ Nouveau produit</button>
+          <button class="btn primary admin-only" id="s-new">+ Nouveau produit</button>
         </div>
         <div class="table-wrap">
           <table class="table">
             <thead><tr>
-              <th>Code</th><th>Désignation</th><th>Catégorie</th><th class="num">PU achat</th><th class="num">PU vente</th>
+              <th>Code</th><th>Désignation</th><th>Catégorie</th><th class="num admin-only">PU achat</th><th class="num">PU vente</th>
               <th class="num">Stock initial</th><th class="num">Stock min</th><th class="num">Entrées</th><th class="num">Ventes</th>
               <th class="num">Stock actuel</th><th>Statut</th><th></th>
             </tr></thead>
@@ -295,12 +347,21 @@
         </div>
         <div class="card">
           <h2>Sauvegarde des données</h2>
-          <p class="hint">Les données sont enregistrées dans ce navigateur. Faites régulièrement une sauvegarde pour ne rien perdre ou pour les transférer sur un autre appareil.</p>
+          <p class="hint">Les données sont stockées en ligne (Supabase) et partagées entre tous les appareils. Téléchargez tout de même une copie de temps en temps.</p>
           <div class="actions col">
             <button class="btn" id="p-export">Télécharger une sauvegarde (.json)</button>
-            <label class="btn file">Restaurer une sauvegarde<input type="file" id="p-import" accept=".json,application/json"></label>
-            <button class="btn danger" id="p-reset">Réinitialiser (catalogue d'origine, sans ventes)</button>
+            <label class="btn file">Importer une sauvegarde (ajoute les ventes et entrées)<input type="file" id="p-import" accept=".json,application/json"></label>
           </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Utilisateurs</h2>
+        <p class="hint">Les nouveaux utilisateurs créent leur compte depuis l'écran de connexion (« Créer un compte »), puis vous les <b>validez</b> ici. Un <b>vendeur</b> fait la caisse, consulte les ventes, le stock et les tickets, et ajoute des entrées de stock. Il ne voit pas l'accueil, les statistiques, les prix d'achat ni les paramètres, ne modifie pas les prix et ne peut ni annuler ni supprimer. Liez un vendeur à son CC pour que la caisse utilise automatiquement son code.</p>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>CC lié</th><th>Statut</th><th></th></tr></thead>
+            <tbody id="u-rows"></tbody>
+          </table>
         </div>
       </div>
       <div class="card">
@@ -357,9 +418,26 @@
     </form>
   </dialog>
 
+  <!-- Modal mot de passe -->
+  <dialog id="pwd-dialog">
+    <form method="dialog" id="pwd-form">
+      <h2>Changer mon mot de passe</h2>
+      <div class="form">
+        <label class="full">Nouveau mot de passe (8 caractères minimum)<input type="password" name="p1" minlength="8" autocomplete="new-password"></label>
+        <label class="full">Confirmer<input type="password" name="p2" minlength="8" autocomplete="new-password"></label>
+      </div>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+  </div>
+
   <div id="toast" class="toast"></div>
 
-  <script src="js/data.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

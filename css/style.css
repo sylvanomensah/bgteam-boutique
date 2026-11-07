@@ -151,6 +151,28 @@ input[readonly] { background: var(--bg); }
 .receipt .r { text-align: right; }
 .receipt .big { font-size: 16px; font-weight: 700; }
 
+/* Écrans, connexion, rôles */
+.hidden { display: none !important; }
+body.role-vendeur .admin-only { display: none !important; }
+.center-screen { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: #14213d; }
+.auth-card { background: #fff; border-radius: 14px; padding: 28px; width: min(400px, 100%); display: flex; flex-direction: column; gap: 16px; text-align: left; }
+.auth-card > .logo { margin: 0 auto; }
+.auth-card p { margin: 0; line-height: 1.5; }
+.brand-big { justify-content: center; }
+.brand-big strong { font-size: 1.3rem; }
+.brand-big small { color: var(--muted); }
+.auth-tabs { width: 100%; }
+.auth-tabs button { flex: 1; }
+.auth-form { display: flex; flex-direction: column; gap: 12px; }
+.auth-msg { min-height: 1.2em; font-size: .9rem; color: var(--danger); }
+.auth-msg.ok { color: var(--success); }
+.user-box { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: .85rem; color: #d5dbe7; flex-wrap: wrap; }
+.user-box .link { background: none; border: 0; color: #fca311; cursor: pointer; font: inherit; padding: 4px; }
+.user-box .link:hover { text-decoration: underline; }
+.btn[disabled] { opacity: .6; cursor: wait; }
+.inline-input { padding: 4px 8px; min-width: 140px; }
+.inline-select { padding: 4px 6px; width: auto; }
+
 /* Filtres tableau de bord */
 .filterbar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
