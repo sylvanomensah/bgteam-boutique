@@ -467,10 +467,21 @@
       <div class="card">
         <h2>Bobines par boutique</h2>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Boutique</th><th class="num">Reçues</th><th class="num">Utilisées</th><th class="num">Restantes</th><th>Statut</th><th>Dernier approvisionnement</th><th></th></tr></thead>
+          <thead><tr><th>Boutique</th><th class="num">Reçues</th><th class="num">Utilisées</th><th class="num">Restantes</th><th>Statut</th>
+            <th class="num">Moy. / jour</th><th class="num">Moy. / semaine</th><th class="num">Moy. / mois</th><th>Autonomie estimée</th><th>Dernier approvisionnement</th></tr></thead>
           <tbody id="bb-rows"></tbody>
         </table></div>
-        <p class="hint">Changez-vous de bobine ? Cliquez sur « 1 bobine utilisée » pour la boutique. Stock faible : 2 bobines ou moins.</p>
+        <p class="hint">Moyennes calculées depuis la première utilisation déclarée de la boutique (semaine = 7 jours, mois = 30 jours). Autonomie = bobines restantes ÷ moyenne par jour. Stock faible : 2 bobines ou moins.</p>
+      </div>
+      <div class="card need-bobines-saisie">
+        <h2>Bobines utilisées dans la journée</h2>
+        <div class="form form-inline">
+          <label>Date<input type="date" id="bu-date"></label>
+          <label>Boutique<select id="bu-boutique"></select></label>
+          <label>Nombre de bobines utilisées<input type="number" id="bu-qte" min="1" placeholder="Ex. : 2"></label>
+          <label>Note<input id="bu-note" placeholder="Facultatif"></label>
+        </div>
+        <div class="actions"><button class="btn success" id="bu-save">Enregistrer l'utilisation</button></div>
       </div>
       <div class="card need-bobines-gestion">
         <h2>Nouvel approvisionnement</h2>

@@ -113,7 +113,7 @@
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA",
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: c.bobines || "non", repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -1071,7 +1071,7 @@
       $("#s-boutique").innerHTML = '<option value="">Aucune boutique</option>';
       $("#s-title").textContent = "Stock";
       $("#stock-kpis").innerHTML = "";
-      $("#s-rows").innerHTML = '<tr><td colspan="14" class="empty">Votre CC n\'est affecté à aucune boutique. Demandez à l\'administrateur.</td></tr>';
+      $("#s-rows").innerHTML = '<tr><td colspan="14" class="empty">Vous n\'êtes affecté à aucune boutique. Demandez à l\'administrateur.</td></tr>';
       $("#s-foot").innerHTML = "";
       return;
     }
@@ -1860,7 +1860,7 @@
     if (canEntrees()) {
       const w = $("#rm-semaine").value;
       if (!remBq) {
-        $("#rm-info").innerHTML = '<p class="hint" style="margin:0">' + (admin ? "Choisissez une boutique dans le filtre en haut pour enregistrer une remontée." : "Votre CC n'est affecté à aucune boutique.") + "</p>";
+        $("#rm-info").innerHTML = '<p class="hint" style="margin:0">' + (admin ? "Choisissez une boutique dans le filtre en haut pour enregistrer une remontée." : "Vous n'êtes affecté à aucune boutique. Demandez à l'administrateur.") + "</p>";
       } else {
         const v = ventesDeclarees(remBq, w, weekEnd(w)), r = sumMontant(remonteesOf(remBq, w));
         $("#rm-info").innerHTML = '<div class="info-row"><span>Boutique</span><span><b>' + esc(boutiqueName(remBq)) + "</b></span></div>" +
@@ -1992,7 +1992,19 @@
     const recues = m.filter((x) => x.type === "Approvisionnement").reduce((a, x) => a + x.qte, 0);
     const utilisees = m.filter((x) => x.type === "Utilisation").reduce((a, x) => a + x.qte, 0);
     const appro = m.filter((x) => x.type === "Approvisionnement").map((x) => x.date).sort().pop() || "";
-    return { recues, utilisees, reste: recues - utilisees, appro };
+    // Moyenne d'utilisation : depuis la première utilisation déclarée jusqu'à aujourd'hui
+    const debut = m.filter((x) => x.type === "Utilisation").map((x) => x.date).sort()[0] || "";
+    const jours = debut ? Math.max(1, Math.round((parse(today()) - parse(debut)) / 86400000) + 1) : 0;
+    const parJour = jours ? utilisees / jours : 0;
+    return { recues, utilisees, reste: recues - utilisees, appro, parJour, jours };
+  }
+  function moyHtml(v) { return v ? v.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : '<span class="muted">—</span>'; }
+  function autonomieHtml(x) {
+    if (x.reste <= 0) return '<span class="badge danger">Épuisé</span>';
+    if (!x.parJour) return '<span class="muted">—</span>';
+    const j = Math.floor(x.reste / x.parJour);
+    if (j < 1) return '<span class="badge danger">Moins d\'1 jour</span>';
+    return '<span class="' + (j <= 3 ? "badge warn" : "") + '">≈ ' + j + " jour" + (j > 1 ? "s" : "") + "</span>";
   }
   function bobineStatut(reste) {
     return reste <= 0 ? '<span class="badge danger">RUPTURE</span>' : reste <= BOBINE_SEUIL ? '<span class="badge warn">STOCK FAIBLE</span>' : '<span class="badge ok">OK</span>';
@@ -2010,9 +2022,18 @@
       ["Utilisées ce mois", num(db.bobines.filter((x) => x.type === "Utilisation" && scope.some((b) => b.code === x.boutique) && x.date.slice(0, 7) === mois).reduce((a, x) => a + x.qte, 0))]
     ]);
     $("#bb-rows").innerHTML = st.length ? st.sort((a, b) => a.reste - b.reste).map((x) => "<tr><td><b>" + esc(x.b.nom) + '</b></td><td class="num">' + num(x.recues) + '</td><td class="num">' + num(x.utilisees) +
-      '</td><td class="num"><b>' + num(x.reste) + "</b></td><td>" + bobineStatut(x.reste) + "</td><td>" + (x.appro ? fmtDate(x.appro) : '<span class="muted">Jamais</span>') + "</td><td>" +
-      '<button class="btn small" data-bb-use="' + esc(x.b.code) + '"' + (x.reste <= 0 ? " disabled" : "") + ">1 bobine utilisée</button></td></tr>").join("")
-      : '<tr><td colspan="7" class="empty">' + (droit === "boutique" ? "Votre CC n'est affecté à aucune boutique." : "Aucune boutique.") + "</td></tr>";
+      '</td><td class="num"><b>' + num(x.reste) + "</b></td><td>" + bobineStatut(x.reste) + '</td><td class="num">' + moyHtml(x.parJour) + '</td><td class="num">' + moyHtml(x.parJour * 7) +
+      '</td><td class="num">' + moyHtml(x.parJour * 30) + "</td><td>" + autonomieHtml(x) + "</td><td>" + (x.appro ? fmtDate(x.appro) : '<span class="muted">Jamais</span>') + "</td></tr>").join("")
+      : '<tr><td colspan="10" class="empty">' + (droit !== "gestion" ? "Vous n'êtes affecté à aucune boutique. Demandez à l'administrateur." : "Aucune boutique.") + "</td></tr>";
+    // Saisie des bobines utilisées : CC « saisie » (sa boutique) et gestion (toutes)
+    document.body.classList.toggle("no-bobines-saisie", droit === "boutique" || !scope.length);
+    if (droit !== "boutique" && scope.length) {
+      const ucur = $("#bu-boutique").value;
+      $("#bu-boutique").innerHTML = scope.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+      if (scope.some((b) => b.code === ucur)) $("#bu-boutique").value = ucur;
+      $("#bu-boutique").disabled = scope.length < 2;
+      if (!$("#bu-date").value) $("#bu-date").value = t;
+    }
     if (droit === "gestion") {
       const cur = $("#bb-boutique").value;
       $("#bb-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
@@ -2034,13 +2055,17 @@
     }).join("") : '<tr><td colspan="7" class="empty">Aucun mouvement de bobines.</td></tr>';
   }
   $("#bb-filtre").addEventListener("change", renderBobines);
-  $("#bb-rows").addEventListener("click", (e) => {
-    const u = e.target.closest("[data-bb-use]");
-    if (!u) return;
-    const bq = u.dataset.bbUse;
-    if (!confirm("Confirmer : 1 bobine utilisée à " + boutiqueName(bq) + " ?")) return;
-    act(async () => chk(await sb.from("bobines_mvts").insert({ boutique: bq, date: today(), type: "Utilisation", qte: 1, cc: me.cc || null, saisi_par: me.nom || me.email || "" })),
-      "1 bobine utilisée enregistrée (" + boutiqueName(bq) + ").", u);
+  $("#bu-save").addEventListener("click", (e) => {
+    const bq = $("#bu-boutique").value, qte = Number($("#bu-qte").value), date = $("#bu-date").value || today();
+    if (!bq) return toast("Choisissez la boutique.");
+    if (!(qte > 0) || !Number.isInteger(qte)) return toast("Indiquez le nombre de bobines utilisées.");
+    if (date > today()) return toast("La date ne peut pas être dans le futur.");
+    const reste = bobinesOf(bq).reste;
+    if (qte > reste && !confirm("Il ne reste que " + reste + " bobine(s) enregistrée(s) à " + boutiqueName(bq) + ". Enregistrer quand même " + qte + " bobine(s) utilisée(s) ?")) return;
+    act(async () => {
+      chk(await sb.from("bobines_mvts").insert({ boutique: bq, date, type: "Utilisation", qte, note: $("#bu-note").value.trim(), cc: me.cc || null, saisi_par: me.nom || me.email || "" }));
+      $("#bu-qte").value = ""; $("#bu-note").value = "";
+    }, qte + " bobine(s) utilisée(s) le " + fmtDate(date) + " (" + boutiqueName(bq) + ").", e.target);
   });
   $("#bb-save").addEventListener("click", (e) => {
     const qte = Number($("#bb-qte").value);
@@ -2464,7 +2489,7 @@
         '<label class="switch-cell" title="Autoriser ce CC à voir le stock de toutes les boutiques (sinon seulement la sienne)"><input type="checkbox" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "> " +
         (c.voirStock ? "Toutes" : '<span class="muted">Sa boutique</span>') + "</label></td><td>" +
         '<select class="inline-select" data-cc-bobines="' + esc(c.code) + '" title="Accès au menu Bobines">' +
-        [["non", "Pas d'accès"], ["boutique", "Sa boutique"], ["gestion", "Toutes + approvisionnement"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
+        [["boutique", "Consultation (sa boutique)"], ["saisie", "Saisie utilisation (sa boutique)"], ["gestion", "Toutes + approvisionnement"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
         "</select></td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
         "</td><td>" + (reposLabel(c) || '<span class="muted">—</span>') + '</td><td class="hist">' + hist + '</td><td class="wrap">' +
@@ -2532,7 +2557,7 @@
     if (bbs) {
       const code = bbs.dataset.ccBobines, v = bbs.value;
       return act(async () => chk(await sb.from("ccs").update({ bobines: v }).eq("code", code)),
-        ccName(code) + " — Bobines : " + (v === "non" ? "pas d'accès." : v === "boutique" ? "sa boutique." : "toutes les boutiques + approvisionnement."));
+        ccName(code) + " — Bobines : " + (v === "boutique" ? "consultation de sa boutique." : v === "saisie" ? "saisie des bobines utilisées de sa boutique." : "toutes les boutiques + approvisionnement."));
     }
     const vs = e.target.closest("[data-cc-voirstock]");
     if (vs) {

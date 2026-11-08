@@ -724,12 +724,13 @@ alter table public.charges add column if not exists saisi_par text not null defa
 --   voir_stock : CC « toutes boutiques » (stock, fonds remontés, dépenses de toutes les boutiques)
 --   bobines    : 'non' | 'boutique' (voit sa boutique, déclare les bobines utilisées) | 'gestion' (toutes les boutiques, approvisionnements)
 -- =====================================================================
-alter table public.ccs add column if not exists bobines text not null default 'non';
-do $$ begin
-  if not exists (select 1 from pg_constraint where conname = 'ccs_bobines_check') then
-    alter table public.ccs add constraint ccs_bobines_check check (bobines in ('non', 'boutique', 'gestion'));
-  end if;
-end $$;
+alter table public.ccs add column if not exists bobines text not null default 'boutique';
+-- Par défaut chaque CC voit les bobines de sa boutique ; l'admin choisit ceux qui gèrent toutes les boutiques.
+alter table public.ccs alter column bobines set default 'boutique';
+update public.ccs set bobines = 'boutique' where bobines = 'non';
+-- 'boutique' = consultation de sa boutique ; 'saisie' = + saisie des bobines utilisées ; 'gestion' = toutes + approvisionnements
+alter table public.ccs drop constraint if exists ccs_bobines_check;
+alter table public.ccs add constraint ccs_bobines_check check (bobines in ('non', 'boutique', 'saisie', 'gestion'));
 
 -- CC actif de l'utilisateur connecté (vendeur actif uniquement)
 create or replace function public.my_cc() returns public.ccs
@@ -828,11 +829,11 @@ create index if not exists bobines_mvts_idx on public.bobines_mvts (boutique, da
 alter table public.bobines_mvts enable row level security;
 drop policy if exists bobines_select on public.bobines_mvts;
 create policy bobines_select on public.bobines_mvts for select to authenticated
-  using (public.bobines_droit() = 'gestion' or (public.bobines_droit() = 'boutique' and boutique = public.my_boutique()));
+  using (public.bobines_droit() = 'gestion' or (public.bobines_droit() in ('boutique', 'saisie') and boutique = public.my_boutique()));
 drop policy if exists bobines_insert on public.bobines_mvts;
 create policy bobines_insert on public.bobines_mvts for insert to authenticated
-  with check (created_by = auth.uid() and (public.bobines_droit() = 'gestion'
-    or (public.bobines_droit() = 'boutique' and boutique = public.my_boutique() and type = 'Utilisation')));
+  with check (created_by = auth.uid() and date <= current_date and (public.bobines_droit() = 'gestion'
+    or (public.bobines_droit() = 'saisie' and boutique = public.my_boutique() and type = 'Utilisation')));
 drop policy if exists bobines_delete on public.bobines_mvts;
 create policy bobines_delete on public.bobines_mvts for delete to authenticated
   using (public.is_admin() or (created_by = auth.uid() and created_at > now() - interval '2 hours'));
