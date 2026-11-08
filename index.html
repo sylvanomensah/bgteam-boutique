@@ -74,6 +74,8 @@
       <button data-view="ventes">Historique des ventes</button>
       <button data-view="stock">Stock</button>
       <button data-view="entrees">Entrées stock</button>
+      <button data-view="fonds" class="need-fonds">Fonds &amp; dépenses</button>
+      <button data-view="bobines" class="need-bobines">Bobines</button>
       <button data-view="facture">Facturation</button>
       <button data-view="rh" class="admin-only">RH</button>
       <button data-view="compte">Mon compte</button>
@@ -389,6 +391,107 @@
       </div>
     </section>
 
+    <!-- FONDS & DÉPENSES -->
+    <section id="view-fonds" class="view">
+      <h1>Fonds &amp; dépenses</h1>
+      <div class="card filterbar">
+        <label>Boutique<select id="fd-boutique"></select></label>
+        <label>Mois<input type="month" id="fd-mois"></label>
+        <p class="hint" style="margin:0">Chaque lundi, le CC chargé des entrées remonte les fonds de vente de la semaine écoulée (lundi → dimanche). Ils sont comparés aux ventes déclarées dans l'application.</p>
+      </div>
+      <div class="kpis" id="fd-kpis"></div>
+
+      <div class="card" id="fd-remonter">
+        <h2>Remonter les fonds</h2>
+        <div class="form form-inline">
+          <label>Semaine<select id="rm-semaine"></select></label>
+          <label>Montant remis<input type="number" id="rm-montant" min="1" placeholder="Ex. : 85000"></label>
+          <label>Mode<select id="rm-mode"><option>Espèces</option><option>Mobile money</option><option>Virement</option><option>Autre</option></select></label>
+          <label>Note<input id="rm-note" placeholder="Facultatif"></label>
+        </div>
+        <div id="rm-info" class="course-summary"></div>
+        <div class="actions"><button class="btn success" id="rm-save">Déclarer la remontée</button></div>
+      </div>
+
+      <div class="card">
+        <h2>Rapprochement ventes déclarées / fonds remontés</h2>
+        <p class="hint">Écart = fonds remontés − ventes déclarées. Un écart négatif signifie qu'il manque de l'argent.</p>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Semaine</th><th>Boutique</th><th class="num">Ventes déclarées</th><th class="num">Fonds remontés</th><th class="num">Écart</th><th>Statut</th></tr></thead>
+          <tbody id="fd-match"></tbody><tfoot id="fd-match-foot"></tfoot>
+        </table></div>
+      </div>
+
+      <div class="card">
+        <h2>Remontées enregistrées</h2>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Semaine</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Déclarée le</th><th>Réception</th><th></th></tr></thead>
+          <tbody id="fd-rem"></tbody>
+        </table></div>
+      </div>
+
+      <div class="card need-global">
+        <div class="toolbar"><h2 style="margin-right:auto">Dépenses des boutiques</h2></div>
+        <div class="form form-inline">
+          <label>Date<input type="date" id="dp-date"></label>
+          <label>Boutique<select id="dp-boutique"></select></label>
+          <label>Catégorie<select id="dp-cat">
+            <option>Abonnement Canal+</option><option>Abonnement New World</option><option>Autre abonnement</option>
+            <option>Internet / téléphone</option><option>Électricité</option><option>Eau</option><option>Loyer</option>
+            <option>Transport</option><option>Entretien / réparations</option><option>Autres</option>
+          </select></label>
+          <label>Montant<input type="number" id="dp-montant" min="1"></label>
+          <label>Libellé<input id="dp-lib" placeholder="Ex. : réabonnement Canal+ novembre"></label>
+        </div>
+        <div class="actions"><button class="btn primary" id="dp-save">+ Enregistrer la dépense</button></div>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Date</th><th>Boutique</th><th>Catégorie</th><th>Libellé</th><th class="num">Montant</th><th>Saisie par</th><th></th></tr></thead>
+          <tbody id="fd-dep"></tbody>
+        </table></div>
+      </div>
+
+      <div class="card need-global">
+        <h2 id="fd-bilan-title">Bilan par boutique</h2>
+        <p class="hint">Bénéfice restant = fonds remontés − dépenses de la boutique sur le mois.</p>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Boutique</th><th class="num">Ventes déclarées</th><th class="num">Fonds remontés</th><th class="num">Écart</th><th class="num">Dépenses</th><th class="num">Bénéfice restant</th></tr></thead>
+          <tbody id="fd-bilan"></tbody><tfoot id="fd-bilan-foot"></tfoot>
+        </table></div>
+      </div>
+    </section>
+
+    <!-- BOBINES -->
+    <section id="view-bobines" class="view">
+      <h1>Bobines</h1>
+      <div class="kpis" id="bb-kpis"></div>
+      <div class="card">
+        <h2>Bobines par boutique</h2>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Boutique</th><th class="num">Reçues</th><th class="num">Utilisées</th><th class="num">Restantes</th><th>Statut</th><th>Dernier approvisionnement</th><th></th></tr></thead>
+          <tbody id="bb-rows"></tbody>
+        </table></div>
+        <p class="hint">Changez-vous de bobine ? Cliquez sur « 1 bobine utilisée » pour la boutique. Stock faible : 2 bobines ou moins.</p>
+      </div>
+      <div class="card need-bobines-gestion">
+        <h2>Nouvel approvisionnement</h2>
+        <div class="form form-inline">
+          <label>Date<input type="date" id="bb-date"></label>
+          <label>Boutique<select id="bb-boutique"></select></label>
+          <label>Nombre de bobines<input type="number" id="bb-qte" min="1"></label>
+          <label>Note<input id="bb-note" placeholder="Ex. : fournisseur, prix"></label>
+        </div>
+        <div class="actions"><button class="btn success" id="bb-save">Enregistrer l'approvisionnement</button></div>
+      </div>
+      <div class="card">
+        <h2>Historique</h2>
+        <div class="form form-inline"><label>Boutique<select id="bb-filtre"></select></label></div>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Date</th><th>Boutique</th><th>Mouvement</th><th class="num">Quantité</th><th>Note</th><th>Saisi par</th><th></th></tr></thead>
+          <tbody id="bb-hist"></tbody>
+        </table></div>
+      </div>
+    </section>
+
     <!-- FACTURATION -->
     <section id="view-facture" class="view">
       <h1 class="no-print">Facturation</h1>
@@ -481,7 +584,7 @@
         <p class="hint"><b>Nom du CC</b> : tapez un nom puis Entrée, il s'affichera partout à côté du code (« CC 01 — Nom »). Lier un vendeur à un CC sans nom lui donne automatiquement le nom du vendeur. Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant.</p>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Boutique</th><th>Entrées de stock</th><th>Stock visible</th><th>Statut</th><th>Jours de repos</th><th>Historique des vendeurs</th><th></th></tr></thead>
+            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Boutique</th><th>Entrées de stock</th><th title="Stock, fonds remontés et dépenses">Toutes boutiques</th><th>Bobines</th><th>Statut</th><th>Jours de repos</th><th>Historique des vendeurs</th><th></th></tr></thead>
             <tbody id="cc-rows"></tbody>
           </table>
         </div>
@@ -535,6 +638,7 @@
         <label>Date<input type="date" name="date" required></label>
         <label>Boutique<select name="boutique"></select></label>
         <label>Catégorie<select name="categorie">
+          <option>Abonnement Canal+</option><option>Abonnement New World</option><option>Autre abonnement</option>
           <option>Loyer</option><option>Salaires</option><option>Électricité</option><option>Eau</option>
           <option>Internet / téléphone</option><option>Transport</option><option>Taxes et impôts</option>
           <option>Entretien / réparations</option><option>Sécurité</option><option>Autres</option>

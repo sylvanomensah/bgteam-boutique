@@ -717,6 +717,125 @@ create index if not exists charges_date_idx on public.charges (date, boutique);
 alter table public.charges enable row level security;
 drop policy if exists charges_admin on public.charges;
 create policy charges_admin on public.charges for all to authenticated using (public.is_admin()) with check (public.is_admin());
+alter table public.charges add column if not exists saisi_par text not null default '';
+
+-- =====================================================================
+-- Droits des CC (définis par l'admin dans RH)
+--   voir_stock : CC « toutes boutiques » (stock, fonds remontés, dépenses de toutes les boutiques)
+--   bobines    : 'non' | 'boutique' (voit sa boutique, déclare les bobines utilisées) | 'gestion' (toutes les boutiques, approvisionnements)
+-- =====================================================================
+alter table public.ccs add column if not exists bobines text not null default 'non';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'ccs_bobines_check') then
+    alter table public.ccs add constraint ccs_bobines_check check (bobines in ('non', 'boutique', 'gestion'));
+  end if;
+end $$;
+
+-- CC actif de l'utilisateur connecté (vendeur actif uniquement)
+create or replace function public.my_cc() returns public.ccs
+language sql stable security definer set search_path = public as $$
+  select c.* from public.profiles p join public.ccs c on c.code = p.cc
+  where p.id = auth.uid() and p.actif and c.actif limit 1;
+$$;
+create or replace function public.my_boutique() returns text
+language sql stable security definer set search_path = public as $$ select (public.my_cc()).boutique; $$;
+create or replace function public.is_global() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or coalesce((public.my_cc()).voir_stock, false);
+$$;
+create or replace function public.bobines_droit() returns text
+language sql stable security definer set search_path = public as $$
+  select case when public.is_admin() then 'gestion' else coalesce((public.my_cc()).bobines, 'non') end;
+$$;
+
+-- Dépenses (abonnements Canal+, New World, internet, électricité…) : l'admin et les CC « toutes boutiques »
+drop policy if exists charges_global_select on public.charges;
+create policy charges_global_select on public.charges for select to authenticated using (public.is_global());
+drop policy if exists charges_global_insert on public.charges;
+create policy charges_global_insert on public.charges for insert to authenticated
+  with check (public.is_global() and boutique is not null and created_by = auth.uid());
+drop policy if exists charges_global_delete on public.charges;
+create policy charges_global_delete on public.charges for delete to authenticated
+  using (public.is_global() and created_by = auth.uid() and created_at > now() - interval '2 hours');
+
+-- =====================================================================
+-- Remontée des fonds de vente (chaque lundi, pour la semaine lundi → dimanche écoulée)
+-- =====================================================================
+create table if not exists public.remontees (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  cc text references public.ccs(code) on update cascade on delete set null,
+  semaine date not null,                       -- lundi de la semaine couverte
+  montant numeric not null check (montant > 0),
+  mode text not null default 'Espèces',
+  note text not null default '',
+  statut text not null default 'Déclarée' check (statut in ('Déclarée', 'Reçue')),
+  recu_par text not null default '',
+  recu_le timestamptz,
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (extract(isodow from semaine) = 1)
+);
+create index if not exists remontees_idx on public.remontees (boutique, semaine);
+alter table public.remontees enable row level security;
+drop policy if exists remontees_select on public.remontees;
+create policy remontees_select on public.remontees for select to authenticated
+  using (public.is_global() or (public.can_entrees() and boutique = public.my_boutique()));
+drop policy if exists remontees_insert on public.remontees;
+create policy remontees_insert on public.remontees for insert to authenticated
+  with check (public.is_admin() or (public.can_entrees() and boutique = public.my_boutique() and cc = (public.my_cc()).code
+    and created_by = auth.uid() and statut = 'Déclarée'));
+drop policy if exists remontees_delete on public.remontees;
+create policy remontees_delete on public.remontees for delete to authenticated
+  using (public.is_admin() or (created_by = auth.uid() and statut = 'Déclarée' and created_at > now() - interval '2 hours'));
+drop policy if exists remontees_admin_update on public.remontees;
+create policy remontees_admin_update on public.remontees for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- Confirmation de réception des fonds : admin ou CC « toutes boutiques »
+create or replace function public.set_remontee_recue(p_id uuid, p_recue boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare prof public.profiles%rowtype;
+begin
+  if not public.is_global() then raise exception 'Réservé à l''administrateur et aux CC « toutes boutiques »'; end if;
+  select * into prof from public.profiles where id = auth.uid();
+  update public.remontees set
+    statut = case when p_recue then 'Reçue' else 'Déclarée' end,
+    recu_par = case when p_recue then coalesce(nullif(prof.nom, ''), prof.email, '') else '' end,
+    recu_le = case when p_recue then now() else null end
+  where id = p_id;
+  if not found then raise exception 'Remontée introuvable'; end if;
+end $$;
+revoke all on function public.set_remontee_recue(uuid, boolean) from public, anon;
+grant execute on function public.set_remontee_recue(uuid, boolean) to authenticated;
+
+-- =====================================================================
+-- Bobines : approvisionnements et bobines utilisées, par boutique
+-- =====================================================================
+create table if not exists public.bobines_mvts (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  type text not null check (type in ('Approvisionnement', 'Utilisation')),
+  qte integer not null check (qte > 0),
+  note text not null default '',
+  cc text,
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists bobines_mvts_idx on public.bobines_mvts (boutique, date);
+alter table public.bobines_mvts enable row level security;
+drop policy if exists bobines_select on public.bobines_mvts;
+create policy bobines_select on public.bobines_mvts for select to authenticated
+  using (public.bobines_droit() = 'gestion' or (public.bobines_droit() = 'boutique' and boutique = public.my_boutique()));
+drop policy if exists bobines_insert on public.bobines_mvts;
+create policy bobines_insert on public.bobines_mvts for insert to authenticated
+  with check (created_by = auth.uid() and (public.bobines_droit() = 'gestion'
+    or (public.bobines_droit() = 'boutique' and boutique = public.my_boutique() and type = 'Utilisation')));
+drop policy if exists bobines_delete on public.bobines_mvts;
+create policy bobines_delete on public.bobines_mvts for delete to authenticated
+  using (public.is_admin() or (created_by = auth.uid() and created_at > now() - interval '2 hours'));
 
 -- Démarrage : une première boutique avec tous les CC existants et leurs ventes.
 do $$
@@ -741,7 +860,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

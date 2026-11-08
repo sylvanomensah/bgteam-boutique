@@ -14,7 +14,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -89,7 +89,7 @@
     return all;
   }
   async function reload() {
-    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges] = await Promise.all([
+    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges, remontees, bobines] = await Promise.all([
       sb.from("settings").select("*").eq("id", 1).maybeSingle(),
       fetchAll("products", "code"),
       isAdmin() ? fetchAll("product_costs", "code") : Promise.resolve([]),
@@ -101,7 +101,10 @@
       fetchAll("boutiques", "code"),
       fetchAll("conges", "debut"),
       isAdmin() ? fetchAll("rh_fiches", "cc") : Promise.resolve([]),
-      isAdmin() ? fetchAll("charges", "date") : Promise.resolve([])
+      // Charges, remontées et bobines : la base ne renvoie que ce que l'utilisateur a le droit de voir.
+      fetchAll("charges", "date"),
+      fetchAll("remontees", "created_at"),
+      fetchAll("bobines_mvts", "created_at")
     ]);
     const st = chk(settingsRes) || {};
     const pa = {}, cmp = {};
@@ -110,7 +113,7 @@
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA",
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: c.bobines || "non", repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -138,7 +141,10 @@
       users,
       conges: conges.map((g) => ({ id: g.id, cc: String(g.cc), debut: g.debut, fin: g.fin, motif: g.motif || "" })),
       fiches,
-      charges: charges.map((c) => ({ id: c.id, date: c.date, boutique: c.boutique || "", categorie: c.categorie, libelle: c.libelle || "", montant: Number(c.montant) })),
+      charges: charges.map((c) => ({ id: c.id, date: c.date, boutique: c.boutique || "", categorie: c.categorie, libelle: c.libelle || "", montant: Number(c.montant), saisiPar: c.saisi_par || "", createdBy: c.created_by, createdAt: c.created_at })),
+      remontees: remontees.map((r) => ({ id: r.id, boutique: r.boutique, cc: r.cc ? String(r.cc) : "", semaine: r.semaine, montant: Number(r.montant), mode: r.mode, note: r.note || "",
+        statut: r.statut, recuPar: r.recu_par || "", recuLe: r.recu_le, saisiPar: r.saisi_par || "", createdBy: r.created_by, createdAt: r.created_at })),
+      bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       boutiques: boutiques.map((b) => ({ code: b.code, nom: b.nom, actif: b.actif !== false }))
         .sort((a, b) => Number(a.code.replace(/\D/g, "")) - Number(b.code.replace(/\D/g, "")) || a.code.localeCompare(b.code))
     };
@@ -268,6 +274,8 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "boutiques" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "conges" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "charges" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "remontees" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "bobines_mvts" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -376,7 +384,12 @@
     const c = me && me.cc ? ccByCode(me.cc) : null;
     return !!(c && c.actif && c.entrees);
   }
-  function canView(view) { return !!document.getElementById("view-" + view) && (isAdmin() || !ADMIN_VIEWS.includes(view)); }
+  function canView(view) {
+    if (!document.getElementById("view-" + view) || (!isAdmin() && ADMIN_VIEWS.includes(view))) return false;
+    if (view === "fonds") return canFonds();
+    if (view === "bobines") return bobinesDroit() !== "non";
+    return true;
+  }
   function show(view) {
     if (!canView(view)) view = isAdmin() ? "dashboard" : "caisse";
     currentView = view;
@@ -392,11 +405,14 @@
   function render(view) {
     // CC non autorisé : pas de formulaire de saisie, seulement l'historique des courses.
     document.body.classList.toggle("no-entrees", !canEntrees());
+    document.body.classList.toggle("no-fonds", !canFonds());
+    document.body.classList.toggle("no-bobines", bobinesDroit() === "non");
+    if (!canView(view)) return show(view); // droit retiré en direct : on quitte la page
     $("#brand-name").textContent = db.settings.nom;
     document.title = db.settings.nom + " — Boutique";
     ({
       dashboard: renderDashboard, caisse: renderCaisse, ventes: renderVentes, stats: renderStats,
-      stock: renderStock, entrees: renderEntrees, facture: renderFacture, parametres: renderParametres, rh: renderRh, compte: renderCompte
+      stock: renderStock, entrees: renderEntrees, fonds: renderFonds, bobines: renderBobines, facture: renderFacture, parametres: renderParametres, rh: renderRh, compte: renderCompte
     })[view]();
   }
   function productOptions(selected) {
@@ -559,6 +575,16 @@
     const nonAff = db.settings.ccList.filter((c) => c.actif && !c.boutique);
     if (nonAff.length) add("warning", "⚠", nonAff.length + " CC actif(s) sans boutique", nonAff.map((c) => esc(ccName(c.code))).join(", ") + " : leurs ventes ne sont rattachées à aucune boutique (RH).");
     const aValider = db.products.filter((p) => !p.valide);
+    // Bobines et remontées de fonds
+    const bbRupt = db.boutiques.filter((b) => b.actif && bobinesOf(b.code).reste <= 0 && db.bobines.some((x) => x.boutique === b.code));
+    if (bbRupt.length) add("critical", "🧻", "Bobines en rupture", bbRupt.map((b) => esc(b.nom)).join(", ") + " (rubrique Bobines).");
+    const bbFaible = db.boutiques.filter((b) => { const r = bobinesOf(b.code).reste; return b.actif && r > 0 && r <= BOBINE_SEUIL; });
+    if (bbFaible.length) add("warning", "🧻", "Bobines bientôt épuisées", bbFaible.map((b) => esc(b.nom) + " (" + bobinesOf(b.code).reste + ")").join(", ") + ".");
+    const semPrec = addDays(mondayOf(today()), -7);
+    const nonRem = db.boutiques.filter((b) => b.actif && ventesDeclarees(b.code, semPrec, weekEnd(semPrec)) > 0 && !remonteesOf(b.code, semPrec).length);
+    if (nonRem.length) add("warning", "💰", "Fonds de la semaine du " + fmtDate(semPrec) + " non remontés", nonRem.map((b) => esc(b.nom) + " (" + money0(ventesDeclarees(b.code, semPrec, weekEnd(semPrec))) + ")").join(", ") + ".");
+    const aConf = db.remontees.filter((r) => r.statut !== "Reçue");
+    if (aConf.length) add("warning", "💰", aConf.length + " remontée(s) de fonds à confirmer", "Total " + money0(sumMontant(aConf)) + " (rubrique Fonds & dépenses).");
     if (aValider.length) add("warning", "📝", aValider.length + " produit(s) à valider", aValider.map((p) => esc(p.nom)).join(", ") + " (rubrique Stock).");
     alerts.sort((a, b) => (a.lvl === b.lvl ? 0 : a.lvl === "critical" ? -1 : 1));
     $("#tb-alert-count").textContent = alerts.length ? "(" + alerts.length + ")" : "";
@@ -1767,6 +1793,253 @@
   $("#f-remis").addEventListener("input", renderReceipt);
   $("#f-print").addEventListener("click", () => window.print());
 
+  // ---------- Fonds & dépenses ----------
+  // Droits : CC « toutes boutiques » (voir_stock) = global ; CC entrées = remonte les fonds de sa boutique.
+  function myCcRow() { return !isAdmin() && me && me.cc ? ccByCode(me.cc) : null; }
+  function isGlobal() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.voirStock); }
+  function canFonds() { return isGlobal() || canEntrees(); }
+  function bobinesDroit() { if (isAdmin()) return "gestion"; const c = myCcRow(); return c && c.actif ? c.bobines : "non"; }
+  function myBoutiqueCode() { const c = myCcRow(); return c && db.boutiques.some((b) => b.code === c.boutique) ? c.boutique : ""; }
+  function weekEnd(monday) { return addDays(monday, 6); }
+  function ventesDeclarees(bq, du, au) {
+    return db.sales.filter((s) => isCountedSale(s) && saleBoutique(s) === bq && s.date >= du && s.date <= au).reduce((a, s) => a + lineTotal(s), 0);
+  }
+  function remonteesOf(bq, semaine) { return db.remontees.filter((r) => r.boutique === bq && (!semaine || r.semaine === semaine)); }
+  function sumMontant(list) { return list.reduce((a, r) => a + r.montant, 0); }
+  function ecartHtml(v) { return '<span class="delta ' + (v < -0.5 ? "down" : v > 0.5 ? "up" : "") + '">' + (v > 0.5 ? "+" : "") + money0(v) + "</span>"; }
+  function fondsScope() {
+    const global = isGlobal();
+    const bqs = global ? db.boutiques : db.boutiques.filter((b) => b.code === myBoutiqueCode());
+    const f = $("#fd-boutique").value || "ALL";
+    return global && f !== "ALL" ? bqs.filter((b) => b.code === f) : bqs;
+  }
+  function renderFonds() {
+    const global = isGlobal(), admin = isAdmin();
+    document.body.classList.toggle("no-global", !global);
+    // Filtres
+    const bcur = $("#fd-boutique").value || "ALL";
+    if (global) {
+      $("#fd-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+      $("#fd-boutique").value = db.boutiques.some((b) => b.code === bcur) ? bcur : "ALL";
+      $("#fd-boutique").disabled = false;
+    } else {
+      const mb = myBoutiqueCode();
+      $("#fd-boutique").innerHTML = mb ? '<option value="' + esc(mb) + '">' + esc(boutiqueName(mb)) + "</option>" : '<option value="">Aucune boutique</option>';
+      $("#fd-boutique").disabled = true;
+    }
+    if (!$("#fd-mois").value) $("#fd-mois").value = today().slice(0, 7);
+    const mois = $("#fd-mois").value, du = mois + "-01", au = lastDayOfMonth(du);
+    const scope = fondsScope(), codes = scope.map((b) => b.code);
+    const t = today();
+
+    // Formulaire de remontée (CC entrées de sa boutique ; l'admin choisit une boutique dans le filtre)
+    const remBq = admin ? ($("#fd-boutique").value !== "ALL" ? $("#fd-boutique").value : "") : (canEntrees() ? myBoutiqueCode() : "");
+    $("#fd-remonter").classList.toggle("hidden", !canEntrees());
+    const scur = $("#rm-semaine").value;
+    const lundi = mondayOf(t), weeks = [];
+    for (let i = 0; i < 9; i++) weeks.push(addDays(lundi, -7 * i));
+    $("#rm-semaine").innerHTML = weeks.map((w, i) => '<option value="' + w + '">' + (i === 0 ? "Semaine en cours — " : "") + "du " + fmtDate(w) + " au " + fmtDate(weekEnd(w)) + "</option>").join("");
+    $("#rm-semaine").value = weeks.includes(scur) ? scur : weeks[1];
+    if (canEntrees()) {
+      const w = $("#rm-semaine").value;
+      if (!remBq) {
+        $("#rm-info").innerHTML = '<p class="hint" style="margin:0">' + (admin ? "Choisissez une boutique dans le filtre en haut pour enregistrer une remontée." : "Votre CC n'est affecté à aucune boutique.") + "</p>";
+      } else {
+        const v = ventesDeclarees(remBq, w, weekEnd(w)), r = sumMontant(remonteesOf(remBq, w));
+        $("#rm-info").innerHTML = '<div class="info-row"><span>Boutique</span><span><b>' + esc(boutiqueName(remBq)) + "</b></span></div>" +
+          '<div class="info-row"><span>Ventes déclarées dans l\'application</span><span><b>' + money0(v) + "</b></span></div>" +
+          '<div class="info-row"><span>Déjà remonté pour cette semaine</span><span>' + money0(r) + "</span></div>" +
+          '<div class="info-row"><span>Reste à remonter</span><span><b>' + money0(Math.max(0, v - r)) + "</b></span></div>";
+      }
+      $("#rm-save").disabled = !remBq;
+    }
+
+    // Rapprochement par semaine (lundis du mois)
+    const mondays = [];
+    for (let d = mondayOf(du); d <= au; d = addDays(d, 7)) if (d >= du) mondays.push(d);
+    const rows = [];
+    mondays.slice().reverse().forEach((w) => scope.forEach((b) => {
+      const v = ventesDeclarees(b.code, w, weekEnd(w)), rl = remonteesOf(b.code, w), r = sumMontant(rl);
+      if (!v && !rl.length) return;
+      let st;
+      if (weekEnd(w) >= t) st = '<span class="badge mute">Semaine en cours</span>';
+      else if (!rl.length) st = '<span class="badge danger">⏳ Non remontée</span>';
+      else if (Math.abs(r - v) < 1) st = '<span class="badge ok">✅ Conforme</span>';
+      else if (r < v) st = '<span class="badge danger">⚠ Manque ' + money0(v - r) + "</span>";
+      else st = '<span class="badge warn">Excédent ' + money0(r - v) + "</span>";
+      if (rl.length && rl.every((x) => x.statut === "Reçue")) st += ' <span class="badge ok">Reçue</span>';
+      rows.push({ w, b, v, r, st });
+    }));
+    $("#fd-match").innerHTML = rows.length ? rows.map((x) => "<tr><td>Du " + fmtDate(x.w) + " au " + fmtDate(weekEnd(x.w)) + "</td><td>" + esc(x.b.nom) +
+      '</td><td class="num">' + money0(x.v) + '</td><td class="num">' + money0(x.r) + '</td><td class="num">' + (weekEnd(x.w) >= t && !x.r ? "—" : ecartHtml(x.r - x.v)) + "</td><td>" + x.st + "</td></tr>").join("")
+      : '<tr><td colspan="6" class="empty">Aucune vente ni remontée sur ce mois.</td></tr>';
+    const closed = rows.filter((x) => weekEnd(x.w) < t);
+    $("#fd-match-foot").innerHTML = rows.length ? "<tr><td colspan=2>TOTAL (semaines terminées)</td><td class=\"num\">" + money0(sumMontant(closed.map((x) => ({ montant: x.v })))) + '</td><td class="num">' +
+      money0(sumMontant(closed.map((x) => ({ montant: x.r })))) + '</td><td class="num">' + ecartHtml(sumMontant(closed.map((x) => ({ montant: x.r - x.v })))) + "</td><td></td></tr>" : "";
+
+    // Remontées du mois
+    const rems = db.remontees.filter((r) => codes.includes(r.boutique) && r.semaine >= mondayOf(du) && r.semaine <= au)
+      .sort((a, b) => b.semaine.localeCompare(a.semaine) || String(b.createdAt).localeCompare(String(a.createdAt)));
+    $("#fd-rem").innerHTML = rems.length ? rems.map((r) => {
+      const canDel = admin || (r.createdBy === me.id && r.statut === "Déclarée" && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
+      return "<tr><td>" + fmtDate(r.semaine) + " → " + fmtDate(weekEnd(r.semaine)) + "</td><td>" + esc(boutiqueName(r.boutique)) + "</td><td>" + (r.cc ? esc(ccName(r.cc)) : "Admin") +
+        '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.mode) + (r.note ? '<span class="sub">' + esc(r.note) + "</span>" : "") + "</td><td>" +
+        new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + '<span class="sub">' + esc(r.saisiPar) + "</span></td><td>" +
+        (r.statut === "Reçue" ? '<span class="badge ok">Reçue</span><span class="sub">par ' + esc(r.recuPar) + "</span>" : '<span class="badge warn">En attente</span>') + "</td><td>" +
+        (global ? '<button class="btn small" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la réception" : "✓ Confirmer la réception") + "</button> " : "") +
+        (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
+    }).join("") : '<tr><td colspan="8" class="empty">Aucune remontée sur ce mois.</td></tr>';
+
+    // KPI
+    const vMois = scope.reduce((a, b) => a + ventesDeclarees(b.code, du, au), 0);
+    const rMois = sumMontant(rems);
+    const k = [["Ventes déclarées (mois)", money0(vMois)], ["Fonds remontés (mois)", money0(rMois)]];
+    const enAttente = rems.filter((r) => r.statut !== "Reçue").length;
+    if (enAttente) k.push(["Remontées à confirmer", enAttente, "warn"]);
+    const nonRem = rows.filter((x) => weekEnd(x.w) < t && !x.r).length;
+    if (nonRem) k.push(["Semaines non remontées", nonRem, "danger"]);
+
+    if (global) {
+      const fBq = $("#fd-boutique").value;
+      const deps = db.charges.filter((c) => c.date >= du && c.date <= au && (fBq === "ALL" || c.boutique === fBq)).sort((a, b) => b.date.localeCompare(a.date));
+      $("#fd-dep").innerHTML = deps.length ? deps.map((c) => {
+        const canDel = admin || (c.createdBy === me.id && Date.now() - new Date(c.createdAt).getTime() < EDIT_WINDOW_MS);
+        return "<tr><td>" + fmtDate(c.date) + "</td><td>" + (c.boutique ? esc(boutiqueName(c.boutique)) : '<span class="muted">Générale</span>') + "</td><td>" + esc(c.categorie) + "</td><td>" + esc(c.libelle) +
+          '</td><td class="num"><b>' + money0(c.montant) + "</b></td><td>" + esc(c.saisiPar || "Admin") + "</td><td>" + (canDel ? '<button class="btn small danger" data-dp-del="' + c.id + '">✕</button>' : "") + "</td></tr>";
+      }).join("") : '<tr><td colspan="7" class="empty">Aucune dépense sur ce mois.</td></tr>';
+      const dcur = $("#dp-boutique").value;
+      $("#dp-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+      $("#dp-boutique").value = db.boutiques.some((b) => b.code === dcur) ? dcur : fBq !== "ALL" ? fBq : (db.boutiques[0] || {}).code || "";
+      if (!$("#dp-date").value) $("#dp-date").value = t;
+
+      // Bilan du mois par boutique
+      $("#fd-bilan-title").textContent = "Bilan par boutique — " + fmtMonth(du);
+      const bil = scope.map((b) => {
+        const v = ventesDeclarees(b.code, du, au), r = sumMontant(rems.filter((x) => x.boutique === b.code));
+        const d = sumMontant(deps.filter((c) => c.boutique === b.code));
+        return { b, v, r, d, net: r - d };
+      });
+      const gen = fBq === "ALL" ? sumMontant(deps.filter((c) => !c.boutique)) : 0;
+      $("#fd-bilan").innerHTML = bil.map((x) => "<tr><td><b>" + esc(x.b.nom) + '</b></td><td class="num">' + money0(x.v) + '</td><td class="num">' + money0(x.r) + '</td><td class="num">' + ecartHtml(x.r - x.v) +
+        '</td><td class="num">' + money0(x.d) + '</td><td class="num"><b>' + ecartHtml(x.net) + "</b></td></tr>").join("") +
+        (gen ? '<tr><td colspan="4" class="muted">Dépenses générales (sans boutique)</td><td class="num">' + money0(gen) + '</td><td class="num">' + ecartHtml(-gen) + "</td></tr>" : "");
+      const T = (f) => bil.reduce((a, x) => a + x[f], 0);
+      $("#fd-bilan-foot").innerHTML = "<tr><td>BÉNÉFICE GLOBAL</td><td class=\"num\">" + money0(T("v")) + '</td><td class="num">' + money0(T("r")) + '</td><td class="num">' + ecartHtml(T("r") - T("v")) +
+        '</td><td class="num">' + money0(T("d") + gen) + '</td><td class="num">' + ecartHtml(T("net") - gen) + "</td></tr>";
+      k.push(["Dépenses (mois)", money0(T("d") + gen)]);
+      k.push(["Bénéfice restant", money0(T("net") - gen), T("net") - gen < 0 ? "danger" : ""]);
+    }
+    $("#fd-kpis").innerHTML = kpiHtml(k);
+  }
+  $("#fd-boutique").addEventListener("change", renderFonds);
+  $("#fd-mois").addEventListener("change", renderFonds);
+  $("#rm-semaine").addEventListener("change", renderFonds);
+  $("#rm-save").addEventListener("click", (e) => {
+    const admin = isAdmin();
+    const bq = admin ? $("#fd-boutique").value : myBoutiqueCode();
+    const montant = Number($("#rm-montant").value);
+    if (!bq || bq === "ALL") return toast("Choisissez une boutique.");
+    if (!(montant > 0)) return toast("Indiquez le montant remis.");
+    const w = $("#rm-semaine").value;
+    const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: $("#rm-note").value.trim(), saisi_par: me.nom || me.email || "" };
+    act(async () => {
+      chk(await sb.from("remontees").insert(row));
+      $("#rm-montant").value = ""; $("#rm-note").value = "";
+    }, "Remontée déclarée : " + money(montant) + " pour la semaine du " + fmtDate(w) + ".", e.target);
+  });
+  $("#fd-rem").addEventListener("click", (e) => {
+    const r = e.target.closest("[data-rm-recu]");
+    if (r) return act(async () => chk(await sb.rpc("set_remontee_recue", { p_id: r.dataset.rmRecu, p_recue: r.dataset.v === "1" })), r.dataset.v === "1" ? "Réception des fonds confirmée." : "Réception annulée.", r);
+    const d = e.target.closest("[data-rm-del]");
+    if (d && confirm("Supprimer cette remontée ?")) act(async () => chk(await sb.from("remontees").delete().eq("id", d.dataset.rmDel)), "Remontée supprimée.", d);
+  });
+  $("#dp-save").addEventListener("click", (e) => {
+    const montant = Number($("#dp-montant").value);
+    if (!$("#dp-boutique").value) return toast("Choisissez la boutique.");
+    if (!(montant > 0)) return toast("Indiquez le montant de la dépense.");
+    const row = { date: $("#dp-date").value || today(), boutique: $("#dp-boutique").value, categorie: $("#dp-cat").value, libelle: $("#dp-lib").value.trim(), montant, saisi_par: me.nom || me.email || "" };
+    act(async () => {
+      chk(await sb.from("charges").insert(row));
+      $("#dp-montant").value = ""; $("#dp-lib").value = "";
+    }, "Dépense enregistrée : " + money(montant) + " (" + boutiqueName(row.boutique) + ").", e.target);
+  });
+  $("#fd-dep").addEventListener("click", (e) => {
+    const d = e.target.closest("[data-dp-del]");
+    if (d && confirm("Supprimer cette dépense ?")) act(async () => chk(await sb.from("charges").delete().eq("id", d.dataset.dpDel)), "Dépense supprimée.", d);
+  });
+
+  // ---------- Bobines ----------
+  const BOBINE_SEUIL = 2;
+  function bobinesOf(bq) {
+    const m = db.bobines.filter((x) => x.boutique === bq);
+    const recues = m.filter((x) => x.type === "Approvisionnement").reduce((a, x) => a + x.qte, 0);
+    const utilisees = m.filter((x) => x.type === "Utilisation").reduce((a, x) => a + x.qte, 0);
+    const appro = m.filter((x) => x.type === "Approvisionnement").map((x) => x.date).sort().pop() || "";
+    return { recues, utilisees, reste: recues - utilisees, appro };
+  }
+  function bobineStatut(reste) {
+    return reste <= 0 ? '<span class="badge danger">RUPTURE</span>' : reste <= BOBINE_SEUIL ? '<span class="badge warn">STOCK FAIBLE</span>' : '<span class="badge ok">OK</span>';
+  }
+  function bobinesScope() { return bobinesDroit() === "gestion" ? db.boutiques : db.boutiques.filter((b) => b.code === myBoutiqueCode()); }
+  function renderBobines() {
+    const droit = bobinesDroit(), scope = bobinesScope(), t = today();
+    document.body.classList.toggle("no-bobines-gestion", droit !== "gestion");
+    const st = scope.map((b) => ({ b, ...bobinesOf(b.code) }));
+    const mois = t.slice(0, 7);
+    $("#bb-kpis").innerHTML = kpiHtml([
+      ["Bobines restantes", num(st.reduce((a, x) => a + Math.max(0, x.reste), 0))],
+      ["Boutiques en rupture", st.filter((x) => x.reste <= 0).length, "danger"],
+      ["Stock faible", st.filter((x) => x.reste > 0 && x.reste <= BOBINE_SEUIL).length, "warn"],
+      ["Utilisées ce mois", num(db.bobines.filter((x) => x.type === "Utilisation" && scope.some((b) => b.code === x.boutique) && x.date.slice(0, 7) === mois).reduce((a, x) => a + x.qte, 0))]
+    ]);
+    $("#bb-rows").innerHTML = st.length ? st.sort((a, b) => a.reste - b.reste).map((x) => "<tr><td><b>" + esc(x.b.nom) + '</b></td><td class="num">' + num(x.recues) + '</td><td class="num">' + num(x.utilisees) +
+      '</td><td class="num"><b>' + num(x.reste) + "</b></td><td>" + bobineStatut(x.reste) + "</td><td>" + (x.appro ? fmtDate(x.appro) : '<span class="muted">Jamais</span>') + "</td><td>" +
+      '<button class="btn small" data-bb-use="' + esc(x.b.code) + '"' + (x.reste <= 0 ? " disabled" : "") + ">1 bobine utilisée</button></td></tr>").join("")
+      : '<tr><td colspan="7" class="empty">' + (droit === "boutique" ? "Votre CC n'est affecté à aucune boutique." : "Aucune boutique.") + "</td></tr>";
+    if (droit === "gestion") {
+      const cur = $("#bb-boutique").value;
+      $("#bb-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+      if (db.boutiques.some((b) => b.code === cur)) $("#bb-boutique").value = cur;
+      if (!$("#bb-date").value) $("#bb-date").value = t;
+    }
+    const fcur = $("#bb-filtre").value || "ALL";
+    $("#bb-filtre").innerHTML = (scope.length > 1 ? '<option value="ALL">Toutes</option>' : "") + scope.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    $("#bb-filtre").value = scope.some((b) => b.code === fcur) ? fcur : scope.length > 1 ? "ALL" : (scope[0] || {}).code || "";
+    const f = $("#bb-filtre").value;
+    const hist = db.bobines.filter((x) => scope.some((b) => b.code === x.boutique) && (f === "ALL" || x.boutique === f))
+      .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
+    $("#bb-hist").innerHTML = hist.length ? hist.map((x) => {
+      const canDel = isAdmin() || (x.createdBy === me.id && Date.now() - new Date(x.createdAt).getTime() < EDIT_WINDOW_MS);
+      return "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" +
+        (x.type === "Approvisionnement" ? '<span class="badge ok">+ Approvisionnement</span>' : '<span class="badge mute">− Bobine utilisée</span>') +
+        '</td><td class="num">' + (x.type === "Approvisionnement" ? "+" : "−") + num(x.qte) + "</td><td>" + esc(x.note) + "</td><td>" + esc(x.saisiPar || "—") + (x.cc ? '<span class="sub">' + esc(ccName(x.cc)) + "</span>" : "") +
+        "</td><td>" + (canDel ? '<button class="btn small danger" data-bb-del="' + x.id + '">✕</button>' : "") + "</td></tr>";
+    }).join("") : '<tr><td colspan="7" class="empty">Aucun mouvement de bobines.</td></tr>';
+  }
+  $("#bb-filtre").addEventListener("change", renderBobines);
+  $("#bb-rows").addEventListener("click", (e) => {
+    const u = e.target.closest("[data-bb-use]");
+    if (!u) return;
+    const bq = u.dataset.bbUse;
+    if (!confirm("Confirmer : 1 bobine utilisée à " + boutiqueName(bq) + " ?")) return;
+    act(async () => chk(await sb.from("bobines_mvts").insert({ boutique: bq, date: today(), type: "Utilisation", qte: 1, cc: me.cc || null, saisi_par: me.nom || me.email || "" })),
+      "1 bobine utilisée enregistrée (" + boutiqueName(bq) + ").", u);
+  });
+  $("#bb-save").addEventListener("click", (e) => {
+    const qte = Number($("#bb-qte").value);
+    if (!$("#bb-boutique").value) return toast("Choisissez la boutique.");
+    if (!(qte > 0) || !Number.isInteger(qte)) return toast("Indiquez un nombre de bobines valide.");
+    const row = { boutique: $("#bb-boutique").value, date: $("#bb-date").value || today(), type: "Approvisionnement", qte, note: $("#bb-note").value.trim(), cc: me.cc || null, saisi_par: me.nom || me.email || "" };
+    act(async () => {
+      chk(await sb.from("bobines_mvts").insert(row));
+      $("#bb-qte").value = ""; $("#bb-note").value = "";
+    }, qte + " bobine(s) ajoutée(s) à " + boutiqueName(row.boutique) + ".", e.target);
+  });
+  $("#bb-hist").addEventListener("click", (e) => {
+    const d = e.target.closest("[data-bb-del]");
+    if (d && confirm("Supprimer ce mouvement ?")) act(async () => chk(await sb.from("bobines_mvts").delete().eq("id", d.dataset.bbDel)), "Mouvement supprimé.", d);
+  });
+
   // ---------- Paramètres ----------
   function renderParametres() {
     document.querySelectorAll("#p-form [data-k]").forEach((i) => { i.value = db.settings[i.dataset.k] || ""; });
@@ -2173,6 +2446,9 @@
         (c.entrees ? "Autorisé" : '<span class="muted">Non</span>') + "</label></td><td>" +
         '<label class="switch-cell" title="Autoriser ce CC à voir le stock de toutes les boutiques (sinon seulement la sienne)"><input type="checkbox" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "> " +
         (c.voirStock ? "Toutes" : '<span class="muted">Sa boutique</span>') + "</label></td><td>" +
+        '<select class="inline-select" data-cc-bobines="' + esc(c.code) + '" title="Accès au menu Bobines">' +
+        [["non", "Pas d'accès"], ["boutique", "Sa boutique"], ["gestion", "Toutes + approvisionnement"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
+        "</select></td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
         "</td><td>" + (reposLabel(c) || '<span class="muted">—</span>') + '</td><td class="hist">' + hist + '</td><td class="wrap">' +
         '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
@@ -2181,7 +2457,7 @@
           : '<button class="btn small" data-cc-reactiver="' + esc(c.code) + '">Réactiver</button> ') +
         (hasSales ? "" : '<button class="btn small danger" data-cc-del="' + esc(c.code) + '">✕</button>') +
         "</td></tr>";
-    }).join("") : '<tr><td colspan="9" class="empty">Aucun code commercial.</td></tr>';
+    }).join("") : '<tr><td colspan="10" class="empty">Aucun code commercial.</td></tr>';
   }
 
   let ccMode = null, ccTarget = null;
@@ -2235,6 +2511,12 @@
     }, msg || ccLabel(cc.code) + " — " + nom);
   }
   $("#cc-rows").addEventListener("change", (e) => {
+    const bbs = e.target.closest("[data-cc-bobines]");
+    if (bbs) {
+      const code = bbs.dataset.ccBobines, v = bbs.value;
+      return act(async () => chk(await sb.from("ccs").update({ bobines: v }).eq("code", code)),
+        ccName(code) + " — Bobines : " + (v === "non" ? "pas d'accès." : v === "boutique" ? "sa boutique." : "toutes les boutiques + approvisionnement."));
+    }
     const vs = e.target.closest("[data-cc-voirstock]");
     if (vs) {
       const code = vs.dataset.ccVoirstock, on = vs.checked;

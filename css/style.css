@@ -155,6 +155,7 @@ input[readonly] { background: var(--bg); }
 .hidden { display: none !important; }
 body.role-vendeur .admin-only { display: none !important; }
 body.no-entrees .only-entrees { display: none !important; }
+body.no-fonds .need-fonds, body.no-bobines .need-bobines, body.no-global .need-global, body.no-bobines-gestion .need-bobines-gestion { display: none !important; }
 body:not(.no-entrees) .only-no-entrees { display: none !important; }
 .switch-cell { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; color: var(--text); }
 .switch-cell input { width: auto; }
