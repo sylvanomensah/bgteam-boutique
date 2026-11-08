@@ -2047,7 +2047,15 @@
         ["Statut", bobineStatut(x.reste)],
         ["Autonomie estimée", autonomieHtml(x)],
         ["Dernier approvisionnement", x.appro ? fmtDate(x.appro) : '<span class="muted">Jamais</span>'],
-        ["Utilisées ce mois", num(db.bobines.filter((m) => m.type === "Utilisation" && m.boutique === f && m.date.slice(0, 7) === mois).reduce((a, m) => a + m.qte, 0))]
+        (() => {
+          // Case « Utilisées » : aujourd'hui, cette semaine (depuis lundi) ou ce mois
+          const pers = { jour: ["Utilisées ce jour", t], semaine: ["Utilisées cette semaine", mondayOf(t)], mois: ["Utilisées ce mois", mois + "-01"] };
+          const sel = '<select id="bb-util-per" class="inline-select" style="margin-left:6px">' +
+            Object.keys(pers).map((k) => '<option value="' + k + '"' + (bobUtilPer === k ? " selected" : "") + ">" + pers[k][0] + "</option>").join("") + "</select>";
+          const du = pers[bobUtilPer][1];
+          const n = db.bobines.filter((m) => m.type === "Utilisation" && m.boutique === f && m.date >= du && m.date <= t).reduce((a, m) => a + m.qte, 0);
+          return ["Utilisées" + sel, num(n)];
+        })()
       ]);
       $("#bb-hint").textContent = "Moyennes calculées depuis la première utilisation déclarée (semaine = 7 jours, mois = 30 jours). Autonomie = bobines restantes ÷ moyenne par jour. Stock faible : 2 bobines ou moins.";
     }
@@ -2079,10 +2087,11 @@
     }).join("") : '<tr><td colspan="7" class="empty">Aucun mouvement de bobines.</td></tr>';
   }
   $("#bb-filtre").addEventListener("change", renderBobines);
-  let bobMoyPer = "";
+  let bobMoyPer = "", bobUtilPer = "mois";
   $("#bb-kpis").addEventListener("change", (e) => {
-    if (e.target.id !== "bb-moy-per") return;
-    bobMoyPer = e.target.value;
+    if (e.target.id === "bb-moy-per") bobMoyPer = e.target.value;
+    else if (e.target.id === "bb-util-per") bobUtilPer = e.target.value;
+    else return;
     renderBobines();
   });
   $("#bu-save").addEventListener("click", (e) => {

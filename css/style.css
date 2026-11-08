@@ -162,7 +162,8 @@ body.no-entrees .only-entrees { display: none !important; }
 .kpi .value .badge { font-size: 1rem; vertical-align: middle; }
 .kpi.info { border: 2px solid #2a78d6; background: #f2f7fd; }
 .kpi.info .label { color: #2a78d6; font-weight: 600; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-.kpi.info select { font-size: .85rem; padding: 2px 6px; }
+.kpi.info select, .kpi .label select { font-size: .85rem; padding: 2px 6px; width: auto; }
+.kpi .label:has(select) { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 body.no-fonds .need-fonds, body.no-bobines .need-bobines, body.no-global .need-global, body.no-bobines-gestion .need-bobines-gestion, body.no-bobines-saisie .need-bobines-saisie { display: none !important; }
 body:not(.no-entrees) .only-no-entrees { display: none !important; }
 .switch-cell { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; color: var(--text); }
