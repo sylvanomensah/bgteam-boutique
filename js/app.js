@@ -2022,40 +2022,49 @@
   function renderBobines() {
     const droit = bobinesDroit(), scope = bobinesScope(), t = today();
     document.body.classList.toggle("no-bobines-gestion", droit !== "gestion");
-    const st = scope.map((b) => ({ b, ...bobinesOf(b.code) }));
     const mois = t.slice(0, 7);
-    // Gestion : vue réseau (ruptures) ; CC de boutique : moyennes d'utilisation de sa boutique.
-    const jour = st.reduce((a, x) => a + x.parJour, 0);
-    const moyennes = [["Moyenne / jour", moyHtml(jour)], ["Moyenne / semaine", moyHtml(jour * 7)], ["Moyenne / mois", moyHtml(jour * 30)]];
-    const restantes = ["Bobines restantes", num(st.reduce((a, x) => a + Math.max(0, x.reste), 0))];
-    const utilMois = ["Utilisées ce mois", num(db.bobines.filter((x) => x.type === "Utilisation" && scope.some((b) => b.code === x.boutique) && x.date.slice(0, 7) === mois).reduce((a, x) => a + x.qte, 0))];
-    $("#bb-kpis").innerHTML = kpiHtml(droit === "gestion"
-      ? [...moyennes, restantes, ["Boutiques en rupture", st.filter((x) => x.reste <= 0).length, "danger"], ["Stock faible", st.filter((x) => x.reste > 0 && x.reste <= BOBINE_SEUIL).length, "warn"]]
-      : [restantes, ...moyennes, utilMois]);
-    $("#bb-rows").innerHTML = st.length ? st.sort((a, b) => a.reste - b.reste).map((x) => "<tr><td><b>" + esc(x.b.nom) + '</b></td><td class="num">' + num(x.recues) + '</td><td class="num">' + num(x.utilisees) +
-      '</td><td class="num"><b>' + num(x.reste) + "</b></td><td>" + bobineStatut(x.reste) + '</td><td class="num">' + moyHtml(x.parJour) + '</td><td class="num">' + moyHtml(x.parJour * 7) +
-      '</td><td class="num">' + moyHtml(x.parJour * 30) + "</td><td>" + autonomieHtml(x) + "</td><td>" + (x.appro ? fmtDate(x.appro) : '<span class="muted">Jamais</span>') + "</td></tr>").join("")
-      : '<tr><td colspan="10" class="empty">' + (droit !== "gestion" ? "Vous n'êtes affecté à aucune boutique. Demandez à l'administrateur." : "Aucune boutique.") + "</td></tr>";
+    // Filtre boutique (à côté du titre) : il faut choisir une boutique pour voir ses cases.
+    const fcur = $("#bb-filtre").value;
+    $("#bb-filtre").innerHTML = scope.length > 1
+      ? '<option value="">— Choisir une boutique —</option>' + scope.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("")
+      : scope.length ? '<option value="' + esc(scope[0].code) + '">' + esc(scope[0].nom) + "</option>" : '<option value="">Aucune boutique</option>';
+    $("#bb-filtre").value = scope.some((b) => b.code === fcur) ? fcur : scope.length === 1 ? scope[0].code : "";
+    $("#bb-filtre").disabled = scope.length < 2;
+    const f = $("#bb-filtre").value;
+    if (!f) {
+      $("#bb-kpis").innerHTML = "";
+      $("#bb-hint").textContent = scope.length ? "Sélectionnez une boutique dans le filtre pour afficher ses bobines." : (droit !== "gestion" ? "Vous n'êtes affecté à aucune boutique. Demandez à l'administrateur." : "Aucune boutique.");
+    } else {
+      const x = bobinesOf(f);
+      const stCls = x.reste <= 0 ? "danger" : x.reste <= BOBINE_SEUIL ? "warn" : "";
+      $("#bb-kpis").innerHTML = kpiHtml([
+        ["Moyenne / jour", moyHtml(x.parJour)], ["Moyenne / semaine", moyHtml(x.parJour * 7)], ["Moyenne / mois", moyHtml(x.parJour * 30)],
+        ["Bobines restantes", num(x.reste), stCls],
+        ["Statut", bobineStatut(x.reste)],
+        ["Autonomie estimée", autonomieHtml(x)],
+        ["Dernier approvisionnement", x.appro ? fmtDate(x.appro) : '<span class="muted">Jamais</span>'],
+        ["Utilisées ce mois", num(db.bobines.filter((m) => m.type === "Utilisation" && m.boutique === f && m.date.slice(0, 7) === mois).reduce((a, m) => a + m.qte, 0))]
+      ]);
+      $("#bb-hint").textContent = "Moyennes calculées depuis la première utilisation déclarée (semaine = 7 jours, mois = 30 jours). Autonomie = bobines restantes ÷ moyenne par jour. Stock faible : 2 bobines ou moins.";
+    }
     // Saisie des bobines utilisées : CC « saisie » (sa boutique) et gestion (toutes)
     document.body.classList.toggle("no-bobines-saisie", droit === "boutique" || !scope.length);
     if (droit !== "boutique" && scope.length) {
       const ucur = $("#bu-boutique").value;
       $("#bu-boutique").innerHTML = scope.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
-      if (scope.some((b) => b.code === ucur)) $("#bu-boutique").value = ucur;
+      $("#bu-boutique").value = f || (scope.some((b) => b.code === ucur) ? ucur : scope[0].code);
       $("#bu-boutique").disabled = scope.length < 2;
       if (!$("#bu-date").value) $("#bu-date").value = t;
     }
     if (droit === "gestion") {
       const cur = $("#bb-boutique").value;
       $("#bb-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
-      if (db.boutiques.some((b) => b.code === cur)) $("#bb-boutique").value = cur;
+      if (f) $("#bb-boutique").value = f;
+      else if (db.boutiques.some((b) => b.code === cur)) $("#bb-boutique").value = cur;
       if (!$("#bb-date").value) $("#bb-date").value = t;
     }
-    const fcur = $("#bb-filtre").value || "ALL";
-    $("#bb-filtre").innerHTML = (scope.length > 1 ? '<option value="ALL">Toutes</option>' : "") + scope.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
-    $("#bb-filtre").value = scope.some((b) => b.code === fcur) ? fcur : scope.length > 1 ? "ALL" : (scope[0] || {}).code || "";
-    const f = $("#bb-filtre").value;
-    const hist = db.bobines.filter((x) => scope.some((b) => b.code === x.boutique) && (f === "ALL" || x.boutique === f))
+    $("#bb-hist-title").textContent = "Historique" + (f ? " — " + boutiqueName(f) : " — toutes les boutiques");
+    const hist = db.bobines.filter((x) => scope.some((b) => b.code === x.boutique) && (!f || x.boutique === f))
       .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
     $("#bb-hist").innerHTML = hist.length ? hist.map((x) => {
       const canDel = isAdmin() || (x.createdBy === me.id && Date.now() - new Date(x.createdAt).getTime() < EDIT_WINDOW_MS);

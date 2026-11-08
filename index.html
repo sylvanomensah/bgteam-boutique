@@ -462,17 +462,12 @@
 
     <!-- BOBINES -->
     <section id="view-bobines" class="view">
-      <h1>Bobines</h1>
-      <div class="kpis" id="bb-kpis"></div>
-      <div class="card">
-        <h2>Bobines par boutique</h2>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Boutique</th><th class="num">Reçues</th><th class="num">Utilisées</th><th class="num">Restantes</th><th>Statut</th>
-            <th class="num">Moy. / jour</th><th class="num">Moy. / semaine</th><th class="num">Moy. / mois</th><th>Autonomie estimée</th><th>Dernier approvisionnement</th></tr></thead>
-          <tbody id="bb-rows"></tbody>
-        </table></div>
-        <p class="hint">Moyennes calculées depuis la première utilisation déclarée de la boutique (semaine = 7 jours, mois = 30 jours). Autonomie = bobines restantes ÷ moyenne par jour. Stock faible : 2 bobines ou moins.</p>
+      <div class="title-filter">
+        <h1>Bobines</h1>
+        <label>Boutique<select id="bb-filtre"></select></label>
       </div>
+      <div class="kpis" id="bb-kpis"></div>
+      <p class="hint" id="bb-hint">Moyennes calculées depuis la première utilisation déclarée (semaine = 7 jours, mois = 30 jours). Autonomie = bobines restantes ÷ moyenne par jour. Stock faible : 2 bobines ou moins.</p>
       <div class="card need-bobines-saisie">
         <h2>Bobines utilisées dans la journée</h2>
         <div class="form form-inline">
@@ -494,8 +489,7 @@
         <div class="actions"><button class="btn success" id="bb-save">Enregistrer l'approvisionnement</button></div>
       </div>
       <div class="card">
-        <h2>Historique</h2>
-        <div class="form form-inline"><label>Boutique<select id="bb-filtre"></select></label></div>
+        <h2 id="bb-hist-title">Historique</h2>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Date</th><th>Boutique</th><th>Mouvement</th><th class="num">Quantité</th><th>Note</th><th>Saisi par</th><th></th></tr></thead>
           <tbody id="bb-hist"></tbody>
