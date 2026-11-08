@@ -578,7 +578,59 @@ alter table public.boutiques enable row level security;
 drop policy if exists boutiques_select on public.boutiques;
 create policy boutiques_select on public.boutiques for select to authenticated using (public.is_member());
 drop policy if exists boutiques_write on public.boutiques;
-create policy boutiques_write on public.boutiques for all to authenticated using (public.is_admin()) with check (public.is_admin());
+-- Renommer / activer : admin. Créer et supprimer : uniquement via create_boutique() / delete_boutique()
+-- qui exigent le mot de passe de l'admin.
+drop policy if exists boutiques_update on public.boutiques;
+create policy boutiques_update on public.boutiques for update to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- Vérifie le mot de passe du compte connecté (usage interne, non appelable depuis l'application).
+create extension if not exists pgcrypto with schema extensions;
+create or replace function public.check_my_password(p_password text) returns boolean
+language plpgsql security definer set search_path = public, extensions as $$
+declare ok boolean;
+begin
+  select u.encrypted_password = extensions.crypt(coalesce(p_password, ''), u.encrypted_password) into ok
+  from auth.users u where u.id = auth.uid();
+  return coalesce(ok, false);
+end $$;
+revoke all on function public.check_my_password(text) from public, anon, authenticated;
+
+create or replace function public.create_boutique(p_nom text, p_password text) returns text
+language plpgsql security definer set search_path = public as $$
+declare n integer; v_code text; v_nom text := trim(coalesce(p_nom, ''));
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if not public.check_my_password(p_password) then raise exception 'Mot de passe incorrect'; end if;
+  if v_nom = '' then raise exception 'Indiquez le nom de la boutique'; end if;
+  if exists (select 1 from public.boutiques where lower(nom) = lower(v_nom)) then raise exception 'Une boutique porte déjà ce nom'; end if;
+  select coalesce(max((substring(code from '(\d+)$'))::int), 0) + 1 into n from public.boutiques where code ~ '^B\d+$';
+  v_code := 'B' || n;
+  insert into public.boutiques (code, nom) values (v_code, v_nom);
+  return v_code;
+end $$;
+revoke all on function public.create_boutique(text, text) from public, anon;
+grant execute on function public.create_boutique(text, text) to authenticated;
+
+-- Supprime une boutique et toutes ses données (ventes, courses, entrées) ; ses CC sont désaffectés.
+-- Renvoie le bilan et la liste des photos de reçus à effacer du stockage.
+create or replace function public.delete_boutique(p_code text, p_password text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r jsonb; nv int; nc int; ne int; ncc int; photos text[];
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if not public.check_my_password(p_password) then raise exception 'Mot de passe incorrect'; end if;
+  if p_code = 'B1' then raise exception 'La boutique d''origine (B1) porte le stock initial : elle ne peut pas être supprimée'; end if;
+  if not exists (select 1 from public.boutiques where code = p_code) then raise exception 'Boutique introuvable'; end if;
+  select coalesce(array_agg(recu_path) filter (where recu_path is not null), '{}') into photos from public.courses where boutique = p_code;
+  delete from public.sales where boutique = p_code; get diagnostics nv = row_count;
+  delete from public.courses where boutique = p_code; get diagnostics nc = row_count;
+  delete from public.entries where boutique = p_code; get diagnostics ne = row_count;
+  update public.ccs set boutique = null where boutique = p_code; get diagnostics ncc = row_count;
+  delete from public.boutiques where code = p_code;
+  return jsonb_build_object('ventes', nv, 'courses', nc, 'entrees', ne, 'ccs', ncc, 'photos', to_jsonb(photos));
+end $$;
+revoke all on function public.delete_boutique(text, text) from public, anon;
+grant execute on function public.delete_boutique(text, text) to authenticated;
 
 -- Affecte un CC à une boutique (admin). Les ventes passées du CC sans boutique y sont rattachées ;
 -- les ventes déjà rattachées à une boutique gardent la leur.

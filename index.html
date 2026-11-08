@@ -487,6 +487,23 @@
     </form>
   </dialog>
 
+  <!-- Modal confirmation par mot de passe (boutiques) -->
+  <dialog id="cpwd-dialog">
+    <form method="dialog" id="cpwd-form">
+      <h2 id="cp-title">Confirmation</h2>
+      <div id="cp-body"></div>
+      <div class="form">
+        <label class="full" id="cp-name-wrap">Nom de la boutique<input name="nom" placeholder="Ex. : Boutique Adidogomé"></label>
+        <label class="full">Votre mot de passe (admin)<input type="password" name="pwd" autocomplete="current-password"></label>
+      </div>
+      <p class="auth-msg" id="cp-msg"></p>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok" id="cp-ok">Confirmer</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Modal nouveau produit (depuis une course) -->
   <dialog id="newprod-dialog">
     <form method="dialog" id="newprod-form">

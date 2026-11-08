@@ -1551,17 +1551,75 @@
       return "<tr><td><b>" + esc(b.code) + '</b></td><td><input class="inline-input" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '"></td><td>' +
         (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + '</td><td class="wrap">' +
         (ccs.length ? ccs.map((c) => esc(ccName(c.code))).join("<br>") : '<span class="muted">Aucun CC</span>') + '</td><td class="num">' + money(caJour) + "</td><td>" +
-        '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button></td></tr>";
+        '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button> " +
+        (b.code === INITIAL_BOUTIQUE ? '<span class="sub">Boutique d\'origine (stock initial)</span>' : '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button>') +
+        "</td></tr>";
     }).join("") : '<tr><td colspan="6" class="empty">Aucune boutique.</td></tr>';
     renderCcTable();
   }
-  $("#bq-new").addEventListener("click", () => {
-    if (db.boutiques.length >= 10 && !confirm("Vous avez déjà " + db.boutiques.length + " boutiques. En créer une de plus ?")) return;
-    const n = db.boutiques.reduce((m, b) => Math.max(m, Number(b.code.replace(/\D/g, "")) || 0), 0) + 1;
-    const nom = prompt("Nom de la nouvelle boutique :", "Boutique " + n);
-    if (!nom || !nom.trim()) return;
-    act(async () => chk(await sb.from("boutiques").insert({ code: "B" + n, nom: nom.trim() })), "Boutique créée : " + nom.trim());
+  // Création / suppression de boutique : confirmation par le mot de passe de l'admin (vérifié par la base).
+  let cpAction = null;
+  function openConfirmPwd(action) {
+    cpAction = action;
+    const f = $("#cpwd-form");
+    f.reset();
+    $("#cp-msg").textContent = "";
+    $("#cp-name-wrap").style.display = action.type === "create" ? "" : "none";
+    $("#cp-ok").className = "btn " + (action.type === "delete" ? "danger" : "primary");
+    if (action.type === "create") {
+      const n = db.boutiques.reduce((m, b) => Math.max(m, Number(b.code.replace(/\D/g, "")) || 0), 0) + 1;
+      $("#cp-title").textContent = "Nouvelle boutique";
+      $("#cp-body").innerHTML = '<p class="hint">' + (db.boutiques.length >= 10 ? "⚠ Vous avez déjà " + db.boutiques.length + " boutiques. " : "") +
+        "Le code <b>B" + n + "</b> lui sera attribué. Confirmez avec votre mot de passe.</p>";
+      f.elements.nom.value = "Boutique " + n;
+      $("#cp-ok").textContent = "Créer la boutique";
+    } else {
+      const b = boutiqueByCode(action.code);
+      const ventes = db.sales.filter((s) => s.boutique === b.code);
+      const courses = db.courses.filter((c) => c.boutique === b.code);
+      const entrees = db.entries.filter((x) => !x.courseId && x.boutique === b.code);
+      const ccs = db.settings.ccList.filter((c) => c.boutique === b.code);
+      const ca = ventes.filter(isCountedSale).reduce((a, s) => a + lineTotal(s), 0);
+      $("#cp-title").textContent = "Supprimer « " + b.nom + " »";
+      $("#cp-body").innerHTML = '<div class="v-alert danger"><b>Suppression définitive</b>, sans retour possible :<ul style="margin:6px 0 0 18px;padding:0">' +
+        "<li><b>" + num(ventes.length) + "</b> ligne(s) de vente (" + money(ca) + ")</li>" +
+        "<li><b>" + num(courses.length) + "</b> course(s) avec leurs produits et " + courses.filter((c) => c.recuPath).length + " photo(s) de reçus</li>" +
+        "<li><b>" + num(entrees.length) + "</b> entrée(s) de stock</li>" +
+        "<li><b>" + num(ccs.length) + "</b> CC désaffecté(s) (ils restent dans RH, à réaffecter)</li></ul></div>" +
+        '<p class="hint">Pensez à télécharger une sauvegarde (Paramètres) avant. Confirmez avec votre mot de passe.</p>';
+      $("#cp-ok").textContent = "Supprimer définitivement";
+    }
+    $("#cpwd-dialog").showModal();
+    (action.type === "create" ? f.elements.nom : f.elements.pwd).focus();
+  }
+  $("#cpwd-form").addEventListener("submit", async (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
+    e.preventDefault(); // la fenêtre reste ouverte tant que l'opération n'a pas réussi
+    const f = e.target, pwd = f.elements.pwd.value, btn = $("#cp-ok");
+    if (!pwd) { $("#cp-msg").textContent = "Saisissez votre mot de passe."; return; }
+    $("#cp-msg").textContent = "";
+    btn.disabled = true;
+    try {
+      if (cpAction.type === "create") {
+        const nom = f.elements.nom.value.trim();
+        if (!nom) { $("#cp-msg").textContent = "Indiquez le nom de la boutique."; return; }
+        chk(await sb.rpc("create_boutique", { p_nom: nom, p_password: pwd }));
+        $("#cpwd-dialog").close();
+        await act(async () => {}, "Boutique créée : " + nom);
+      } else {
+        const res = chk(await sb.rpc("delete_boutique", { p_code: cpAction.code, p_password: pwd }));
+        $("#cpwd-dialog").close();
+        const photos = (res && res.photos) || [];
+        if (photos.length) { try { await sb.storage.from("recus").remove(photos); } catch (err) { /* photos orphelines sans gravité */ } }
+        await act(async () => {}, "Boutique supprimée : " + num(res.ventes) + " vente(s), " + num(res.courses) + " course(s), " + num(res.entrees) + " entrée(s) effacées.");
+      }
+    } catch (err) {
+      $("#cp-msg").textContent = errMsg(err);
+    } finally {
+      btn.disabled = false;
+    }
   });
+  $("#bq-new").addEventListener("click", () => openConfirmPwd({ type: "create" }));
   $("#bq-rows").addEventListener("change", (e) => {
     const inp = e.target.closest("[data-bq-nom]");
     if (!inp) return;
@@ -1570,6 +1628,8 @@
     act(async () => chk(await sb.from("boutiques").update({ nom }).eq("code", inp.dataset.bqNom)), "Boutique renommée.");
   });
   $("#bq-rows").addEventListener("click", (e) => {
+    const del = e.target.closest("[data-bq-del]");
+    if (del) return openConfirmPwd({ type: "delete", code: del.dataset.bqDel });
     const b = e.target.closest("[data-bq-actif]");
     if (!b) return;
     const bq = boutiqueByCode(b.dataset.bqActif);
