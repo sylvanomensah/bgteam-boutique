@@ -129,7 +129,7 @@
       sales: sales.map((s) => ({
         id: s.id, date: s.date, ticket: Number(s.ticket), client: s.client, code: s.code, nom: s.nom, qte: Number(s.qte), pu: Number(s.pu),
         cc: String(s.cc), vendeur: s.vendeur || "", valide: s.valide, numClient: s.num_client || "", adresseClient: s.adresse_client || "",
-        cout: s.cout_unitaire == null ? null : Number(s.cout_unitaire)
+        cout: s.cout_unitaire == null ? null : Number(s.cout_unitaire), createdAt: s.created_at
       })),
       users
     };
@@ -640,44 +640,76 @@
   function reportHtml(list) {
     const r = summarize(list);
     return '<div><span>Vente totale</span><strong>' + money(r.ca) + "</strong></div>" +
-      '<div><span>Tickets</span><strong>' + r.tickets + "</strong></div>" +
-      '<div><span>Quantités</span><strong>' + num(r.qte) + "</strong></div>" +
-      '<div><span>Lignes</span><strong>' + r.lignes + "</strong></div>";
+      '<div><span>Tickets</span><strong>' + num(r.tickets) + "</strong></div>" +
+      '<div><span>Quantités</span><strong>' + num(r.qte) + "</strong></div>";
+  }
+  function heureOf(s) {
+    return s.createdAt ? new Date(s.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
   }
   function renderVentes() {
     const cur = $("#r-cc").value || "ALL";
     $("#r-cc").innerHTML = ccOptions(true, cur, false);
     $("#r-cc").value = Array.from($("#r-cc").options).some((o) => o.value === cur) ? cur : "ALL";
-    if (!$("#r-du").value) $("#r-du").value = today();
-    if (!$("#r-au").value) $("#r-au").value = today();
+    if (!$("#v-date").value) $("#v-date").value = today();
+    if (!$("#r-semaine").value) $("#r-semaine").value = today();
     if (!$("#r-mois").value) $("#r-mois").value = today().slice(0, 7);
+    const years = Array.from(new Set(db.sales.map((s) => (s.date || "").slice(0, 4)).filter(Boolean).concat([today().slice(0, 4)]))).sort().reverse();
+    const ycur = $("#r-annee").value || today().slice(0, 4);
+    $("#r-annee").innerHTML = years.map((y) => '<option value="' + y + '">' + y + "</option>").join("");
+    $("#r-annee").value = years.includes(ycur) ? ycur : years[0];
 
-    const du = $("#r-du").value, au = $("#r-au").value, mois = $("#r-mois").value;
-    $("#r-jour").innerHTML = reportHtml(salesForReport((s) => s.date >= du && s.date <= au));
-    $("#r-mois-res").innerHTML = reportHtml(salesForReport((s) => s.date.slice(0, 7) === mois));
+    const jour = $("#v-date").value;
+    const lundi = mondayOf($("#r-semaine").value), dimanche = addDays(lundi, 6);
+    const mois = $("#r-mois").value, annee = $("#r-annee").value;
+    const ccTxt = $("#r-cc").value === "ALL" ? "Tous les CC" : ccName($("#r-cc").value);
 
-    const q = $("#v-search").value.trim().toLowerCase();
+    $("#r-jour-label").textContent = cap(fmtLong(jour)) + " · " + ccTxt;
+    $("#r-jour").innerHTML = reportHtml(salesForReport((s) => s.date === jour));
+    $("#r-semaine-label").textContent = "Du lundi " + fmtDate(lundi) + " au dimanche " + fmtDate(dimanche);
+    $("#r-semaine-res").innerHTML = reportHtml(salesForReport((s) => s.date >= lundi && s.date <= dimanche));
+    $("#r-mois-res").innerHTML = reportHtml(salesForReport((s) => (s.date || "").slice(0, 7) === mois));
+    $("#r-annee-res").innerHTML = reportHtml(salesForReport((s) => (s.date || "").slice(0, 4) === annee));
+    renderSalesHistory();
+  }
+  // Historique des ventes de la date choisie (toutes les ventes du jour, au fur et à mesure)
+  function renderSalesHistory() {
+    const jour = $("#v-date").value || today();
     const cc = $("#r-cc").value;
+    const q = $("#v-search").value.trim().toLowerCase();
+    $("#v-hist-title").textContent = (jour === today() ? "Ventes d'aujourd'hui" : "Ventes du " + fmtLong(jour)) +
+      (cc === "ALL" ? " — tous les CC" : " — " + ccName(cc));
     const rows = db.sales
-      .map((s, i) => ({ s, i }))
-      .filter(({ s }) => cc === "ALL" || s.cc === cc)
-      .filter(({ s }) => !q || [s.client, s.nom, s.code, String(s.ticket), s.date, vendeurOf(s)].some((v) => String(v || "").toLowerCase().includes(q)))
-      .sort((a, b) => (b.s.date || "").localeCompare(a.s.date || "") || b.s.ticket - a.s.ticket || b.i - a.i);
+      .filter((s) => s.date === jour && (cc === "ALL" || s.cc === cc))
+      .filter((s) => !q || [s.client, s.nom, s.code, String(s.ticket), vendeurOf(s)].some((v) => String(v || "").toLowerCase().includes(q)))
+      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || b.ticket - a.ticket);
 
     const admin = isAdmin();
     const badge = (s) => (s.valide === "OUI" ? '<span class="badge ok">OUI</span>' : '<span class="badge mute">NON</span>');
-    $("#v-rows").innerHTML = rows.length ? rows.slice(0, 500).map(({ s }) =>
+    $("#v-rows").innerHTML = rows.length ? rows.map((s) =>
       '<tr class="' + (s.valide === "OUI" ? "" : "off") + '">' +
-      "<td>" + fmtDate(s.date) + '</td><td class="num">' + s.ticket + "</td><td>" + esc(s.client) + "</td><td>" + esc(s.nom) + "</td><td>" + esc(s.code) +
-      '</td><td class="num">' + num(s.qte) + '</td><td class="num">' + num(s.pu) + '</td><td class="num">' + num(lineTotal(s)) + "</td><td>" + ccLabel(s.cc) +
+      "<td>" + fmtDate(s.date) + "</td><td>" + heureOf(s) + "</td><td>" + esc(s.nom) + pendingBadge(productByCode(s.code)) +
+      '</td><td class="num">' + num(s.qte) + '</td><td class="num"><b>' + money(lineTotal(s)) + "</b></td><td>" + ccLabel(s.cc) +
       (vendeurOf(s) ? '<span class="sub">' + esc(vendeurOf(s)) + "</span>" : "") +
+      '</td><td class="num">' + s.ticket + "</td><td>" + esc(s.client) +
       '</td><td class="keep">' + (admin ? '<button class="btn small" data-toggle="' + s.id + '">' + badge(s) + "</button>" : badge(s)) +
       "</td><td>" + (admin ? '<button class="btn small danger" data-del="' + s.id + '" title="Supprimer">✕</button>' : "") + "</td></tr>"
-    ).join("") + (rows.length > 500 ? '<tr><td colspan="11" class="empty">500 premières lignes affichées — utilisez la recherche ou l\'export CSV.</td></tr>' : "")
-      : '<tr><td colspan="11" class="empty">Aucune vente.</td></tr>';
+    ).join("") : '<tr><td colspan="10" class="empty">Aucune vente pour cette date' + (cc === "ALL" ? "" : " et ce CC") + ".</td></tr>";
+
+    const valides = rows.filter(isCountedSale);
+    const tot = summarize(valides);
+    $("#v-foot").innerHTML = '<tr><td colspan="3">TOTAL ' + (cc === "ALL" ? "DES VENTES" : "— " + esc(ccName(cc))) +
+      " · " + num(tot.tickets) + " ticket" + (tot.tickets > 1 ? "s" : "") + '</td><td class="num">' + num(tot.qte) +
+      '</td><td class="num">' + money(tot.ca) + '</td><td colspan="5">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
+    $("#v-refresh-info").textContent = "Mis à jour à " + new Date(lastReload || Date.now()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
-  ["#r-du", "#r-au", "#r-mois", "#r-cc"].forEach((id) => $(id).addEventListener("change", renderVentes));
-  $("#v-search").addEventListener("input", renderVentes);
+  ["#v-date", "#r-semaine", "#r-mois", "#r-annee", "#r-cc"].forEach((id) => $(id).addEventListener("change", renderVentes));
+  $("#v-search").addEventListener("input", renderSalesHistory);
+  $("#v-today").addEventListener("click", () => { $("#v-date").value = today(); renderVentes(); });
+  // Rafraîchissement automatique toutes les 30 s quand l'écran Ventes est affiché
+  setInterval(async () => {
+    if (currentView !== "ventes" || document.visibilityState !== "visible" || document.querySelector("dialog[open]")) return;
+    try { await reload(); renderVentes(); } catch (e) { /* hors ligne : prochain essai dans 30 s */ }
+  }, 30000);
   $("#v-rows").addEventListener("click", (e) => {
     const t = e.target.closest("[data-toggle]");
     const d = e.target.closest("[data-del]");
@@ -692,6 +724,7 @@
     }
   });
   $("#v-export").addEventListener("click", () => {
+    if (!isAdmin()) return toast("Export réservé à l'administrateur.");
     const head = ["Date", "Ticket", "Client", "Produit", "Code_Produit", "Quantite", "PU_Vente", "Total_Vente", "Code_CC", "Vendeur", "Validation", "N_Client", "Adresse_Client"];
     const lines = db.sales.map((s) => [s.date, s.ticket, s.client, s.nom, s.code, s.qte, s.pu, lineTotal(s), s.cc, vendeurOf(s), s.valide, s.numClient || "", s.adresseClient || ""]);
     download("ventes-" + today() + ".csv", "﻿" + toCsv([head].concat(lines)), "text/csv;charset=utf-8");

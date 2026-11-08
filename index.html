@@ -186,49 +186,56 @@
 
     <!-- VENTES -->
     <section id="view-ventes" class="view">
-      <h1>Historique des ventes &amp; rapports</h1>
-      <div class="grid3">
+      <h1>Ventes &amp; rapports</h1>
+      <div class="card filterbar">
+        <label>Date<input type="date" id="v-date"></label>
+        <label class="cc-filter">Code commercial<select id="r-cc"></select></label>
+        <div class="nav-date">
+          <button class="btn small" id="v-today">Aujourd'hui</button>
+          <span class="hint" id="v-refresh-info" style="margin:0"></span>
+        </div>
+        <button class="btn admin-only" id="v-export" style="margin-left:auto">Exporter les ventes (CSV)</button>
+      </div>
+      <div class="report-grid">
         <div class="card">
-          <h2>Rapport journalier</h2>
-          <div class="form">
-            <label>Du<input type="date" id="r-du"></label>
-            <label>Au<input type="date" id="r-au"></label>
-          </div>
+          <h2>Journalier</h2>
+          <p class="hint" id="r-jour-label"></p>
           <div class="report" id="r-jour"></div>
         </div>
         <div class="card">
-          <h2>Rapport mensuel</h2>
-          <div class="form">
-            <label class="full">Mois<input type="month" id="r-mois"></label>
-          </div>
+          <h2>Hebdomadaire</h2>
+          <div class="form"><label class="full">Semaine contenant le<input type="date" id="r-semaine"></label></div>
+          <p class="hint" id="r-semaine-label"></p>
+          <div class="report" id="r-semaine-res"></div>
+        </div>
+        <div class="card">
+          <h2>Mensuel</h2>
+          <div class="form"><label class="full">Mois<input type="month" id="r-mois"></label></div>
           <div class="report" id="r-mois-res"></div>
         </div>
         <div class="card">
-          <h2>Filtre CC</h2>
-          <div class="form">
-            <label class="full">Commercial<select id="r-cc"></select></label>
-          </div>
-          <p class="hint">Le filtre CC s'applique aux deux rapports et à l'historique.</p>
-          <button class="btn" id="v-export">Exporter les ventes (CSV)</button>
+          <h2>Annuel</h2>
+          <div class="form"><label class="full">Année<select id="r-annee"></select></label></div>
+          <div class="report" id="r-annee-res"></div>
         </div>
       </div>
       <div class="card">
         <div class="toolbar">
-          <h2>Historique</h2>
-          <input id="v-search" placeholder="Rechercher (client, produit, ticket…)">
+          <h2 id="v-hist-title">Ventes du jour</h2>
+          <input id="v-search" placeholder="Rechercher (produit, client, ticket…)">
         </div>
         <div class="table-wrap">
           <table class="table">
             <thead><tr>
-              <th>Date</th><th class="num">Ticket</th><th>Client</th><th>Produit</th><th>Code</th>
-              <th class="num">Qté</th><th class="num">PU</th><th class="num">Total</th><th>CC</th><th>Validation</th><th></th>
+              <th>Date</th><th>Heure</th><th>Produit</th><th class="num">Quantité</th><th class="num">Prix de vente global</th>
+              <th>CC</th><th class="num">Ticket</th><th>Client</th><th>Validation</th><th></th>
             </tr></thead>
             <tbody id="v-rows"></tbody>
+            <tfoot id="v-foot"></tfoot>
           </table>
         </div>
       </div>
     </section>
-
     <!-- STATISTIQUES -->
     <section id="view-stats" class="view">
       <h1>Statistiques de ventes</h1>
