@@ -71,11 +71,12 @@
     <nav id="nav">
       <button data-view="dashboard" class="admin-only">Accueil</button>
       <button data-view="caisse">Caisse</button>
-      <button data-view="ventes">Ventes</button>
+      <button data-view="ventes">Historique des ventes</button>
       <button data-view="stats" class="admin-only">Statistiques</button>
       <button data-view="stock">Stock</button>
       <button data-view="entrees">Entrées stock</button>
       <button data-view="facture">Facturation</button>
+      <button data-view="rh" class="admin-only">RH</button>
       <button data-view="parametres" class="admin-only">Paramètres</button>
     </nav>
     <div class="user-box">
@@ -183,12 +184,12 @@
         </div>
       </div>
     </section>
-
     <!-- VENTES -->
     <section id="view-ventes" class="view">
-      <h1>Ventes &amp; rapports</h1>
+      <h1>Historique des ventes</h1>
       <div class="card filterbar">
         <label>Date<input type="date" id="v-date"></label>
+        <label>Boutique<select id="v-boutique"></select></label>
         <label class="cc-filter">Code commercial<select id="r-cc"></select></label>
         <div class="nav-date">
           <button class="btn small" id="v-today">Aujourd'hui</button>
@@ -196,39 +197,31 @@
         </div>
         <button class="btn admin-only" id="v-export" style="margin-left:auto">Exporter les ventes (CSV)</button>
       </div>
-      <div class="report-grid">
+      <div id="v-alert"></div>
+      <div class="perf-bar" id="v-perf"></div>
+      <div class="report-grid hidden" id="v-cc-reports">
         <div class="card">
-          <h2>Journalier</h2>
-          <p class="hint" id="r-jour-label"></p>
-          <div class="report" id="r-jour"></div>
-        </div>
-        <div class="card">
-          <h2>Hebdomadaire</h2>
+          <h2>Hebdomadaire <span class="muted" id="r-cc-name1"></span></h2>
           <div class="form"><label class="full">Semaine contenant le<input type="date" id="r-semaine"></label></div>
           <p class="hint" id="r-semaine-label"></p>
           <div class="report" id="r-semaine-res"></div>
         </div>
         <div class="card">
-          <h2>Mensuel</h2>
+          <h2>Mensuel <span class="muted" id="r-cc-name2"></span></h2>
           <div class="form"><label class="full">Mois<input type="month" id="r-mois"></label></div>
           <div class="report" id="r-mois-res"></div>
-        </div>
-        <div class="card">
-          <h2>Annuel</h2>
-          <div class="form"><label class="full">Année<select id="r-annee"></select></label></div>
-          <div class="report" id="r-annee-res"></div>
         </div>
       </div>
       <div class="card">
         <div class="toolbar">
           <h2 id="v-hist-title">Ventes du jour</h2>
-          <input id="v-search" placeholder="Rechercher (produit, client, ticket…)">
+          <input id="v-search" placeholder="Rechercher (produit, ticket…)">
         </div>
         <div class="table-wrap">
           <table class="table">
             <thead><tr>
               <th>Date</th><th>Heure</th><th>Produit</th><th class="num">Quantité</th><th class="num">Prix de vente global</th>
-              <th>CC</th><th class="num">Ticket</th><th>Validation</th><th></th>
+              <th>CC</th><th>Boutique</th><th class="num">Ticket</th><th>Validation</th><th></th>
             </tr></thead>
             <tbody id="v-rows"></tbody>
             <tfoot id="v-foot"></tfoot>
@@ -236,6 +229,7 @@
         </div>
       </div>
     </section>
+
     <!-- STATISTIQUES -->
     <section id="view-stats" class="view">
       <h1>Statistiques de ventes</h1>
@@ -417,6 +411,24 @@
           </table>
         </div>
       </div>
+    </section>
+
+    <!-- RH -->
+    <section id="view-rh" class="view">
+      <h1>RH — boutiques &amp; affectation des CC</h1>
+      <div class="card">
+        <div class="toolbar">
+          <h2>Boutiques</h2>
+          <button class="btn primary" id="bq-new">+ Nouvelle boutique</button>
+        </div>
+        <p class="hint">Jusqu'à 10 boutiques. Tapez le nom puis Entrée pour le modifier. Chaque vente est rattachée à la boutique de son CC au moment de la vente.</p>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Code</th><th>Nom de la boutique</th><th>Statut</th><th>CC affectés</th><th class="num">Ventes du jour</th><th></th></tr></thead>
+            <tbody id="bq-rows"></tbody>
+          </table>
+        </div>
+      </div>
       <div class="card">
         <div class="toolbar">
           <h2>Codes commerciaux (CC) &amp; vendeurs</h2>
@@ -425,7 +437,7 @@
         <p class="hint"><b>Nom du CC</b> : tapez un nom puis Entrée, il s'affichera partout à côté du code (« CC 01 — Nom »). Lier un vendeur à un CC sans nom lui donne automatiquement le nom du vendeur. Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant.</p>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Statut</th><th>Historique des vendeurs</th><th class="num">Ventes (CA total)</th><th></th></tr></thead>
+            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Boutique</th><th>Statut</th><th>Historique des vendeurs</th><th class="num">Ventes (CA total)</th><th></th></tr></thead>
             <tbody id="cc-rows"></tbody>
           </table>
         </div>

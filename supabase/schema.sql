@@ -96,6 +96,15 @@ create table if not exists public.ccs (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Boutiques (jusqu'à 10) et affectation des CC ----------
+create table if not exists public.boutiques (
+  code text primary key,
+  nom text not null,
+  actif boolean not null default true,
+  created_at timestamptz not null default now()
+);
+alter table public.ccs add column if not exists boutique text references public.boutiques(code) on update cascade on delete set null;
+
 -- ---------- Courses (achats au marché) ----------
 -- Une course = un reçu : plusieurs produits achetés + les frais (retrait, transport, autres).
 create table if not exists public.courses (
@@ -197,6 +206,9 @@ create table if not exists public.sales (
 create index if not exists sales_date_idx on public.sales (date);
 create index if not exists sales_ticket_idx on public.sales (ticket);
 create index if not exists sales_cc_idx on public.sales (cc);
+-- Boutique où la vente a été faite (figée à la vente, même si le CC change de boutique ensuite)
+alter table public.sales add column if not exists boutique text references public.boutiques(code) on update cascade on delete set null;
+create index if not exists sales_boutique_idx on public.sales (boutique, date);
 
 -- Création d'un ticket complet (numéro attribué par la base, sans doublon).
 -- Les vendeurs ne peuvent pas changer le prix : le prix catalogue est imposé.
@@ -218,13 +230,14 @@ begin
   for l in select * from jsonb_array_elements(p_lines) loop
     select * into prod from public.products where code = l ->> 'code';
     if not found then raise exception 'Produit inconnu : %', l ->> 'code'; end if;
-    insert into public.sales (ticket, date, client, code, nom, qte, pu, cc, vendeur, valide, num_client, adresse_client, created_by)
+    insert into public.sales (ticket, date, client, code, nom, qte, pu, cc, vendeur, valide, num_client, adresse_client, created_by, boutique)
     values (
       t, case when admin then coalesce(p_date, current_date) else current_date end,
       coalesce(nullif(trim(p_client), ''), 'CLIENT COMPTOIR'),
       prod.code, prod.nom, (l ->> 'qte')::numeric,
       case when admin then (l ->> 'pu')::numeric else prod.pv end,
-      p_cc, coalesce(p_vendeur, ''), 'OUI', coalesce(p_num_client, ''), coalesce(p_adresse, ''), auth.uid()
+      p_cc, coalesce(p_vendeur, ''), 'OUI', coalesce(p_num_client, ''), coalesce(p_adresse, ''), auth.uid(),
+      (select boutique from public.ccs where code = p_cc)
     );
   end loop;
   return t;
@@ -542,12 +555,43 @@ create policy sales_admin_write on public.sales for all to authenticated using (
 -- Aucun accès anonyme.
 revoke all on all tables in schema public from anon;
 
+-- Boutiques : lecture pour les membres, gestion par l'admin.
+alter table public.boutiques enable row level security;
+drop policy if exists boutiques_select on public.boutiques;
+create policy boutiques_select on public.boutiques for select to authenticated using (public.is_member());
+drop policy if exists boutiques_write on public.boutiques;
+create policy boutiques_write on public.boutiques for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- Affecte un CC à une boutique (admin). Les ventes passées du CC sans boutique y sont rattachées ;
+-- les ventes déjà rattachées à une boutique gardent la leur.
+create or replace function public.assign_cc_boutique(p_cc text, p_boutique text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  update public.ccs set boutique = nullif(p_boutique, '') where code = p_cc;
+  if nullif(p_boutique, '') is not null then
+    update public.sales set boutique = p_boutique where cc = p_cc and boutique is null;
+  end if;
+end $$;
+revoke all on function public.assign_cc_boutique(text, text) from public, anon;
+grant execute on function public.assign_cc_boutique(text, text) to authenticated;
+
+-- Démarrage : une première boutique avec tous les CC existants et leurs ventes.
+do $$
+begin
+  if not exists (select 1 from public.boutiques) then
+    insert into public.boutiques (code, nom) values ('B1', 'Boutique 1');
+    update public.ccs set boutique = 'B1' where boutique is null;
+    update public.sales s set boutique = c.boutique from public.ccs c where s.cc = c.code and s.boutique is null;
+  end if;
+end $$;
+
 -- Temps réel : diffuse les nouvelles ventes, entrées et courses aux écrans ouverts
 -- (les règles de sécurité ci-dessus s'appliquent aussi à cette diffusion).
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

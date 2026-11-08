@@ -230,6 +230,18 @@ tr.detail > td { padding: 4px 8px 14px 28px; background: var(--bg); white-space:
 .report .perf.best { background: var(--success-soft); color: var(--success); }
 .report .perf.worst { background: var(--danger-soft); color: var(--danger); }
 .report .perf.muted { background: var(--bg); }
+/* Historique des ventes : alerte filtres et meilleur / à encourager du jour */
+.v-alert { border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: .92rem; }
+.v-alert.info { background: var(--primary-soft); color: var(--primary); }
+.v-alert.danger { background: var(--danger-soft); color: var(--danger); border: 1px solid #f5b5b5; }
+.perf-bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.perf-card { border-radius: 10px; padding: 12px 14px; border: 1px solid var(--border); background: #fff; }
+.perf-card small { display: block; font-size: .78rem; opacity: .85; margin-bottom: 2px; }
+.perf-card b { font-size: 1.1rem; }
+.perf-card span { display: block; font-size: .85rem; margin-top: 2px; }
+.perf-card.best { background: var(--success-soft); color: var(--success); border-color: #b7e2c6; }
+.perf-card.worst { background: var(--danger-soft); color: var(--danger); border-color: #f5b5b5; }
+.perf-card.muted { color: var(--muted); background: var(--bg); }
 .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); margin-right: 6px; animation: pulse 1.6s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 /* Produits créés par un CC, en attente de validation par l'admin */

@@ -3,7 +3,7 @@
 
   const $ = (sel) => document.querySelector(sel);
   const cfg = window.APP_CONFIG || {};
-  const ADMIN_VIEWS = ["dashboard", "stats", "parametres"];
+  const ADMIN_VIEWS = ["dashboard", "stats", "parametres", "rh"];
 
   let sb = null;
   let me = null;
@@ -14,7 +14,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -89,7 +89,7 @@
     return all;
   }
   async function reload() {
-    const [settingsRes, products, costs, ccs, entries, sales, users, courses] = await Promise.all([
+    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques] = await Promise.all([
       sb.from("settings").select("*").eq("id", 1).maybeSingle(),
       fetchAll("products", "code"),
       isAdmin() ? fetchAll("product_costs", "code") : Promise.resolve([]),
@@ -97,7 +97,8 @@
       fetchAll("entries", "created_at"),
       fetchAll("sales", "created_at"),
       isAdmin() ? fetchAll("profiles", "created_at") : Promise.resolve([]),
-      fetchAll("courses", "created_at")
+      fetchAll("courses", "created_at"),
+      fetchAll("boutiques", "code")
     ]);
     const st = chk(settingsRes) || {};
     const pa = {}, cmp = {};
@@ -106,7 +107,7 @@
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA",
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "" }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -129,9 +130,11 @@
       sales: sales.map((s) => ({
         id: s.id, date: s.date, ticket: Number(s.ticket), client: s.client, code: s.code, nom: s.nom, qte: Number(s.qte), pu: Number(s.pu),
         cc: String(s.cc), vendeur: s.vendeur || "", valide: s.valide, numClient: s.num_client || "", adresseClient: s.adresse_client || "",
-        cout: s.cout_unitaire == null ? null : Number(s.cout_unitaire), createdAt: s.created_at
+        cout: s.cout_unitaire == null ? null : Number(s.cout_unitaire), createdAt: s.created_at, boutique: s.boutique || ""
       })),
-      users
+      users,
+      boutiques: boutiques.map((b) => ({ code: b.code, nom: b.nom, actif: b.actif !== false }))
+        .sort((a, b) => Number(a.code.replace(/\D/g, "")) - Number(b.code.replace(/\D/g, "")) || a.code.localeCompare(b.code))
     };
     lastReload = Date.now();
   }
@@ -237,7 +240,7 @@
   }
   // Temps réel : une vente, une entrée ou une course enregistrée ailleurs met à jour cet écran.
   let rtChannel = null, rtTimer = null, rtLive = false;
-  const RT_VIEWS = ["ventes", "dashboard", "stock", "stats", "facture"];
+  const RT_VIEWS = ["ventes", "dashboard", "stock", "stats", "facture", "rh"];
   function startRealtime() {
     if (rtChannel || !sb) return;
     const onChange = () => {
@@ -255,6 +258,8 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "courses" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "ccs" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "boutiques" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -370,7 +375,7 @@
     document.title = db.settings.nom + " — Boutique";
     ({
       dashboard: renderDashboard, caisse: renderCaisse, ventes: renderVentes, stats: renderStats,
-      stock: renderStock, entrees: renderEntrees, facture: renderFacture, parametres: renderParametres
+      stock: renderStock, entrees: renderEntrees, facture: renderFacture, parametres: renderParametres, rh: renderRh
     })[view]();
   }
   function productOptions(selected) {
@@ -660,81 +665,117 @@
   });
 
   // ---------- Ventes ----------
-  function salesForReport(filterFn) {
-    const cc = $("#r-cc").value;
-    return db.sales.filter((s) => isCountedSale(s) && (cc === "ALL" || s.cc === cc) && filterFn(s));
-  }
-  function reportHtml(list, periodFn) {
+  // Boutiques
+  function boutiqueByCode(code) { return db.boutiques.find((b) => b.code === code); }
+  function boutiqueName(code) { const b = boutiqueByCode(code); return b ? b.nom : code ? code : "Non affecté"; }
+  function ccBoutique(code) { const c = ccByCode(code); return c ? c.boutique || "" : ""; }
+  function saleBoutique(s) { return s.boutique || ccBoutique(s.cc); }
+
+  function reportHtml(list) {
     const r = summarize(list);
     return '<div><span>Vente totale</span><strong>' + money(r.ca) + "</strong></div>" +
-      '<div><span>Quantités</span><strong>' + num(r.qte) + "</strong></div>" + perfHtml(periodFn);
-  }
-  // Classement des CC sur la période (tous les CC, quel que soit le filtre) :
-  // chiffre d'affaires validé ; le « à encourager » est le CC actif le plus bas, avec l'écart à combler.
-  function perfHtml(periodFn) {
-    const byCc = {};
-    db.sales.filter((s) => isCountedSale(s) && periodFn(s)).forEach((s) => { byCc[s.cc] = (byCc[s.cc] || 0) + lineTotal(s); });
-    const ranked = db.settings.ccList
-      .filter((c) => c.actif || byCc[c.code])
-      .map((c) => ({ c, ca: byCc[c.code] || 0 }))
-      .sort((a, b) => b.ca - a.ca);
-    const actives = ranked.filter((x) => x.c.actif);
-    if (ranked.length < 2) return '<div class="perf muted">Classement disponible à partir de 2 CC actifs.</div>';
-    if (!ranked[0].ca) return '<div class="perf muted">Pas encore de ventes sur la période.</div>';
-    const best = ranked[0];
-    const worst = actives[actives.length - 1];
-    let h = '<div class="perf best">🏆 Meilleur vendeur : <b>' + esc(ccName(best.c.code)) + "</b><span>" + money(best.ca) + "</span></div>";
-    if (worst && worst.c.code !== best.c.code && worst.ca < best.ca) {
-      h += '<div class="perf worst">⚠ À encourager : <b>' + esc(ccName(worst.c.code)) + "</b><span>" + money(worst.ca) + " · " +
-        Math.round((worst.ca / best.ca) * 100) + " % du meilleur — il lui manque <b>" + money(best.ca - worst.ca) + "</b> pour l'égaler</span></div>";
-    } else {
-      h += '<div class="perf muted">Égalité entre les CC.</div>';
-    }
-    return h;
+      '<div><span>Quantités</span><strong>' + num(r.qte) + "</strong></div>";
   }
   function heureOf(s) {
     return s.createdAt ? new Date(s.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
   }
-  function renderVentes() {
+  function vAlert(html, kind) {
+    $("#v-alert").innerHTML = html ? '<div class="v-alert ' + (kind || "info") + '">' + html + "</div>" : "";
+  }
+  function fillVentesFilters() {
+    const bcur = $("#v-boutique").value || "ALL";
+    $("#v-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' +
+      db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + (b.actif ? "" : " (inactive)") + "</option>").join("");
+    $("#v-boutique").value = db.boutiques.some((b) => b.code === bcur) ? bcur : "ALL";
+    fillVentesCc();
+  }
+  // La liste des CC ne montre que les CC de la boutique choisie.
+  function fillVentesCc() {
+    const b = $("#v-boutique").value;
     const cur = $("#r-cc").value || "ALL";
-    $("#r-cc").innerHTML = ccOptions(true, cur, false);
-    $("#r-cc").value = Array.from($("#r-cc").options).some((o) => o.value === cur) ? cur : "ALL";
+    const list = db.settings.ccList.filter((c) => b === "ALL" || c.boutique === b);
+    $("#r-cc").innerHTML = '<option value="ALL">Tous les CC' + (b === "ALL" ? "" : " de la boutique") + "</option>" +
+      list.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("");
+    $("#r-cc").value = list.some((c) => c.code === cur) ? cur : "ALL";
+  }
+  // Boutique choisie : la liste des CC ne garde que ceux de cette boutique
+  // (un CC d'une autre boutique est simplement désélectionné).
+  $("#v-boutique").addEventListener("change", () => {
+    vAlert("");
+    fillVentesCc();
+    renderVentes();
+  });
+  // CC choisi en premier : sa boutique s'affiche directement dans le filtre Boutique.
+  $("#r-cc").addEventListener("change", () => {
+    const cc = $("#r-cc").value;
+    vAlert("");
+    if (cc !== "ALL" && $("#v-boutique").value === "ALL") {
+      const b = ccBoutique(cc);
+      if (b) {
+        $("#v-boutique").value = b;
+        fillVentesCc();
+        $("#r-cc").value = cc;
+      } else {
+        vAlert("⚠ <b>" + esc(ccName(cc)) + "</b> n'est affecté à aucune boutique (à régler dans RH).", "danger");
+      }
+    }
+    renderVentes();
+  });
+
+  function renderVentes() {
     if (!$("#v-date").value) $("#v-date").value = today();
     if (!$("#r-semaine").value) $("#r-semaine").value = today();
     if (!$("#r-mois").value) $("#r-mois").value = today().slice(0, 7);
-    const years = Array.from(new Set(db.sales.map((s) => (s.date || "").slice(0, 4)).filter(Boolean).concat([today().slice(0, 4)]))).sort().reverse();
-    const ycur = $("#r-annee").value || today().slice(0, 4);
-    $("#r-annee").innerHTML = years.map((y) => '<option value="' + y + '">' + y + "</option>").join("");
-    $("#r-annee").value = years.includes(ycur) ? ycur : years[0];
+    fillVentesFilters();
 
-    const jour = $("#v-date").value;
-    const lundi = mondayOf($("#r-semaine").value), dimanche = addDays(lundi, 6);
-    const mois = $("#r-mois").value, annee = $("#r-annee").value;
-    const ccTxt = $("#r-cc").value === "ALL" ? "Tous les CC" : ccName($("#r-cc").value);
-
-    $("#r-jour-label").textContent = cap(fmtLong(jour)) + " · " + ccTxt;
-    const fJour = (s) => s.date === jour;
-    const fSem = (s) => s.date >= lundi && s.date <= dimanche;
-    const fMois = (s) => (s.date || "").slice(0, 7) === mois;
-    const fAn = (s) => (s.date || "").slice(0, 4) === annee;
-    $("#r-jour").innerHTML = reportHtml(salesForReport(fJour), fJour);
-    $("#r-semaine-label").textContent = "Du lundi " + fmtDate(lundi) + " au dimanche " + fmtDate(dimanche);
-    $("#r-semaine-res").innerHTML = reportHtml(salesForReport(fSem), fSem);
-    $("#r-mois-res").innerHTML = reportHtml(salesForReport(fMois), fMois);
-    $("#r-annee-res").innerHTML = reportHtml(salesForReport(fAn), fAn);
+    // Rapports hebdomadaire et mensuel : seulement quand un CC est choisi
+    const cc = $("#r-cc").value;
+    $("#v-cc-reports").classList.toggle("hidden", cc === "ALL");
+    if (cc !== "ALL") {
+      const lundi = mondayOf($("#r-semaine").value), dimanche = addDays(lundi, 6), mois = $("#r-mois").value;
+      const mine = db.sales.filter((s) => isCountedSale(s) && s.cc === cc);
+      $("#r-cc-name1").textContent = "— " + ccName(cc);
+      $("#r-cc-name2").textContent = "— " + ccName(cc);
+      $("#r-semaine-label").textContent = "Du lundi " + fmtDate(lundi) + " au dimanche " + fmtDate(dimanche);
+      $("#r-semaine-res").innerHTML = reportHtml(mine.filter((s) => s.date >= lundi && s.date <= dimanche));
+      $("#r-mois-res").innerHTML = reportHtml(mine.filter((s) => (s.date || "").slice(0, 7) === mois));
+    }
+    renderDayPerf();
     renderSalesHistory();
   }
-  // Historique des ventes de la date choisie (toutes les ventes du jour, au fur et à mesure)
+  // Meilleur vendeur (vert) et CC à encourager (rouge) de la journée,
+  // parmi les CC ayant au moins une vente ce jour-là (dans la boutique choisie).
+  function renderDayPerf() {
+    const jour = $("#v-date").value, b = $("#v-boutique").value;
+    const byCc = {};
+    db.sales.filter((s) => isCountedSale(s) && s.date === jour && (b === "ALL" || saleBoutique(s) === b))
+      .forEach((s) => { byCc[s.cc] = (byCc[s.cc] || 0) + lineTotal(s); });
+    const ranked = Object.keys(byCc).map((code) => ({ code, ca: byCc[code] })).sort((x, y) => y.ca - x.ca);
+    const scope = b === "ALL" ? "toutes boutiques" : boutiqueName(b);
+    if (!ranked.length) { $("#v-perf").innerHTML = '<div class="perf-card muted">Aucune vente ce jour-là (' + esc(scope) + ").</div>"; return; }
+    const best = ranked[0];
+    let h = '<div class="perf-card best"><small>🏆 Meilleur vendeur du jour · ' + esc(scope) + "</small><b>" + esc(ccName(best.code)) + "</b><span>" + money(best.ca) +
+      (b === "ALL" && ccBoutique(best.code) ? " · " + esc(boutiqueName(ccBoutique(best.code))) : "") + "</span></div>";
+    if (ranked.length > 1) {
+      const worst = ranked[ranked.length - 1];
+      h += '<div class="perf-card worst"><small>⚠ CC à encourager · ' + esc(scope) + "</small><b>" + esc(ccName(worst.code)) + "</b><span>" + money(worst.ca) +
+        " · " + Math.round((worst.ca / best.ca) * 100) + " % du meilleur — il lui manque <b>" + money(best.ca - worst.ca) + "</b></span></div>";
+    } else {
+      h += '<div class="perf-card muted">Un seul CC a vendu ce jour-là : pas encore de comparaison.</div>';
+    }
+    $("#v-perf").innerHTML = h;
+  }
+  // Historique des ventes du jour (au fur et à mesure), filtré par boutique et CC
   function renderSalesHistory() {
     const jour = $("#v-date").value || today();
-    const cc = $("#r-cc").value;
+    const cc = $("#r-cc").value, b = $("#v-boutique").value;
     const q = $("#v-search").value.trim().toLowerCase();
     $("#v-hist-title").textContent = (jour === today() ? "Ventes d'aujourd'hui" : "Ventes du " + fmtLong(jour)) +
-      (cc === "ALL" ? " — tous les CC" : " — " + ccName(cc));
+      " — " + (b === "ALL" ? "toutes les boutiques" : boutiqueName(b)) + (cc === "ALL" ? "" : " — " + ccName(cc));
     const rows = db.sales
-      .filter((s) => s.date === jour && (cc === "ALL" || s.cc === cc))
-      .filter((s) => !q || [s.client, s.nom, s.code, String(s.ticket), vendeurOf(s)].some((v) => String(v || "").toLowerCase().includes(q)))
-      .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || b.ticket - a.ticket);
+      .filter((s) => s.date === jour && (b === "ALL" || saleBoutique(s) === b) && (cc === "ALL" || s.cc === cc))
+      .filter((s) => !q || [s.nom, s.code, String(s.ticket), vendeurOf(s)].some((v) => String(v || "").toLowerCase().includes(q)))
+      .sort((x, y) => String(y.createdAt || "").localeCompare(String(x.createdAt || "")) || y.ticket - x.ticket);
 
     const admin = isAdmin();
     const badge = (s) => (s.valide === "OUI" ? '<span class="badge ok">OUI</span>' : '<span class="badge mute">NON</span>');
@@ -743,23 +784,23 @@
       "<td>" + fmtDate(s.date) + "</td><td>" + heureOf(s) + "</td><td>" + esc(s.nom) + pendingBadge(productByCode(s.code)) +
       '</td><td class="num">' + num(s.qte) + '</td><td class="num"><b>' + money(lineTotal(s)) + "</b></td><td>" + ccLabel(s.cc) +
       (vendeurOf(s) ? '<span class="sub">' + esc(vendeurOf(s)) + "</span>" : "") +
-      '</td><td class="num">' + s.ticket +
+      "</td><td>" + esc(boutiqueName(saleBoutique(s))) + '</td><td class="num">' + s.ticket +
       '</td><td class="keep">' + (admin ? '<button class="btn small" data-toggle="' + s.id + '">' + badge(s) + "</button>" : badge(s)) +
       "</td><td>" + (admin ? '<button class="btn small danger" data-del="' + s.id + '" title="Supprimer">✕</button>' : "") + "</td></tr>"
-    ).join("") : '<tr><td colspan="9" class="empty">Aucune vente pour cette date' + (cc === "ALL" ? "" : " et ce CC") + ".</td></tr>";
+    ).join("") : '<tr><td colspan="10" class="empty">Aucune vente pour cette date avec ces filtres.</td></tr>';
 
     const valides = rows.filter(isCountedSale);
     const tot = summarize(valides);
-    $("#v-foot").innerHTML = '<tr><td colspan="3">TOTAL ' + (cc === "ALL" ? "DES VENTES" : "— " + esc(ccName(cc))) +
+    $("#v-foot").innerHTML = '<tr><td colspan="3">TOTAL ' + (cc === "ALL" ? (b === "ALL" ? "DES VENTES" : "— " + esc(boutiqueName(b))) : "— " + esc(ccName(cc))) +
       " · " + num(tot.tickets) + " ticket" + (tot.tickets > 1 ? "s" : "") + '</td><td class="num">' + num(tot.qte) +
-      '</td><td class="num">' + money(tot.ca) + '</td><td colspan="4">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
+      '</td><td class="num">' + money(tot.ca) + '</td><td colspan="5">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
     $("#v-refresh-info").innerHTML = (rtLive ? '<span class="live-dot"></span>En direct · ' : "") + "mis à jour à " +
       new Date(lastReload || Date.now()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
-  ["#v-date", "#r-semaine", "#r-mois", "#r-annee", "#r-cc"].forEach((id) => $(id).addEventListener("change", renderVentes));
+  ["#v-date", "#r-semaine", "#r-mois"].forEach((id) => $(id).addEventListener("change", renderVentes));
   $("#v-search").addEventListener("input", renderSalesHistory);
   $("#v-today").addEventListener("click", () => { $("#v-date").value = today(); renderVentes(); });
-  // Rafraîchissement automatique toutes les 30 s quand l'écran Ventes est affiché
+  // Filet de sécurité si le temps réel est coupé : actualisation toutes les 30 s
   setInterval(async () => {
     if (currentView !== "ventes" || document.visibilityState !== "visible" || document.querySelector("dialog[open]")) return;
     try { await reload(); renderVentes(); } catch (e) { /* hors ligne : prochain essai dans 30 s */ }
@@ -779,8 +820,8 @@
   });
   $("#v-export").addEventListener("click", () => {
     if (!isAdmin()) return toast("Export réservé à l'administrateur.");
-    const head = ["Date", "Ticket", "Client", "Produit", "Code_Produit", "Quantite", "PU_Vente", "Total_Vente", "Code_CC", "Vendeur", "Validation", "N_Client", "Adresse_Client"];
-    const lines = db.sales.map((s) => [s.date, s.ticket, s.client, s.nom, s.code, s.qte, s.pu, lineTotal(s), s.cc, vendeurOf(s), s.valide, s.numClient || "", s.adresseClient || ""]);
+    const head = ["Date", "Heure", "Ticket", "Boutique", "Client", "Produit", "Code_Produit", "Quantite", "PU_Vente", "Total_Vente", "Code_CC", "Vendeur", "Validation", "N_Client", "Adresse_Client"];
+    const lines = db.sales.map((s) => [s.date, heureOf(s), s.ticket, boutiqueName(saleBoutique(s)), s.client, s.nom, s.code, s.qte, s.pu, lineTotal(s), s.cc, vendeurOf(s), s.valide, s.numClient || "", s.adresseClient || ""]);
     download("ventes-" + today() + ".csv", "﻿" + toCsv([head].concat(lines)), "text/csv;charset=utf-8");
   });
 
@@ -1471,9 +1512,42 @@
   // ---------- Paramètres ----------
   function renderParametres() {
     document.querySelectorAll("#p-form [data-k]").forEach((i) => { i.value = db.settings[i.dataset.k] || ""; });
-    renderCcTable();
     renderUsers();
   }
+
+  // ---------- RH : boutiques et affectation des CC ----------
+  function renderRh() {
+    const jour = today();
+    $("#bq-rows").innerHTML = db.boutiques.length ? db.boutiques.map((b) => {
+      const ccs = db.settings.ccList.filter((c) => c.boutique === b.code);
+      const caJour = db.sales.filter((s) => isCountedSale(s) && s.date === jour && saleBoutique(s) === b.code).reduce((a, s) => a + lineTotal(s), 0);
+      return "<tr><td><b>" + esc(b.code) + '</b></td><td><input class="inline-input" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '"></td><td>' +
+        (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + '</td><td class="wrap">' +
+        (ccs.length ? ccs.map((c) => esc(ccName(c.code))).join("<br>") : '<span class="muted">Aucun CC</span>') + '</td><td class="num">' + money(caJour) + "</td><td>" +
+        '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button></td></tr>";
+    }).join("") : '<tr><td colspan="6" class="empty">Aucune boutique.</td></tr>';
+    renderCcTable();
+  }
+  $("#bq-new").addEventListener("click", () => {
+    if (db.boutiques.length >= 10 && !confirm("Vous avez déjà " + db.boutiques.length + " boutiques. En créer une de plus ?")) return;
+    const n = db.boutiques.reduce((m, b) => Math.max(m, Number(b.code.replace(/\D/g, "")) || 0), 0) + 1;
+    const nom = prompt("Nom de la nouvelle boutique :", "Boutique " + n);
+    if (!nom || !nom.trim()) return;
+    act(async () => chk(await sb.from("boutiques").insert({ code: "B" + n, nom: nom.trim() })), "Boutique créée : " + nom.trim());
+  });
+  $("#bq-rows").addEventListener("change", (e) => {
+    const inp = e.target.closest("[data-bq-nom]");
+    if (!inp) return;
+    const nom = inp.value.trim();
+    if (!nom) { inp.value = boutiqueName(inp.dataset.bqNom); return toast("Le nom ne peut pas être vide."); }
+    act(async () => chk(await sb.from("boutiques").update({ nom }).eq("code", inp.dataset.bqNom)), "Boutique renommée.");
+  });
+  $("#bq-rows").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-bq-actif]");
+    if (!b) return;
+    const bq = boutiqueByCode(b.dataset.bqActif);
+    act(async () => chk(await sb.from("boutiques").update({ actif: !bq.actif }).eq("code", bq.code)), bq.nom + (bq.actif ? " désactivée." : " activée."), b);
+  });
   $("#p-save").addEventListener("click", (ev) => {
     const row = { id: 1 };
     document.querySelectorAll("#p-form [data-k]").forEach((i) => { row[i.dataset.k] = i.value.trim(); });
@@ -1532,6 +1606,9 @@
       const hasSales = db.sales.some((s) => s.cc === c.code);
       return "<tr><td><b>" + ccLabel(c.code) + "</b></td><td>" +
         '<input class="inline-input" data-cc-nom="' + esc(c.code) + '" value="' + esc(currentAgent(c)) + '" placeholder="Nom du CC" title="Nom affiché à côté du CC (Entrée pour valider)">' + "</td><td>" +
+        '<select class="inline-select" data-cc-bq="' + esc(c.code) + '"><option value="">— Non affecté —</option>' +
+        db.boutiques.map((b) => '<option value="' + esc(b.code) + '"' + (b.code === c.boutique ? " selected" : "") + ">" + esc(b.nom) + "</option>").join("") +
+        "</select></td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
         '</td><td class="hist">' + hist + '</td><td class="num">' + money(ca) + '</td><td class="wrap">' +
         '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
@@ -1594,6 +1671,12 @@
     }, msg || ccLabel(cc.code) + " — " + nom);
   }
   $("#cc-rows").addEventListener("change", (e) => {
+    const sel = e.target.closest("[data-cc-bq]");
+    if (sel) {
+      const code = sel.dataset.ccBq, bq = sel.value;
+      return act(async () => chk(await sb.rpc("assign_cc_boutique", { p_cc: code, p_boutique: bq })),
+        ccLabel(code) + (bq ? " affecté à " + boutiqueName(bq) + "." : " retiré de sa boutique."));
+    }
     const inp = e.target.closest("[data-cc-nom]");
     if (!inp) return;
     const nom = inp.value.trim();
