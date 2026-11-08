@@ -122,7 +122,8 @@
       courses: courses.map((c) => ({
         id: c.id, date: c.date || "", cc: c.cc ? String(c.cc) : "", saisiPar: c.saisi_par || "", createdBy: c.created_by, createdAt: c.created_at,
         retrait: Number(c.frais_retrait) || 0, transport: Number(c.frais_transport) || 0, autres: Number(c.autres_frais) || 0,
-        autresLib: c.autres_libelle || "", obs: c.obs || "", statut: c.statut
+        autresLib: c.autres_libelle || "", obs: c.obs || "", statut: c.statut,
+        marche: c.marche || "", tel: c.fournisseur_tel || "", recuPath: c.recu_path || ""
       })),
       sales: sales.map((s) => ({
         id: s.id, date: s.date, ticket: Number(s.ticket), client: s.client, code: s.code, nom: s.nom, qte: Number(s.qte), pu: Number(s.pu),
@@ -805,20 +806,30 @@
   // ----- Course (achat au marché) : saisie -----
   let courseLines = [];
   let editingCourseId = null;
+  let coPhotoBlob = null;        // nouvelle photo (compressée) à envoyer
+  let coPhotoPath = "";          // photo déjà enregistrée (modification)
+  let coPhotoRemoved = false;    // photo existante retirée
+  const openCourses = new Set();
+  const photoUrls = {};          // cache des liens signés { path: { url, exp } }
 
   function newCourseLine() { return { code: "", qte: "", total: "" }; }
+  function setPhotoPreview(url, label) {
+    $("#co-photo-preview").innerHTML = url
+      ? '<img src="' + esc(url) + '" alt="Reçu" data-zoom="' + esc(url) + '"><span>' + esc(label || "") + '</span><button class="btn small danger" id="co-photo-rm">Retirer la photo</button>'
+      : '<span>Aucune photo (facultatif). Sur téléphone, le bouton ouvre l\'appareil photo.</span>';
+  }
   function resetCourseForm() {
     editingCourseId = null;
     courseLines = [newCourseLine()];
-    $("#co-retrait").value = 0;
-    $("#co-transport").value = 0;
-    $("#co-autres").value = 0;
-    $("#co-autres-lib").value = "";
-    $("#co-obs").value = "";
+    ["#co-retrait", "#co-transport", "#co-autres"].forEach((id) => { $(id).value = 0; });
+    ["#co-autres-lib", "#co-obs", "#co-marche", "#co-tel"].forEach((id) => { $(id).value = ""; });
     $("#co-date").value = today();
     $("#co-title").textContent = "Nouvelle course (achat au marché)";
     $("#co-cancel-edit").classList.add("hidden");
     $("#co-save").textContent = "Enregistrer la course";
+    coPhotoBlob = null; coPhotoPath = ""; coPhotoRemoved = false;
+    $("#co-photo").value = "";
+    setPhotoPreview(null);
   }
   // Calcule prix unitaire, part des frais, coût de revient et marge de chaque ligne (même règle que la base).
   function computeCourse(lines, retrait, transport, autres) {
@@ -828,8 +839,7 @@
     const n = valid.length;
     let margeTotale = 0;
     const rows = lines.map((l) => {
-      const ok = valid.includes(l);
-      if (!ok) return { ok: false };
+      if (!valid.includes(l)) return { ok: false };
       const p = productByCode(l.code);
       const qte = Number(l.qte), total = Number(l.total);
       const part = sousTotal > 0 ? (frais * total) / sousTotal : frais / n;
@@ -840,12 +850,26 @@
       margeTotale += mu * qte;
       return { ok: true, pu, part, cr, pv, mu, mt: mu * qte, pct: pv > 0 ? (mu / pv) * 100 : 0 };
     });
-    const totalCourse = sousTotal + frais;
-    return { rows, sousTotal, frais, totalCourse, margeTotale, ventePotentielle: valid.reduce((a, l) => a + Number(l.qte) * ((productByCode(l.code) || {}).pv || 0), 0) };
+    return {
+      rows, sousTotal, frais, totalCourse: sousTotal + frais, margeTotale,
+      ventePotentielle: valid.reduce((a, l) => a + Number(l.qte) * ((productByCode(l.code) || {}).pv || 0), 0)
+    };
   }
   function money0(n) { return money(Math.round(n)); }
   function margeHtml(v, pct) {
     return '<span class="' + (v >= 0 ? "pos" : "neg") + '">' + money0(v) + (pct != null ? " (" + Math.round(pct) + " %)" : "") + "</span>";
+  }
+  // Cadre récapitulatif (utilisé dans le formulaire et dans l'historique).
+  function summaryBox(s) {
+    const frais = s.retrait + s.transport + s.autres;
+    return '<div class="sum-row"><span>Sous-total des achats</span><b>' + money0(s.sousTotal) + "</b></div>" +
+      '<div class="sum-row"><span>Frais de retrait</span><span>' + money0(s.retrait) + "</span></div>" +
+      '<div class="sum-row"><span>Transport aller-retour</span><span>' + money0(s.transport) + "</span></div>" +
+      '<div class="sum-row"><span>' + esc(s.autresLib || "Autres frais") + "</span><span>" + money0(s.autres) + "</span></div>" +
+      '<div class="sum-row"><span>Total des frais</span><span>' + money0(frais) + "</span></div>" +
+      '<div class="sum-row big"><span>TOTAL DE LA COURSE</span><span>' + money0(s.sousTotal + frais) + "</span></div>" +
+      '<div class="sum-row"><span>Valeur de vente du stock acheté</span><span>' + money0(s.vente) + "</span></div>" +
+      '<div class="sum-row"><span>Marge potentielle totale</span><b>' + margeHtml(s.marge, s.vente > 0 ? (s.marge / s.vente) * 100 : null) + "</b></div>";
   }
   function renderCourseForm() {
     const admin = isAdmin();
@@ -862,6 +886,12 @@
       ecc.innerHTML = me.cc ? '<option value="' + esc(me.cc) + '">' + esc(ccName(me.cc)) + "</option>" : '<option value="">— Aucun CC lié —</option>';
       ecc.disabled = true;
     }
+    // Suggestions : marchés et numéros déjà utilisés
+    const uniq = (arr) => Array.from(new Set(arr.filter(Boolean))).sort();
+    $("#marches-list").innerHTML = uniq(db.courses.map((c) => c.marche)).map((m) => '<option value="' + esc(m) + '">').join("");
+    $("#tels-list").innerHTML = uniq(db.courses.map((c) => c.tel)).map((t) => '<option value="' + esc(t) + '">').join("");
+    if (!$("#co-photo-preview").innerHTML) setPhotoPreview(null);
+
     if (!courseLines.length) courseLines = [newCourseLine()];
     $("#co-lines").innerHTML = courseLines.map((l, i) =>
       '<tr data-idx="' + i + '"><td><select data-f="code"><option value="">— Choisir —</option>' + productOptions(l.code) + "</select></td>" +
@@ -884,22 +914,15 @@
       set("pv", money0(r.pv));
       set("mu", margeHtml(r.mu, r.pct));
     });
-    const autresLib = $("#co-autres-lib").value.trim();
-    $("#co-summary").innerHTML =
-      '<div class="sum-row"><span>Sous-total des achats</span><b>' + money0(c.sousTotal) + "</b></div>" +
-      '<div class="sum-row"><span>Frais de retrait</span><span>' + money0(Number($("#co-retrait").value) || 0) + "</span></div>" +
-      '<div class="sum-row"><span>Transport aller-retour</span><span>' + money0(Number($("#co-transport").value) || 0) + "</span></div>" +
-      '<div class="sum-row"><span>' + esc(autresLib || "Autres frais") + "</span><span>" + money0(Number($("#co-autres").value) || 0) + "</span></div>" +
-      '<div class="sum-row"><span>Total des frais</span><span>' + money0(c.frais) + "</span></div>" +
-      '<div class="sum-row big"><span>TOTAL DE LA COURSE</span><span>' + money0(c.totalCourse) + "</span></div>" +
-      '<div class="sum-row"><span>Valeur de vente du stock acheté</span><span>' + money0(c.ventePotentielle) + "</span></div>" +
-      '<div class="sum-row"><span>Marge potentielle totale</span><b>' + margeHtml(c.margeTotale, c.ventePotentielle > 0 ? (c.margeTotale / c.ventePotentielle) * 100 : null) + "</b></div>";
+    $("#co-summary").innerHTML = summaryBox({
+      sousTotal: c.sousTotal, retrait: Number($("#co-retrait").value) || 0, transport: Number($("#co-transport").value) || 0,
+      autres: Number($("#co-autres").value) || 0, autresLib: $("#co-autres-lib").value.trim(), vente: c.ventePotentielle, marge: c.margeTotale
+    });
   }
   $("#co-lines").addEventListener("input", (e) => {
     const el = e.target.closest("[data-f]");
     if (!el) return;
-    const i = Number(el.closest("tr").dataset.idx);
-    courseLines[i][el.dataset.f] = el.value;
+    courseLines[Number(el.closest("tr").dataset.idx)][el.dataset.f] = el.value;
     updateCourseCalc();
   });
   $("#co-lines").addEventListener("change", (e) => {
@@ -922,8 +945,71 @@
   });
   ["#co-retrait", "#co-transport", "#co-autres", "#co-autres-lib"].forEach((id) => $(id).addEventListener("input", updateCourseCalc));
   $("#co-cancel-edit").addEventListener("click", () => { resetCourseForm(); renderCourseForm(); });
+
+  // Photo du reçu : réduite à 1600 px et compressée en JPEG avant l'envoi (connexion lente).
+  function compressImage(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const max = 1600;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * scale);
+        cv.height = Math.round(img.height * scale);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        cv.toBlob((b) => (b ? resolve(b) : reject(new Error("Photo illisible"))), "image/jpeg", 0.72);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Photo illisible")); };
+      img.src = url;
+    });
+  }
+  $("#co-photo").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try {
+      coPhotoBlob = await compressImage(file);
+      coPhotoRemoved = false;
+      setPhotoPreview(URL.createObjectURL(coPhotoBlob), "Photo prête (" + Math.round(coPhotoBlob.size / 1024) + " Ko)");
+    } catch (err) {
+      toast("Impossible de lire cette photo.");
+    }
+  });
+  $("#co-photo-preview").addEventListener("click", (e) => {
+    if (e.target.closest("#co-photo-rm")) {
+      coPhotoBlob = null;
+      if (coPhotoPath) coPhotoRemoved = true;
+      $("#co-photo").value = "";
+      setPhotoPreview(null);
+      return;
+    }
+    const z = e.target.closest("[data-zoom]");
+    if (z) showPhoto(z.dataset.zoom, "Reçu");
+  });
+  async function signedPhotoUrl(path) {
+    const hit = photoUrls[path];
+    if (hit && hit.exp > Date.now()) return hit.url;
+    const data = chk(await sb.storage.from("recus").createSignedUrl(path, 3600));
+    photoUrls[path] = { url: data.signedUrl, exp: Date.now() + 50 * 60 * 1000 };
+    return data.signedUrl;
+  }
+  function showPhoto(url, title) {
+    $("#pdlg-title").textContent = title || "Reçu";
+    $("#pdlg-img").src = url;
+    $("#pdlg-open").href = url;
+    $("#photo-dialog").showModal();
+  }
+  function uuid() {
+    return (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+  }
+
   $("#co-save").addEventListener("click", (ev) => {
     const filled = courseLines.filter((l) => l.code || l.qte !== "" || l.total !== "");
+    const marche = $("#co-marche").value.trim();
+    const tel = $("#co-tel").value.trim();
+    if (!marche) { $("#co-marche").focus(); return toast("Indiquez le marché de la course."); }
+    if (tel.replace(/\D/g, "").length < 8) { $("#co-tel").focus(); return toast("Indiquez le téléphone du fournisseur (8 chiffres minimum)."); }
     if (!filled.length) return toast("Ajoutez au moins un produit.");
     for (const l of filled) {
       if (!l.code) return toast("Choisissez le produit de chaque ligne.");
@@ -932,17 +1018,34 @@
     }
     const date = isAdmin() ? ($("#co-date").value || today()) : today();
     const wasEditing = !!editingCourseId;
-    act(async () => chk(await sb.rpc("save_course", {
-      p_id: editingCourseId, p_date: date, p_cc: isAdmin() ? $("#co-cc").value : null,
-      p_frais_retrait: Number($("#co-retrait").value) || 0, p_frais_transport: Number($("#co-transport").value) || 0,
-      p_autres_frais: Number($("#co-autres").value) || 0, p_autres_libelle: $("#co-autres-lib").value.trim(),
-      p_obs: $("#co-obs").value.trim(),
-      p_lines: filled.map((l) => ({ code: l.code, qte: Number(l.qte), prix_total: Number(l.total) }))
-    })), wasEditing ? "Course modifiée." : "Course enregistrée, stock mis à jour.", ev.currentTarget).then((r) => {
+    const btn = ev.currentTarget;
+    act(async () => {
+      let recuPath = null; // null = garder la photo existante
+      if (coPhotoBlob) {
+        btn.textContent = "Envoi de la photo…";
+        const path = "courses/" + date.slice(0, 7) + "/" + uuid() + ".jpg";
+        chk(await sb.storage.from("recus").upload(path, coPhotoBlob, { contentType: "image/jpeg", upsert: false }));
+        recuPath = path;
+      } else if (coPhotoRemoved) {
+        recuPath = "";
+      }
+      btn.textContent = "Enregistrement…";
+      return chk(await sb.rpc("save_course", {
+        p_id: editingCourseId, p_date: date, p_cc: isAdmin() ? $("#co-cc").value : null,
+        p_frais_retrait: Number($("#co-retrait").value) || 0, p_frais_transport: Number($("#co-transport").value) || 0,
+        p_autres_frais: Number($("#co-autres").value) || 0, p_autres_libelle: $("#co-autres-lib").value.trim(),
+        p_obs: $("#co-obs").value.trim(),
+        p_lines: filled.map((l) => ({ code: l.code, qte: Number(l.qte), prix_total: Number(l.total) })),
+        p_marche: marche, p_fournisseur_tel: tel, p_recu_path: recuPath
+      }));
+    }, wasEditing ? "Course modifiée." : "Course enregistrée, stock mis à jour.", btn).then((r) => {
+      btn.textContent = editingCourseId ? "Enregistrer les modifications" : "Enregistrer la course";
       if (!r.ok) return;
       openDays.add(date);
+      if (r.data) openCourses.add(r.data);
       resetCourseForm();
       renderCourseForm();
+      renderEntryHistory();
     });
   });
   function openCourseEdit(c) {
@@ -953,7 +1056,13 @@
     $("#co-autres").value = c.autres;
     $("#co-autres-lib").value = c.autresLib;
     $("#co-obs").value = c.obs;
+    $("#co-marche").value = c.marche;
+    $("#co-tel").value = c.tel;
     $("#co-date").value = c.date || today();
+    coPhotoBlob = null; coPhotoRemoved = false; coPhotoPath = c.recuPath || "";
+    $("#co-photo").value = "";
+    setPhotoPreview(null);
+    if (coPhotoPath) signedPhotoUrl(coPhotoPath).then((u) => setPhotoPreview(u, "Photo enregistrée — prenez-en une autre pour la remplacer")).catch(() => {});
     renderCourseForm();
     if (isAdmin()) $("#co-cc").value = c.cc || "";
     $("#co-title").textContent = "Modification de la course du " + fmtDate(c.date) + " (" + (c.saisiPar || "—") + ")";
@@ -973,7 +1082,7 @@
     renderEntryHistory();
   }
 
-  // ----- Historique : jours → courses (reçus) + entrées simples -----
+  // ----- Historique : jours → courses (cliquer pour le détail) + entrées simples -----
   function canEditCourse(c) {
     if (isAdmin()) return true;
     return c.createdBy === me.id && c.createdAt && Date.now() - new Date(c.createdAt).getTime() < EDIT_WINDOW_MS;
@@ -984,13 +1093,14 @@
     const fcc = $("#eh-cc").value;
     const q = $("#eh-search").value.trim().toLowerCase();
     const ccOk = (cc) => (fcc === "ALL" ? true : fcc === "NONE" ? !cc : cc === fcc);
-    const matches = (code, who, obs) => {
+    const matches = (code, extra) => {
       if (!q) return true;
       const p = productByCode(code);
-      return ((p ? p.nom : "") + " " + code + " " + (who || "") + " " + (obs || "")).toLowerCase().includes(q);
+      return ((p ? p.nom : "") + " " + code + " " + (extra || "")).toLowerCase().includes(q);
     };
-    const courses = db.courses.filter((c) => ccOk(c.cc) && (!q || courseLinesOf(c).some((x) => matches(x.code, c.saisiPar, c.obs))));
-    const simples = db.entries.filter((x) => !x.courseId && ccOk(x.cc) && matches(x.code, x.saisiPar, x.obs));
+    const courses = db.courses.filter((c) => ccOk(c.cc) &&
+      (!q || courseLinesOf(c).some((x) => matches(x.code, [c.saisiPar, c.obs, c.marche, c.tel].join(" ")))));
+    const simples = db.entries.filter((x) => !x.courseId && ccOk(x.cc) && matches(x.code, (x.saisiPar || "") + " " + (x.obs || "")));
 
     const sel = $("#eh-date");
     const curDate = sel.value;
@@ -1017,27 +1127,20 @@
         '</td><td class="num">' + new Set(validLines.map((x) => x.code)).size + '</td><td class="num">' + num(validLines.reduce((a, x) => a + Number(x.qte), 0)) +
         '</td><td class="num">' + (montant ? money0(montant) : '<span class="muted">—</span>') + "</td><td>" + esc(ccs) + "</td><td>" + esc(who) + "</td></tr>";
       if (open) {
-        h += '<tr class="detail"><td colspan="7">' + dc.map(courseReceipt).join("") +
+        h += '<tr class="detail"><td colspan="7">' +
+          (dc.length ? '<p class="hint">Cliquez sur une course pour voir son détail, son résumé et la photo du reçu.</p>' : "") +
+          dc.map(courseReceipt).join("") +
           (ds.length ? '<h3 class="sub-title">Entrées sans détail de prix</h3>' + entryDetail(ds) : "") + "</td></tr>";
       }
       return h;
     }).join("");
+    loadVisiblePhotos();
   }
   function courseReceipt(c) {
     const admin = isAdmin();
     const lines = courseLinesOf(c);
     const sousTotal = lines.reduce((a, x) => a + (x.prixTotal || 0), 0);
     let margeTot = 0, venteTot = 0;
-    const heure = c.createdAt ? new Date(c.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
-    const badge = c.statut === "Validée" ? '<span class="badge ok">Validée</span>' : '<span class="badge mute">Annulée</span>';
-    let actions;
-    if (canEditCourse(c)) {
-      actions = '<button class="btn small" data-cedit="' + c.id + '">Modifier</button> ' +
-        '<button class="btn small" data-ctoggle="' + c.id + '">' + (c.statut === "Validée" ? "Annuler" : "Rétablir") + "</button> " +
-        (admin ? '<button class="btn small danger" data-cdel="' + c.id + '">✕</button>' : '<span class="sub">modifiable encore ' + remainingTime(c) + "</span>");
-    } else {
-      actions = '<span class="muted">🔒 Verrouillée</span>';
-    }
     const rows = lines.map((x) => {
       const p = productByCode(x.code);
       const pv = p ? Number(p.pv) : 0;
@@ -1050,15 +1153,40 @@
         '</td><td class="num">' + money0(pu) + '</td><td class="num">' + money0(x.fraisPart || 0) + '</td><td class="num">' + money0(cr) +
         '</td><td class="num">' + money0(pv) + '</td><td class="num">' + margeHtml(mu, pv > 0 ? (mu / pv) * 100 : null) + '</td><td class="num">' + margeHtml(mu * x.qte) + "</td></tr>";
     }).join("");
-    return '<div class="course-receipt' + (c.statut === "Validée" ? "" : " off") + '">' +
-      '<div class="course-head"><b>Course de ' + heure + "</b><span>" + (c.cc ? esc(ccName(c.cc)) : "Admin") + "</span><span>Saisie par " + esc(c.saisiPar || "—") + "</span>" + badge +
-      (c.obs ? '<span class="muted">' + esc(c.obs) + "</span>" : "") + '<span class="actions">' + actions + "</span></div>" +
-      '<div class="table-wrap"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix total payé</th><th class="num">Prix unitaire</th>' +
+    const heure = c.createdAt ? new Date(c.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
+    const badge = c.statut === "Validée" ? '<span class="badge ok">Validée</span>' : '<span class="badge mute">Annulée</span>';
+    const open = openCourses.has(c.id);
+    let actions;
+    if (canEditCourse(c)) {
+      actions = '<button class="btn small" data-cedit="' + c.id + '">Modifier</button> ' +
+        '<button class="btn small" data-ctoggle="' + c.id + '">' + (c.statut === "Validée" ? "Annuler" : "Rétablir") + "</button> " +
+        (admin ? '<button class="btn small danger" data-cdel="' + c.id + '">✕</button>' : '<span class="sub">modifiable encore ' + remainingTime(c) + "</span>");
+    } else {
+      actions = '<span class="muted">🔒 Verrouillée</span>';
+    }
+    const head = '<div class="course-head clickable" data-course="' + c.id + '"><span class="chev">' + (open ? "▾" : "▸") + "</span><b>Course de " + heure + "</b>" +
+      (c.marche ? "<span>📍 " + esc(c.marche) + "</span>" : "") + "<span>" + (c.cc ? esc(ccName(c.cc)) : "Admin") + "</span>" +
+      "<span>Saisie par " + esc(c.saisiPar || "—") + "</span>" + badge +
+      "<span>Total : <b>" + money0(sousTotal + c.retrait + c.transport + c.autres) + "</b></span>" +
+      "<span>Marge : " + margeHtml(margeTot) + "</span>" + (c.recuPath ? "<span title=\"Photo du reçu jointe\">📷</span>" : "") +
+      '<span class="actions">' + actions + "</span></div>";
+    if (!open) return '<div class="course-receipt' + (c.statut === "Validée" ? "" : " off") + '">' + head + "</div>";
+    return '<div class="course-receipt' + (c.statut === "Validée" ? "" : " off") + '">' + head +
+      '<div class="course-head">' + (c.marche ? "<span>Marché : <b>" + esc(c.marche) + "</b></span>" : "") +
+      (c.tel ? '<span>Fournisseur : <a href="tel:' + esc(c.tel.replace(/[^\d+]/g, "")) + '">' + esc(c.tel) + "</a></span>" : "") +
+      (c.obs ? '<span class="muted">' + esc(c.obs) + "</span>" : "") + "</div>" +
+      '<div class="course-detail"><div class="table-wrap"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix total payé</th><th class="num">Prix unitaire</th>' +
       '<th class="num">Part des frais</th><th class="num">Coût de revient unit.</th><th class="num">Prix de vente</th><th class="num">Marge unitaire</th><th class="num">Marge totale</th></tr></thead><tbody>' +
       rows + "</tbody></table></div>" +
-      '<div class="course-foot"><span>Sous-total achats : <b>' + money0(sousTotal) + "</b></span><span>Retrait : " + money0(c.retrait) + "</span><span>Transport : " + money0(c.transport) +
-      "</span><span>" + esc(c.autresLib || "Autres frais") + " : " + money0(c.autres) + "</span><span>Total course : <b>" + money0(sousTotal + c.retrait + c.transport + c.autres) +
-      "</b></span><span>Marge potentielle : <b>" + margeHtml(margeTot, venteTot > 0 ? (margeTot / venteTot) * 100 : null) + "</b></span></div></div>";
+      '<div class="course-summary">' + summaryBox({ sousTotal, retrait: c.retrait, transport: c.transport, autres: c.autres, autresLib: c.autresLib, vente: venteTot, marge: margeTot }) + "</div></div>" +
+      (c.recuPath ? '<div class="receipt-photo"><div class="sub-title">Photo du reçu</div><img alt="Photo du reçu" data-photo-path="' + esc(c.recuPath) + '"></div>' : "") +
+      "</div>";
+  }
+  // Charge les photos des courses ouvertes (liens temporaires sécurisés).
+  function loadVisiblePhotos() {
+    document.querySelectorAll("#e-days img[data-photo-path]").forEach((img) => {
+      signedPhotoUrl(img.dataset.photoPath).then((u) => { img.src = u; img.dataset.zoom = u; }).catch(() => { img.alt = "Photo indisponible"; });
+    });
   }
   ["#eh-cc", "#eh-date"].forEach((id) => $(id).addEventListener("change", renderEntryHistory));
   $("#eh-search").addEventListener("input", renderEntryHistory);
@@ -1128,6 +1256,14 @@
         const rows = chk(await sb.from("courses").delete().eq("id", cd.dataset.cdel).select("id"));
         if (!rows || !rows.length) throw new Error("Suppression refusée.");
       }, "Course supprimée.", cd);
+    }
+    const zoom = e.target.closest("img[data-zoom]");
+    if (zoom) return showPhoto(zoom.dataset.zoom, "Photo du reçu");
+    const ch = e.target.closest("[data-course]");
+    if (ch && !e.target.closest("button, a")) {
+      const id = ch.dataset.course;
+      if (openCourses.has(id)) openCourses.delete(id); else openCourses.add(id);
+      return renderEntryHistory();
     }
     const ed = e.target.closest("[data-eedit]");
     const t = e.target.closest("[data-etoggle]");

@@ -218,6 +218,19 @@ tr.detail > td { padding: 4px 8px 14px 28px; background: var(--bg); white-space:
 .course-receipt .table { border: 0; }
 
 #price-dialog { width: min(860px, 96vw); }
+.req { color: var(--danger); }
+.photo-zone { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 8px; }
+.photo-preview { display: flex; align-items: center; gap: 10px; font-size: .85rem; color: var(--muted); }
+.photo-preview img, .receipt-photo img { max-height: 90px; border-radius: 8px; border: 1px solid var(--border); cursor: zoom-in; }
+.receipt-photo { padding: 0 14px 14px; }
+.receipt-photo img { max-height: 220px; max-width: 100%; }
+.course-head.clickable { cursor: pointer; }
+.course-head .chev { color: var(--muted); width: 14px; }
+.course-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 360px); gap: 14px; padding: 12px 14px; align-items: start; }
+.course-detail .course-summary { margin: 0; }
+@media (max-width: 900px) { .course-detail { grid-template-columns: 1fr; } }
+#photo-dialog { width: min(900px, 96vw); }
+#photo-dialog img { width: 100%; height: auto; border-radius: 8px; }
 
 /* Dialog */
 dialog { border: 0; border-radius: var(--radius); padding: 20px; width: min(520px, 94vw); }

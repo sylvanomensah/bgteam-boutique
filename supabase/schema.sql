@@ -314,10 +314,17 @@ create trigger products_cmp after update of stock_initial on public.products
 -- =====================================================================
 -- Courses : création / modification (2 h pour un vendeur) et annulation
 -- =====================================================================
+-- Marché, téléphone du fournisseur (obligatoires) et photo du reçu (Storage, bucket « recus »).
+alter table public.courses add column if not exists marche text not null default '';
+alter table public.courses add column if not exists fournisseur_tel text not null default '';
+alter table public.courses add column if not exists recu_path text;
+
+drop function if exists public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb);
 create or replace function public.save_course(
   p_id uuid, p_date date, p_cc text,
   p_frais_retrait numeric, p_frais_transport numeric, p_autres_frais numeric, p_autres_libelle text,
-  p_obs text, p_lines jsonb
+  p_obs text, p_lines jsonb,
+  p_marche text, p_fournisseur_tel text, p_recu_path text
 ) returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
@@ -330,12 +337,16 @@ declare
   sous_total numeric := 0;
   frais numeric;
   part numeric;
-  old_codes text[];
   q numeric;
   pt numeric;
+  v_marche text := trim(coalesce(p_marche, ''));
+  v_tel text := trim(coalesce(p_fournisseur_tel, ''));
 begin
   if not public.is_member() then raise exception 'Compte non autorisé'; end if;
   select * into prof from public.profiles where id = auth.uid();
+  if v_marche = '' then raise exception 'Indiquez le marché de la course'; end if;
+  if length(regexp_replace(v_tel, '\D', '', 'g')) < 8 then raise exception 'Indiquez un numéro de téléphone du fournisseur valide (8 chiffres minimum)'; end if;
+  if p_recu_path is not null and p_recu_path <> '' and p_recu_path !~ '^courses/[A-Za-z0-9/_.-]+$' then raise exception 'Photo du reçu invalide'; end if;
   n := coalesce(jsonb_array_length(p_lines), 0);
   if n = 0 then raise exception 'Ajoutez au moins un produit à la course'; end if;
   frais := coalesce(p_frais_retrait, 0) + coalesce(p_frais_transport, 0) + coalesce(p_autres_frais, 0);
@@ -350,13 +361,13 @@ begin
   end loop;
 
   if p_id is null then
-    insert into public.courses (date, cc, saisi_par, created_by, frais_retrait, frais_transport, autres_frais, autres_libelle, obs)
+    insert into public.courses (date, cc, saisi_par, created_by, frais_retrait, frais_transport, autres_frais, autres_libelle, obs, marche, fournisseur_tel, recu_path)
     values (
       case when admin then coalesce(p_date, current_date) else current_date end,
       case when admin then nullif(p_cc, '') else prof.cc end,
       coalesce(nullif(prof.nom, ''), prof.email, ''), auth.uid(),
       coalesce(p_frais_retrait, 0), coalesce(p_frais_transport, 0), coalesce(p_autres_frais, 0),
-      coalesce(p_autres_libelle, ''), coalesce(p_obs, '')
+      coalesce(p_autres_libelle, ''), coalesce(p_obs, ''), v_marche, v_tel, nullif(p_recu_path, '')
     ) returning id into cid;
   else
     select * into c from public.courses where id = p_id for update;
@@ -368,7 +379,9 @@ begin
       date = case when admin then coalesce(p_date, c.date) else c.date end,
       cc = case when admin then nullif(p_cc, '') else c.cc end,
       frais_retrait = coalesce(p_frais_retrait, 0), frais_transport = coalesce(p_frais_transport, 0),
-      autres_frais = coalesce(p_autres_frais, 0), autres_libelle = coalesce(p_autres_libelle, ''), obs = coalesce(p_obs, '')
+      autres_frais = coalesce(p_autres_frais, 0), autres_libelle = coalesce(p_autres_libelle, ''), obs = coalesce(p_obs, ''),
+      marche = v_marche, fournisseur_tel = v_tel,
+      recu_path = case when p_recu_path is null then c.recu_path else nullif(p_recu_path, '') end
     where id = p_id;
     delete from public.entries where course_id = p_id;
     cid := p_id;
@@ -384,8 +397,20 @@ begin
   end loop;
   return cid;
 end $$;
-revoke all on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb) from public, anon;
-grant execute on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb) to authenticated;
+revoke all on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text) from public, anon;
+grant execute on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text) to authenticated;
+
+-- Photos des reçus : bucket privé, lisible et alimenté par les membres, suppression admin.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('recus', 'recus', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+drop policy if exists recus_select on storage.objects;
+create policy recus_select on storage.objects for select to authenticated using (bucket_id = 'recus' and public.is_member());
+drop policy if exists recus_insert on storage.objects;
+create policy recus_insert on storage.objects for insert to authenticated
+  with check (bucket_id = 'recus' and public.is_member() and name like 'courses/%');
+drop policy if exists recus_delete on storage.objects;
+create policy recus_delete on storage.objects for delete to authenticated using (bucket_id = 'recus' and public.is_admin());
 
 create or replace function public.set_course_statut(p_id uuid, p_statut text) returns void
 language plpgsql security definer set search_path = public as $$

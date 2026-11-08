@@ -309,7 +309,16 @@
         <div class="form form-inline">
           <label>Date<input type="date" id="co-date"></label>
           <label>CC<select id="co-cc"></select></label>
-          <label>Observation<input id="co-obs" placeholder="Ex. : marché d'Adawlato"></label>
+          <label>Marché <span class="req">*</span><input id="co-marche" list="marches-list" placeholder="Ex. : Adawlato" required></label>
+          <label>Téléphone du fournisseur <span class="req">*</span><input type="tel" id="co-tel" list="tels-list" placeholder="Ex. : 90 12 34 56" required></label>
+          <label>Observation<input id="co-obs" placeholder="Facultatif"></label>
+        </div>
+        <datalist id="marches-list"></datalist>
+        <datalist id="tels-list"></datalist>
+        <div class="photo-zone">
+          <label class="btn" for="co-photo">📷 Photo du reçu</label>
+          <input type="file" id="co-photo" accept="image/*" capture="environment" class="hidden">
+          <div id="co-photo-preview" class="photo-preview"></div>
         </div>
         <h3 class="sub-title">Produits achetés — recopiez le reçu du marché</h3>
         <div class="table-wrap">
@@ -454,6 +463,15 @@
         <button class="btn" value="cancel" formnovalidate>Annuler</button>
         <button class="btn primary" value="ok">Enregistrer</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Modal photo du reçu -->
+  <dialog id="photo-dialog">
+    <form method="dialog">
+      <h2 id="pdlg-title">Reçu</h2>
+      <img id="pdlg-img" alt="Photo du reçu">
+      <div class="actions"><a class="btn" id="pdlg-open" target="_blank" rel="noopener">Ouvrir en grand</a><button class="btn" value="cancel">Fermer</button></div>
     </form>
   </dialog>
 
