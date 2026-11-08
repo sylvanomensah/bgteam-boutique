@@ -360,6 +360,18 @@ begin
     sous_total := sous_total + (l ->> 'prix_total')::numeric;
   end loop;
 
+  -- Photo du reçu obligatoire pour les vendeurs
+  if not admin and p_id is null and coalesce(p_recu_path, '') = '' then
+    raise exception 'La photo du reçu est obligatoire';
+  end if;
+  if not admin and p_id is not null and p_recu_path = '' then
+    raise exception 'La photo du reçu est obligatoire';
+  end if;
+  if not admin and p_id is not null and p_recu_path is null
+     and coalesce((select recu_path from public.courses where id = p_id), '') = '' then
+    raise exception 'La photo du reçu est obligatoire';
+  end if;
+
   if p_id is null then
     insert into public.courses (date, cc, saisi_par, created_by, frais_retrait, frais_transport, autres_frais, autres_libelle, obs, marche, fournisseur_tel, recu_path)
     values (
@@ -399,6 +411,43 @@ begin
 end $$;
 revoke all on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text) from public, anon;
 grant execute on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text) to authenticated;
+
+-- =====================================================================
+-- Nouveaux produits créés par les CC (à valider par l'admin)
+-- =====================================================================
+alter table public.products add column if not exists valide boolean not null default true;
+alter table public.products add column if not exists cree_par text not null default '';
+alter table public.products add column if not exists cree_par_cc text;
+alter table public.products add column if not exists cree_le timestamptz;
+
+create or replace function public.create_product(p_nom text, p_categorie text, p_pv numeric) returns text
+language plpgsql security definer set search_path = public as $$
+declare
+  admin boolean := public.is_admin();
+  prof public.profiles%rowtype;
+  v_nom text := upper(trim(coalesce(p_nom, '')));
+  v_cat text := trim(coalesce(p_categorie, ''));
+  existing text;
+  n integer;
+  v_code text;
+begin
+  if not public.is_member() then raise exception 'Compte non autorisé'; end if;
+  if length(v_nom) < 2 then raise exception 'Indiquez la désignation du produit'; end if;
+  if v_cat = '' then raise exception 'Choisissez la catégorie du produit'; end if;
+  if p_pv is null or p_pv <= 0 then raise exception 'Indiquez un prix de vente valide'; end if;
+  select code into existing from public.products where upper(trim(nom)) = v_nom limit 1;
+  if existing is not null then raise exception 'Ce produit existe déjà : % (%)', v_nom, existing; end if;
+  select * into prof from public.profiles where id = auth.uid();
+  perform pg_advisory_xact_lock(hashtext('create_product'));
+  select coalesce(max((substring(code from '(\d+)$'))::int), 0) + 1 into n from public.products where code ~ '^ART-\d+$';
+  v_code := 'ART-' || lpad(n::text, 3, '0');
+  insert into public.products (code, nom, categorie, pv, stock_initial, stock_min, valide, cree_par, cree_par_cc, cree_le)
+  values (v_code, v_nom, v_cat, p_pv, 0, 5, admin, coalesce(nullif(prof.nom, ''), prof.email, ''), prof.cc, now());
+  insert into public.product_costs (code, pa) values (v_code, 0) on conflict (code) do nothing;
+  return v_code;
+end $$;
+revoke all on function public.create_product(text, text, numeric) from public, anon;
+grant execute on function public.create_product(text, text, numeric) to authenticated;
 
 -- Photos des reçus : bucket privé, lisible et alimenté par les membres, suppression admin.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

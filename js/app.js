@@ -111,6 +111,7 @@
       },
       products: products.map((p) => ({
         code: p.code, nom: p.nom, categorie: p.categorie, pa: pa[p.code] || 0, cmp: cmp[p.code] || 0, pv: Number(p.pv),
+        valide: p.valide !== false, creePar: p.cree_par || "", creeParCc: p.cree_par_cc || "", creeLe: p.cree_le || "",
         stockInitial: Number(p.stock_initial), stockMin: Number(p.stock_min)
       })),
       entries: entries.map((x) => ({
@@ -348,8 +349,9 @@
   function productOptions(selected) {
     return db.products.map((p) =>
       '<option value="' + esc(p.code) + '"' + (p.code === selected ? " selected" : "") + ">" +
-      esc(p.nom) + " (" + esc(p.code) + ")</option>").join("");
+      (p.valide ? "" : "⚠ ") + esc(p.nom) + " (" + esc(p.code) + ")" + (p.valide ? "" : " — à valider") + "</option>").join("");
   }
+  function pendingBadge(p) { return p && !p.valide ? ' <span class="badge pending" title="Produit créé par ' + esc(p.creePar || "un CC") + ', en attente de validation par l\'administrateur">À valider</span>' : ""; }
 
   // ---------- Accueil ----------
   function periodRange(p, ref) {
@@ -428,7 +430,8 @@
       ["Stock total", num(db.products.reduce((a, p) => a + stockActuel(p), 0))],
       ["Entrées validées", num(db.entries.filter((e) => e.statut === "Validée").reduce((a, e) => a + Number(e.qte), 0))],
       ["Produits en rupture", ruptures.length, ruptures.length ? "danger" : ""],
-      ["Produits sous seuil", faibles.length, faibles.length ? "warn" : ""]
+      ["Produits sous seuil", faibles.length, faibles.length ? "warn" : ""],
+      ["Nouveaux produits à valider", db.products.filter((p) => !p.valide).length, db.products.some((p) => !p.valide) ? "warn" : ""]
     ]);
   }
   $("#d-periode").addEventListener("click", (e) => {
@@ -705,13 +708,21 @@
     if (admin) k.push(["Valeur du stock (achat)", money(valeur)]);
     k.push(["En rupture", db.products.filter((p) => statutStock(p) === "RUPTURE").length, "danger"]);
     k.push(["Sous seuil", db.products.filter((p) => statutStock(p) === "STOCK FAIBLE").length, "warn"]);
+    const nPending = db.products.filter((p) => !p.valide).length;
+    if (nPending) k.push(["À valider", nPending, "warn"]);
     $("#stock-kpis").innerHTML = kpiHtml(k);
 
-    $("#s-rows").innerHTML = list.length ? list.map((p) =>
-      "<tr><td>" + esc(p.code) + "</td><td>" + esc(p.nom) + "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(Math.round(p.cmp)) + '</td><td class="num admin-only">' +
+    // Produits à valider en premier
+    const sorted = list.slice().sort((a, b) => (a.valide === b.valide ? 0 : a.valide ? 1 : -1));
+    $("#s-rows").innerHTML = sorted.length ? sorted.map((p) =>
+      '<tr class="' + (p.valide ? "" : "pending") + '"><td>' + esc(p.code) + "</td><td>" + esc(p.nom) + pendingBadge(p) +
+      (p.valide ? "" : '<span class="sub">Créé par ' + esc(p.creePar || "—") + (p.creeParCc ? " (" + ccLabel(p.creeParCc) + ")" : "") +
+        (p.creeLe ? " le " + fmtDate(String(p.creeLe).slice(0, 10)) : "") + "</span>") +
+      "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(Math.round(p.cmp)) + '</td><td class="num admin-only">' +
       (lastPurchase(p.code) ? num(Math.round(lastPurchase(p.code).pu)) : '<span class="muted">—</span>') + '</td><td class="num">' + num(p.pv) +
       '</td><td class="num">' + num(p.stockInitial) + '</td><td class="num">' + num(p.stockMin) + '</td><td class="num">' + num(totalEntrees(p.code)) + '</td><td class="num">' + num(totalVentes(p.code)) +
       '</td><td class="num"><b>' + num(stockActuel(p)) + "</b></td><td>" + statutBadge(statutStock(p)) + "</td><td>" +
+      (admin && !p.valide ? '<button class="btn small success" data-pvalid="' + esc(p.code) + '">✓ Valider</button> ' : "") +
       (admin ? '<button class="btn small" data-prices="' + esc(p.code) + '">Prix</button> <button class="btn small" data-edit="' + esc(p.code) + '">Modifier</button> <button class="btn small danger" data-pdel="' + esc(p.code) + '">✕</button>' : "") +
       "</td></tr>"
     ).join("") : '<tr><td colspan="13" class="empty">Aucun produit.</td></tr>';
@@ -757,6 +768,12 @@
     const ed = e.target.closest("[data-edit]");
     const del = e.target.closest("[data-pdel]");
     const pr = e.target.closest("[data-prices]");
+    const pv = e.target.closest("[data-pvalid]");
+    if (pv) {
+      const p = productByCode(pv.dataset.pvalid);
+      if (!confirm("Valider le produit « " + p.nom + " » ?\nCatégorie : " + p.categorie + "\nPrix de vente : " + money(p.pv) + "\n\nVérifiez ces informations (bouton Modifier) avant de valider.")) return;
+      return act(async () => chk(await sb.from("products").update({ valide: true }).eq("code", p.code)), "Produit validé : " + p.nom, pv);
+    }
     if (pr) return openPrices(productByCode(pr.dataset.prices));
     if (ed) openProduct(productByCode(ed.dataset.edit));
     if (del) {
@@ -895,7 +912,8 @@
 
     if (!courseLines.length) courseLines = [newCourseLine()];
     $("#co-lines").innerHTML = courseLines.map((l, i) =>
-      '<tr data-idx="' + i + '"><td><select data-f="code"><option value="">— Choisir —</option>' + productOptions(l.code) + "</select></td>" +
+      '<tr data-idx="' + i + '" class="' + (l.code && productByCode(l.code) && !productByCode(l.code).valide ? "pending" : "") + '"><td><select data-f="code"><option value="">— Choisir —</option>' +
+      productOptions(l.code) + '<option value="__new__">➕ Nouveau produit…</option></select>' + pendingBadge(productByCode(l.code)) + "</td>" +
       '<td class="num"><input type="number" min="1" data-f="qte" value="' + esc(l.qte) + '"></td>' +
       '<td class="num"><input type="number" min="0" data-f="total" value="' + esc(l.total) + '"></td>' +
       '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
@@ -921,15 +939,48 @@
   }
   $("#co-lines").addEventListener("input", (e) => {
     const el = e.target.closest("[data-f]");
-    if (!el) return;
+    if (!el || el.dataset.f === "code") return;
     courseLines[Number(el.closest("tr").dataset.idx)][el.dataset.f] = el.value;
     updateCourseCalc();
   });
   $("#co-lines").addEventListener("change", (e) => {
     const el = e.target.closest('[data-f="code"]');
     if (!el) return;
-    courseLines[Number(el.closest("tr").dataset.idx)].code = el.value;
-    updateCourseCalc();
+    const idx = Number(el.closest("tr").dataset.idx);
+    if (el.value === "__new__") {
+      el.value = courseLines[idx].code || "";
+      return openNewProduct(idx);
+    }
+    courseLines[idx].code = el.value;
+    renderCourseForm();
+  });
+
+  // Création d'un produit manquant depuis une course (à valider par l'admin si créé par un CC)
+  let newProdLine = null;
+  function openNewProduct(idx) {
+    newProdLine = idx;
+    const f = $("#newprod-form");
+    f.reset();
+    const cats = Array.from(new Set(db.products.map((p) => p.categorie).filter(Boolean))).sort();
+    f.elements.categorie.innerHTML = '<option value="">— Choisir —</option>' + cats.map((c) => '<option value="' + esc(c) + '">' + esc(c) + "</option>").join("");
+    $("#np-help").style.display = isAdmin() ? "none" : "";
+    $("#newprod-dialog").showModal();
+    f.elements.nom.focus();
+  }
+  $("#newprod-form").addEventListener("submit", (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
+    const f = e.target;
+    const nom = f.elements.nom.value.trim(), categorie = f.elements.categorie.value, pv = Number(f.elements.pv.value);
+    if (nom.length < 2) { e.preventDefault(); return toast("Indiquez la désignation."); }
+    if (!categorie) { e.preventDefault(); return toast("Choisissez la catégorie."); }
+    if (!(pv > 0)) { e.preventDefault(); return toast("Indiquez le prix de vente."); }
+    const idx = newProdLine;
+    act(async () => chk(await sb.rpc("create_product", { p_nom: nom, p_categorie: categorie, p_pv: pv })),
+      isAdmin() ? "Produit créé." : "Produit créé — en attente de validation par l'administrateur.").then((r) => {
+      if (!r.ok || idx == null || !courseLines[idx]) return;
+      courseLines[idx].code = r.data;
+      renderCourseForm();
+    });
   });
   $("#co-lines").addEventListener("click", (e) => {
     const b = e.target.closest("[data-rmline]");
@@ -1150,7 +1201,7 @@
       const mu = pv - cr;
       margeTot += mu * x.qte;
       venteTot += pv * x.qte;
-      return "<tr><td>" + esc(p ? p.nom : x.code) + '</td><td class="num">' + num(x.qte) + '</td><td class="num">' + money0(x.prixTotal || 0) +
+      return '<tr class="' + (p && !p.valide ? "pending" : "") + '"><td>' + esc(p ? p.nom : x.code) + pendingBadge(p) + '</td><td class="num">' + num(x.qte) + '</td><td class="num">' + money0(x.prixTotal || 0) +
         '</td><td class="num">' + money0(pu) + '</td><td class="num">' + money0(x.fraisPart || 0) +
         '</td><td class="num">' + money0(pv) + '</td><td class="num">' + margeHtml(mu, pv > 0 ? (mu / pv) * 100 : null) + '</td><td class="num">' + margeHtml(mu * x.qte) + "</td></tr>";
     }).join("");

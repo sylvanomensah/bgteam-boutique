@@ -218,6 +218,11 @@ tr.detail > td { padding: 4px 8px 14px 28px; background: var(--bg); white-space:
 .course-receipt .table { border: 0; }
 
 #price-dialog { width: min(860px, 96vw); }
+/* Produits créés par un CC, en attente de validation par l'admin */
+.table tr.pending td { background: #fff3e0; }
+.table tr.pending td:first-child { box-shadow: inset 4px 0 0 #f08c00; }
+.badge.pending { background: #ffe8cc; color: #b35c00; }
+.pending-text { color: #b35c00; }
 .req { color: var(--danger); }
 .photo-zone { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 8px; }
 .photo-preview { display: flex; align-items: center; gap: 10px; font-size: .85rem; color: var(--muted); }

@@ -464,6 +464,23 @@
     </form>
   </dialog>
 
+  <!-- Modal nouveau produit (depuis une course) -->
+  <dialog id="newprod-dialog">
+    <form method="dialog" id="newprod-form">
+      <h2>Nouveau produit</h2>
+      <p class="hint" id="np-help">Le produit est ajouté au stock avec la quantité de votre course. L'administrateur devra valider ses informations : en attendant, il apparaît en <b class="pending-text">orange « à valider »</b>.</p>
+      <div class="form">
+        <label class="full">Désignation <span class="req">*</span><input name="nom" required placeholder="Ex. : SPRITE 33 CL"></label>
+        <label>Catégorie <span class="req">*</span><select name="categorie" required></select></label>
+        <label>Prix de vente unitaire <span class="req">*</span><input type="number" name="pv" min="1" required></label>
+      </div>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Créer le produit</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Modal photo du reçu -->
   <dialog id="photo-dialog">
     <form method="dialog">
