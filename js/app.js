@@ -1484,7 +1484,8 @@
     $("#eh-boutique").value = db.boutiques.some((b) => b.code === bcur) ? bcur : "ALL";
     const bq = $("#eh-boutique").value;
     const fcur = $("#eh-cc").value || "ALL";
-    const list = db.settings.ccList.filter((c) => bq === "ALL" || c.boutique === bq);
+    // Boutique choisie : seuls ses CC autorisés à faire les courses.
+    const list = db.settings.ccList.filter((c) => bq === "ALL" || (c.boutique === bq && c.entrees));
     $("#eh-cc").innerHTML = '<option value="ALL">Tous les CC</option>' +
       list.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("") +
       '<option value="NONE">Sans CC (admin)</option>';
