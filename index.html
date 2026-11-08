@@ -278,11 +278,14 @@
     <!-- STOCK -->
     <section id="view-stock" class="view">
       <h1>Stock &amp; catalogue</h1>
-      <p class="hint">STOCK ACTUEL = Stock initial + Entrées validées − Ventes validées.</p>
+      <div class="card filterbar">
+        <label style="min-width:280px">Boutique<select id="s-boutique"></select></label>
+        <p class="hint" style="margin:0">STOCK ACTUEL = Stock initial + Entrées validées − Ventes validées. Le stock initial (repris de l'Excel) est compté dans la boutique d'origine (B1).</p>
+      </div>
       <div class="kpis" id="stock-kpis"></div>
       <div class="card">
         <div class="toolbar">
-          <h2>Produits</h2>
+          <h2 id="s-title">Produits</h2>
           <input id="s-search" placeholder="Rechercher un produit">
           <button class="btn primary admin-only" id="s-new">+ Nouveau produit</button>
         </div>
@@ -310,6 +313,7 @@
         <div class="form form-inline">
           <label>Date<input type="date" id="co-date"></label>
           <label>CC<select id="co-cc"></select></label>
+          <label>Boutique<select id="co-boutique"></select></label>
           <label>Marché <span class="req">*</span><input id="co-marche" list="marches-list" placeholder="Ex. : Adawlato" required></label>
           <label>Téléphone du fournisseur <span class="req">*</span><input type="tel" id="co-tel" list="tels-list" placeholder="Ex. : 90 12 34 56" required></label>
         </div>

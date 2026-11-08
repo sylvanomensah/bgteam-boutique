@@ -118,14 +118,14 @@
       entries: entries.map((x) => ({
         id: x.id, date: x.date || "", code: x.code, qte: Number(x.qte), statut: x.statut, obs: x.obs,
         cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at,
-        courseId: x.course_id || null, prixTotal: x.prix_total == null ? null : Number(x.prix_total),
+        courseId: x.course_id || null, boutique: x.boutique || "", prixTotal: x.prix_total == null ? null : Number(x.prix_total),
         fraisPart: x.frais_part == null ? 0 : Number(x.frais_part), coutUnitaire: x.cout_unitaire == null ? null : Number(x.cout_unitaire)
       })),
       courses: courses.map((c) => ({
         id: c.id, date: c.date || "", cc: c.cc ? String(c.cc) : "", saisiPar: c.saisi_par || "", createdBy: c.created_by, createdAt: c.created_at,
         retrait: Number(c.frais_retrait) || 0, transport: Number(c.frais_transport) || 0, autres: Number(c.autres_frais) || 0,
         autresLib: c.autres_libelle || "", obs: c.obs || "", statut: c.statut,
-        marche: c.marche || "", tel: c.fournisseur_tel || "", recuPath: c.recu_path || ""
+        marche: c.marche || "", tel: c.fournisseur_tel || "", recuPath: c.recu_path || "", boutique: c.boutique || ""
       })),
       sales: sales.map((s) => ({
         id: s.id, date: s.date, ticket: Number(s.ticket), client: s.client, code: s.code, nom: s.nom, qte: Number(s.qte), pu: Number(s.pu),
@@ -322,15 +322,20 @@
 
   // ---------- Calculs ----------
   function isCountedSale(s) { return s.valide === "OUI"; }
-  function totalEntrees(code) {
-    return db.entries.filter((e) => e.code === code && e.statut === "Validée").reduce((a, e) => a + Number(e.qte), 0);
+  // Stock commun (bq absent ou "ALL") ou stock d'une boutique (bq = code boutique).
+  // Le stock initial (repris de l'Excel) appartient à la boutique d'origine.
+  const INITIAL_BOUTIQUE = "B1";
+  const inBq = (bq, code) => !bq || bq === "ALL" || code === bq;
+  function totalEntrees(code, bq) {
+    return db.entries.filter((e) => e.code === code && e.statut === "Validée" && inBq(bq, e.boutique)).reduce((a, e) => a + Number(e.qte), 0);
   }
-  function totalVentes(code) {
-    return db.sales.filter((s) => s.code === code && isCountedSale(s)).reduce((a, s) => a + Number(s.qte), 0);
+  function totalVentes(code, bq) {
+    return db.sales.filter((s) => s.code === code && isCountedSale(s) && inBq(bq, saleBoutique(s))).reduce((a, s) => a + Number(s.qte), 0);
   }
-  function stockActuel(p) { return Number(p.stockInitial) + totalEntrees(p.code) - totalVentes(p.code); }
-  function statutStock(p) {
-    const s = stockActuel(p);
+  function stockInitialOf(p, bq) { return !bq || bq === "ALL" || bq === INITIAL_BOUTIQUE ? Number(p.stockInitial) : 0; }
+  function stockActuel(p, bq) { return stockInitialOf(p, bq) + totalEntrees(p.code, bq) - totalVentes(p.code, bq); }
+  function statutStock(p, bq) {
+    const s = stockActuel(p, bq);
     if (s <= 0) return "RUPTURE";
     if (s <= Number(p.stockMin)) return "STOCK FAIBLE";
     return "OK";
@@ -597,9 +602,14 @@
     if (!p) { $("#c-stock-info").textContent = ""; return; }
     if (resetPrice !== false) $("#c-pu").value = p.pv;
     const inCart = cart.filter((l) => l.code === p.code).reduce((a, l) => a + l.qte, 0);
-    const dispo = stockActuel(p) - inCart;
-    $("#c-stock-info").innerHTML = "Stock disponible : <b>" + num(dispo) + "</b> " + statutBadge(statutStock(p)) + " · Prix de vente : " + money(p.pv);
+    const bq = caisseBoutique();
+    const dispo = stockActuel(p, bq) - inCart;
+    $("#c-stock-info").innerHTML = "Stock disponible" + (bq ? " (" + esc(boutiqueName(bq)) + ")" : "") + " : <b>" + num(dispo) + "</b> " +
+      statutBadge(statutStock(p, bq)) + " · Prix de vente : " + money(p.pv);
   }
+  // Boutique de la caisse = boutique du CC qui encaisse (stock commun si le CC n'a pas de boutique)
+  function caisseBoutique() { return ccBoutique(lockedCc() || $("#c-cc").value) || ""; }
+  $("#c-cc").addEventListener("change", () => updateProductInfo(false));
   function renderCart() {
     $("#c-ticket-num").textContent = cart.length ? "(" + cart.length + " article" + (cart.length > 1 ? "s" : "") + ")" : "";
     const total = cart.reduce((a, l) => a + l.qte * l.pu, 0);
@@ -620,7 +630,8 @@
     if (!(qte > 0)) return toast("Quantité invalide.");
     if (!(pu >= 0)) return toast("Prix invalide.");
     const inCart = cart.filter((l) => l.code === p.code).reduce((a, l) => a + l.qte, 0);
-    if (stockActuel(p) - inCart < qte && !confirm("Stock insuffisant pour " + p.nom + " (disponible : " + (stockActuel(p) - inCart) + "). Ajouter quand même ?")) return;
+    const bq = caisseBoutique();
+    if (stockActuel(p, bq) - inCart < qte && !confirm("Stock insuffisant pour " + p.nom + (bq ? " dans " + boutiqueName(bq) : "") + " (disponible : " + (stockActuel(p, bq) - inCart) + "). Ajouter quand même ?")) return;
     cart.push({ code: p.code, nom: p.nom, qte, pu });
     $("#c-qte").value = 1;
     updateProductInfo(false);
@@ -829,13 +840,20 @@
   function renderStock() {
     const admin = isAdmin();
     const q = $("#s-search").value.trim().toLowerCase();
+    // Filtre boutique : stock commun ou stock d'une seule boutique
+    const bcur = $("#s-boutique").value || "ALL";
+    $("#s-boutique").innerHTML = '<option value="ALL">Stock commun (toutes les boutiques)</option>' +
+      db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    $("#s-boutique").value = db.boutiques.some((b) => b.code === bcur) ? bcur : "ALL";
+    const bq = $("#s-boutique").value;
+    $("#s-title").textContent = bq === "ALL" ? "Stock commun — toutes les boutiques" : "Stock — " + boutiqueName(bq);
     const list = db.products.filter((p) => !q || (p.nom + " " + p.code + " " + p.categorie).toLowerCase().includes(q));
-    const stockTotal = db.products.reduce((a, p) => a + stockActuel(p), 0);
-    const valeur = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p)) * Number(p.cmp), 0);
+    const stockTotal = db.products.reduce((a, p) => a + stockActuel(p, bq), 0);
+    const valeur = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.cmp), 0);
     const k = [["Produits", db.products.length], ["Stock total", num(stockTotal)]];
     if (admin) k.push(["Valeur du stock (achat)", money(valeur)]);
-    k.push(["En rupture", db.products.filter((p) => statutStock(p) === "RUPTURE").length, "danger"]);
-    k.push(["Sous seuil", db.products.filter((p) => statutStock(p) === "STOCK FAIBLE").length, "warn"]);
+    k.push(["En rupture", db.products.filter((p) => statutStock(p, bq) === "RUPTURE").length, "danger"]);
+    k.push(["Sous seuil", db.products.filter((p) => statutStock(p, bq) === "STOCK FAIBLE").length, "warn"]);
     const nPending = db.products.filter((p) => !p.valide).length;
     if (nPending) k.push(["À valider", nPending, "warn"]);
     $("#stock-kpis").innerHTML = kpiHtml(k);
@@ -848,14 +866,15 @@
         (p.creeLe ? " le " + fmtDate(String(p.creeLe).slice(0, 10)) : "") + "</span>") +
       "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(Math.round(p.cmp)) + '</td><td class="num admin-only">' +
       (lastPurchase(p.code) ? num(Math.round(lastPurchase(p.code).pu)) : '<span class="muted">—</span>') + '</td><td class="num">' + num(p.pv) +
-      '</td><td class="num">' + num(p.stockInitial) + '</td><td class="num">' + num(p.stockMin) + '</td><td class="num">' + num(totalEntrees(p.code)) + '</td><td class="num">' + num(totalVentes(p.code)) +
-      '</td><td class="num"><b>' + num(stockActuel(p)) + "</b></td><td>" + statutBadge(statutStock(p)) + "</td><td>" +
+      '</td><td class="num">' + num(stockInitialOf(p, bq)) + '</td><td class="num">' + num(p.stockMin) + '</td><td class="num">' + num(totalEntrees(p.code, bq)) + '</td><td class="num">' + num(totalVentes(p.code, bq)) +
+      '</td><td class="num"><b>' + num(stockActuel(p, bq)) + "</b></td><td>" + statutBadge(statutStock(p, bq)) + "</td><td>" +
       (admin && !p.valide ? '<button class="btn small success" data-pvalid="' + esc(p.code) + '">✓ Valider</button> ' : "") +
       (admin ? '<button class="btn small" data-prices="' + esc(p.code) + '">Prix</button> <button class="btn small" data-edit="' + esc(p.code) + '">Modifier</button> <button class="btn small danger" data-pdel="' + esc(p.code) + '">✕</button>' : "") +
       "</td></tr>"
     ).join("") : '<tr><td colspan="13" class="empty">Aucun produit.</td></tr>';
   }
   $("#s-search").addEventListener("input", renderStock);
+  $("#s-boutique").addEventListener("change", renderStock);
 
   // Achats avec prix (lignes de course validées) d'un produit, du plus récent au plus ancien.
   function purchases(code) {
@@ -1023,14 +1042,22 @@
     if (!$("#co-date").value) $("#co-date").value = today();
     if (!admin && !editingCourseId) $("#co-date").value = today();
     const ecc = $("#co-cc");
+    const ebq = $("#co-boutique");
     if (admin) {
       const cur = ecc.value;
       ecc.innerHTML = '<option value="">— Aucun (admin) —</option>' + ccOptions(false, cur, false);
       ecc.value = Array.from(ecc.options).some((o) => o.value === cur) ? cur : "";
       ecc.disabled = false;
+      const bcur = ebq.value;
+      ebq.innerHTML = '<option value="">— Celle du CC choisi —</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+      ebq.value = db.boutiques.some((b) => b.code === bcur) ? bcur : "";
+      ebq.disabled = false;
     } else {
       ecc.innerHTML = me.cc ? '<option value="' + esc(me.cc) + '">' + esc(ccName(me.cc)) + "</option>" : '<option value="">— Aucun CC lié —</option>';
       ecc.disabled = true;
+      const mine = ccBoutique(me.cc);
+      ebq.innerHTML = '<option value="' + esc(mine) + '">' + esc(mine ? boutiqueName(mine) : "— Aucune boutique —") + "</option>";
+      ebq.disabled = true;
     }
     // Suggestions : marchés et numéros déjà utilisés
     const uniq = (arr) => Array.from(new Set(arr.filter(Boolean))).sort();
@@ -1217,7 +1244,7 @@
         p_autres_frais: Number($("#co-autres").value) || 0, p_autres_libelle: $("#co-autres-lib").value.trim(),
         p_obs: "",
         p_lines: filled.map((l) => ({ code: l.code, qte: Number(l.qte), prix_total: Number(l.total) })),
-        p_marche: marche, p_fournisseur_tel: tel, p_recu_path: recuPath
+        p_marche: marche, p_fournisseur_tel: tel, p_recu_path: recuPath, p_boutique: isAdmin() ? $("#co-boutique").value : null
       }));
     }, wasEditing ? "Course modifiée." : "Course enregistrée, stock mis à jour.", btn).then((r) => {
       btn.textContent = editingCourseId ? "Enregistrer les modifications" : "Enregistrer la course";
@@ -1244,7 +1271,7 @@
     setPhotoPreview(null);
     if (coPhotoPath) signedPhotoUrl(coPhotoPath).then((u) => setPhotoPreview(u, "Photo enregistrée — prenez-en une autre pour la remplacer")).catch(() => {});
     renderCourseForm();
-    if (isAdmin()) $("#co-cc").value = c.cc || "";
+    if (isAdmin()) { $("#co-cc").value = c.cc || ""; $("#co-boutique").value = c.boutique || ""; }
     $("#co-title").textContent = "Modification de la course du " + fmtDate(c.date) + " (" + (c.saisiPar || "—") + ")";
     $("#co-cancel-edit").classList.remove("hidden");
     $("#co-save").textContent = "Enregistrer les modifications";
@@ -1346,7 +1373,7 @@
     }
     const head = '<div class="course-head clickable" data-course="' + c.id + '"><span class="chev">' + (open ? "▾" : "▸") + "</span><b>Course de " + heure + "</b>" +
       (c.marche ? "<span>📍 " + esc(c.marche) + "</span>" : "") + "<span>" + (c.cc ? esc(ccName(c.cc)) : "Admin") + "</span>" +
-      "<span>Saisie par " + esc(c.saisiPar || "—") + "</span>" + badge +
+      "<span>🏬 " + esc(boutiqueName(c.boutique)) + "</span><span>Saisie par " + esc(c.saisiPar || "—") + "</span>" + badge +
       "<span>Total : <b>" + money0(sousTotal + c.retrait + c.transport + c.autres) + "</b></span>" +
       "<span>Marge : " + margeHtml(margeTot) + "</span>" + (c.recuPath ? "<span title=\"Photo du reçu jointe\">📷</span>" : "") +
       '<span class="actions">' + actions + "</span></div>";

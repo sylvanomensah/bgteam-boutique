@@ -164,6 +164,9 @@ begin
       new.cc := prof.cc;
       new.date := current_date;
       new.statut := 'Validée';
+      new.boutique := (select boutique from public.ccs where code = prof.cc);
+    elsif new.boutique is null then
+      new.boutique := (select boutique from public.ccs where code = new.cc);
     end if;
   else
     new.created_by := old.created_by;
@@ -332,12 +335,18 @@ alter table public.courses add column if not exists marche text not null default
 alter table public.courses add column if not exists fournisseur_tel text not null default '';
 alter table public.courses add column if not exists recu_path text;
 
+-- Boutique de la course et de ses entrées (stock par boutique)
+alter table public.courses add column if not exists boutique text references public.boutiques(code) on update cascade on delete set null;
+alter table public.entries add column if not exists boutique text references public.boutiques(code) on update cascade on delete set null;
+create index if not exists entries_boutique_idx on public.entries (boutique, code);
+
 drop function if exists public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb);
+drop function if exists public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text);
 create or replace function public.save_course(
   p_id uuid, p_date date, p_cc text,
   p_frais_retrait numeric, p_frais_transport numeric, p_autres_frais numeric, p_autres_libelle text,
   p_obs text, p_lines jsonb,
-  p_marche text, p_fournisseur_tel text, p_recu_path text
+  p_marche text, p_fournisseur_tel text, p_recu_path text, p_boutique text
 ) returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
@@ -354,6 +363,7 @@ declare
   pt numeric;
   v_marche text := trim(coalesce(p_marche, ''));
   v_tel text := trim(coalesce(p_fournisseur_tel, ''));
+  v_boutique text;
 begin
   if not public.is_member() then raise exception 'Compte non autorisé'; end if;
   select * into prof from public.profiles where id = auth.uid();
@@ -385,14 +395,21 @@ begin
     raise exception 'La photo du reçu est obligatoire';
   end if;
 
+  -- Boutique : celle du CC du vendeur ; l'admin peut la choisir (sinon celle du CC choisi).
+  if admin then
+    v_boutique := coalesce(nullif(p_boutique, ''), (select boutique from public.ccs where code = nullif(p_cc, '')));
+  else
+    v_boutique := (select boutique from public.ccs where code = prof.cc);
+  end if;
+
   if p_id is null then
-    insert into public.courses (date, cc, saisi_par, created_by, frais_retrait, frais_transport, autres_frais, autres_libelle, obs, marche, fournisseur_tel, recu_path)
+    insert into public.courses (date, cc, saisi_par, created_by, frais_retrait, frais_transport, autres_frais, autres_libelle, obs, marche, fournisseur_tel, recu_path, boutique)
     values (
       case when admin then coalesce(p_date, current_date) else current_date end,
       case when admin then nullif(p_cc, '') else prof.cc end,
       coalesce(nullif(prof.nom, ''), prof.email, ''), auth.uid(),
       coalesce(p_frais_retrait, 0), coalesce(p_frais_transport, 0), coalesce(p_autres_frais, 0),
-      coalesce(p_autres_libelle, ''), coalesce(p_obs, ''), v_marche, v_tel, nullif(p_recu_path, '')
+      coalesce(p_autres_libelle, ''), coalesce(p_obs, ''), v_marche, v_tel, nullif(p_recu_path, ''), v_boutique
     ) returning id into cid;
   else
     select * into c from public.courses where id = p_id for update;
@@ -406,7 +423,8 @@ begin
       frais_retrait = coalesce(p_frais_retrait, 0), frais_transport = coalesce(p_frais_transport, 0),
       autres_frais = coalesce(p_autres_frais, 0), autres_libelle = coalesce(p_autres_libelle, ''), obs = coalesce(p_obs, ''),
       marche = v_marche, fournisseur_tel = v_tel,
-      recu_path = case when p_recu_path is null then c.recu_path else nullif(p_recu_path, '') end
+      recu_path = case when p_recu_path is null then c.recu_path else nullif(p_recu_path, '') end,
+      boutique = case when admin then v_boutique else c.boutique end
     where id = p_id;
     delete from public.entries where course_id = p_id;
     cid := p_id;
@@ -417,13 +435,13 @@ begin
     q := (l ->> 'qte')::numeric;
     pt := (l ->> 'prix_total')::numeric;
     part := case when sous_total > 0 then frais * pt / sous_total else frais / n end;
-    insert into public.entries (date, code, qte, statut, obs, cc, saisi_par, created_by, course_id, prix_total, frais_part, cout_unitaire)
-    values (c.date, l ->> 'code', q, c.statut, '', c.cc, c.saisi_par, c.created_by, cid, pt, round(part, 2), round((pt + part) / q, 2));
+    insert into public.entries (date, code, qte, statut, obs, cc, saisi_par, created_by, course_id, prix_total, frais_part, cout_unitaire, boutique)
+    values (c.date, l ->> 'code', q, c.statut, '', c.cc, c.saisi_par, c.created_by, cid, pt, round(part, 2), round((pt + part) / q, 2), c.boutique);
   end loop;
   return cid;
 end $$;
-revoke all on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text) from public, anon;
-grant execute on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text) to authenticated;
+revoke all on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text, text) from public, anon;
+grant execute on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb, text, text, text, text) to authenticated;
 
 -- =====================================================================
 -- Nouveaux produits créés par les CC (à valider par l'admin)
@@ -585,6 +603,14 @@ begin
     update public.sales s set boutique = c.boutique from public.ccs c where s.cc = c.code and s.boutique is null;
   end if;
 end $$;
+
+-- Rattrapage : courses et entrées existantes rattachées à la boutique de leur CC,
+-- sinon (saisies par l'admin sans CC) à la boutique d'origine B1.
+update public.courses co set boutique = c.boutique from public.ccs c where co.cc = c.code and co.boutique is null and c.boutique is not null;
+update public.courses set boutique = 'B1' where boutique is null and exists (select 1 from public.boutiques where code = 'B1');
+update public.entries e set boutique = co.boutique from public.courses co where e.course_id = co.id and e.boutique is distinct from co.boutique;
+update public.entries e set boutique = c.boutique from public.ccs c where e.course_id is null and e.cc = c.code and e.boutique is null and c.boutique is not null;
+update public.entries set boutique = 'B1' where boutique is null and exists (select 1 from public.boutiques where code = 'B1');
 
 -- Temps réel : diffuse les nouvelles ventes, entrées et courses aux écrans ouverts
 -- (les règles de sécurité ci-dessus s'appliquent aussi à cette diffusion).
