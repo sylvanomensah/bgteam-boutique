@@ -1042,7 +1042,7 @@
     const valeur = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.cmp), 0);
     const k = [["Produits", db.products.length], ["Stock total", num(stockTotal)]];
     if (admin) k.push(["Valeur du stock (achat)", money(valeur)]);
-    if (admin) k.push(["Valeur du stock (vente)", money(db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv), 0))]);
+    k.push(["Valeur du stock (vente)", money(db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv), 0))]);
     k.push(["En rupture", db.products.filter((p) => statutStock(p, bq) === "RUPTURE").length, "danger"]);
     k.push(["Sous seuil", db.products.filter((p) => statutStock(p, bq) === "STOCK FAIBLE").length, "warn"]);
     const nPending = db.products.filter((p) => !p.valide).length;
@@ -1058,7 +1058,7 @@
       "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(Math.round(p.cmp)) + '</td><td class="num admin-only">' +
       (lastPurchase(p.code) ? num(Math.round(lastPurchase(p.code).pu)) : '<span class="muted">—</span>') + '</td><td class="num admin-only">' + num(p.pv) +
       '</td><td class="num admin-only">' + num(stockInitialOf(p, bq)) + '</td><td class="num admin-only">' + num(p.stockMin) + '</td><td class="num admin-only">' + num(totalEntrees(p.code, bq)) + '</td><td class="num admin-only">' + num(totalVentes(p.code, bq)) +
-      '</td><td class="num"><b>' + num(stockActuel(p, bq)) + '</b></td><td class="num admin-only">' + num(Math.max(0, stockActuel(p, bq)) * Number(p.pv)) +
+      '</td><td class="num"><b>' + num(stockActuel(p, bq)) + '</b></td><td class="num">' + num(Math.max(0, stockActuel(p, bq)) * Number(p.pv)) +
       "</td><td>" + statutBadge(statutStock(p, bq)) + '</td><td class="admin-only">' +
       (admin && !p.valide ? '<button class="btn small success" data-pvalid="' + esc(p.code) + '">✓ Valider</button> ' : "") +
       (admin ? '<button class="btn small" data-prices="' + esc(p.code) + '">Prix</button> <button class="btn small" data-edit="' + esc(p.code) + '">Modifier</button> <button class="btn small danger" data-pdel="' + esc(p.code) + '">✕</button>' : "") +
@@ -1068,7 +1068,7 @@
     const totStock = sorted.reduce((a, p) => a + stockActuel(p, bq), 0);
     const totVente = sorted.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv), 0);
     $("#s-foot").innerHTML = sorted.length ? '<tr class="total-row"><td colspan="3"><b>TOTAL' + (q ? " (recherche)" : "") + "</b></td>" +
-      '<td class="admin-only" colspan="7"></td><td class="num"><b>' + num(totStock) + '</b></td><td class="num admin-only"><b>' + money(totVente) +
+      '<td class="admin-only" colspan="7"></td><td class="num"><b>' + num(totStock) + '</b></td><td class="num"><b>' + money(totVente) +
       '</b></td><td></td><td class="admin-only"></td></tr>' : "";
   }
   $("#s-search").addEventListener("input", renderStock);
