@@ -110,7 +110,7 @@
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA",
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -1030,11 +1030,25 @@
     const q = $("#s-search").value.trim().toLowerCase();
     // Filtre boutique : stock commun ou stock d'une seule boutique
     const bcur = $("#s-boutique").value || "ALL";
-    $("#s-boutique").innerHTML = '<option value="ALL">Stock commun (toutes les boutiques)</option>' +
-      db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
-    $("#s-boutique").value = db.boutiques.some((b) => b.code === bcur) ? bcur : "ALL";
-    // Un CC voit d'abord le stock de sa boutique (il peut changer le filtre).
-    if (!admin && !stockFiltreInit) { stockFiltreInit = true; const mb = me.cc && ccBoutique(me.cc); if (mb && db.boutiques.some((b) => b.code === mb)) $("#s-boutique").value = mb; }
+    // Par défaut un CC ne voit que le stock de sa boutique ; l'admin peut l'autoriser à voir toutes les boutiques (RH).
+    const myCc = !admin && me.cc ? ccByCode(me.cc) : null;
+    const tout = admin || !!(myCc && myCc.voirStock);
+    const myBq = myCc && db.boutiques.some((b) => b.code === myCc.boutique) ? myCc.boutique : "";
+    if (!tout && !myBq) {
+      $("#s-boutique").innerHTML = '<option value="">Aucune boutique</option>';
+      $("#s-title").textContent = "Stock";
+      $("#stock-kpis").innerHTML = "";
+      $("#s-rows").innerHTML = '<tr><td colspan="14" class="empty">Votre CC n\'est affecté à aucune boutique. Demandez à l\'administrateur.</td></tr>';
+      $("#s-foot").innerHTML = "";
+      return;
+    }
+    const bqs = tout ? db.boutiques : db.boutiques.filter((b) => b.code === myBq);
+    $("#s-boutique").innerHTML = (tout ? '<option value="ALL">Stock commun (toutes les boutiques)</option>' : "") +
+      bqs.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    $("#s-boutique").value = bqs.some((b) => b.code === bcur) ? bcur : tout ? "ALL" : myBq;
+    $("#s-boutique").disabled = !tout;
+    // Un CC voit d'abord le stock de sa boutique.
+    if (!admin && !stockFiltreInit && myBq) { stockFiltreInit = true; $("#s-boutique").value = myBq; }
     const bq = $("#s-boutique").value;
     $("#s-title").textContent = bq === "ALL" ? "Stock commun — toutes les boutiques" : "Stock — " + boutiqueName(bq);
     const list = db.products.filter((p) => !q || (p.nom + " " + p.code + " " + p.categorie).toLowerCase().includes(q));
@@ -1985,7 +1999,8 @@
       (c ? '<div class="info-row"><span>Code commercial</span><span>' + esc(ccName(code)) + "</span></div>" +
         '<div class="info-row"><span>Boutique</span><span>🏬 ' + esc(boutiqueName(c.boutique)) + "</span></div>" +
         '<div class="info-row"><span>Affecté depuis</span><span>' + (agentDebut(c) ? fmtDate(agentDebut(c)) : "—") + "</span></div>" +
-        '<div class="info-row"><span>Entrées de stock</span><span>' + (canEntrees() ? "✅ Autorisé" : "Non autorisé (géré par l'administrateur)") + "</span></div>"
+        '<div class="info-row"><span>Entrées de stock</span><span>' + (canEntrees() ? "✅ Autorisé" : "Non autorisé (géré par l'administrateur)") + "</span></div>" +
+        '<div class="info-row"><span>Stock visible</span><span>' + (isAdmin() || c.voirStock ? "Toutes les boutiques" : "Ma boutique uniquement") + "</span></div>"
         : '<p class="hint">Aucun code commercial lié à votre compte.</p>') + "</div>";
     if (c) {
       const st = ccStatusOn(code, t);
@@ -2156,6 +2171,8 @@
         "</select></td><td>" +
         '<label class="switch-cell" title="Autoriser ce CC à faire les entrées de stock de sa boutique"><input type="checkbox" data-cc-entrees="' + esc(c.code) + '"' + (c.entrees ? " checked" : "") + "> " +
         (c.entrees ? "Autorisé" : '<span class="muted">Non</span>') + "</label></td><td>" +
+        '<label class="switch-cell" title="Autoriser ce CC à voir le stock de toutes les boutiques (sinon seulement la sienne)"><input type="checkbox" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "> " +
+        (c.voirStock ? "Toutes" : '<span class="muted">Sa boutique</span>') + "</label></td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
         "</td><td>" + (reposLabel(c) || '<span class="muted">—</span>') + '</td><td class="hist">' + hist + '</td><td class="wrap">' +
         '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
@@ -2164,7 +2181,7 @@
           : '<button class="btn small" data-cc-reactiver="' + esc(c.code) + '">Réactiver</button> ') +
         (hasSales ? "" : '<button class="btn small danger" data-cc-del="' + esc(c.code) + '">✕</button>') +
         "</td></tr>";
-    }).join("") : '<tr><td colspan="8" class="empty">Aucun code commercial.</td></tr>';
+    }).join("") : '<tr><td colspan="9" class="empty">Aucun code commercial.</td></tr>';
   }
 
   let ccMode = null, ccTarget = null;
@@ -2218,6 +2235,12 @@
     }, msg || ccLabel(cc.code) + " — " + nom);
   }
   $("#cc-rows").addEventListener("change", (e) => {
+    const vs = e.target.closest("[data-cc-voirstock]");
+    if (vs) {
+      const code = vs.dataset.ccVoirstock, on = vs.checked;
+      return act(async () => chk(await sb.from("ccs").update({ voir_stock: on }).eq("code", code)),
+        ccName(code) + (on ? " peut voir le stock de toutes les boutiques." : " ne voit plus que le stock de sa boutique."));
+    }
     const ent = e.target.closest("[data-cc-entrees]");
     if (ent) {
       const code = ent.dataset.ccEntrees, on = ent.checked;

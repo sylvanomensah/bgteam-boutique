@@ -106,6 +106,8 @@ create table if not exists public.boutiques (
 alter table public.ccs add column if not exists boutique text references public.boutiques(code) on update cascade on delete set null;
 -- Autorisation « Entrées de stock » donnée par l'admin à certains CC (par boutique).
 alter table public.ccs add column if not exists entrees boolean not null default false;
+-- Autorisation de voir le stock de toutes les boutiques (par défaut : seulement la sienne).
+alter table public.ccs add column if not exists voir_stock boolean not null default false;
 
 -- Vrai si l'utilisateur est admin, ou vendeur actif dont le CC est autorisé aux entrées de stock.
 create or replace function public.can_entrees() returns boolean
