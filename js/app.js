@@ -2059,9 +2059,11 @@
       ]);
       $("#bb-hint").textContent = "Moyennes calculées depuis la première utilisation déclarée (semaine = 7 jours, mois = 30 jours). Autonomie = bobines restantes ÷ moyenne par jour. Stock faible : 2 bobines ou moins.";
     }
-    // Saisie des bobines utilisées : CC « saisie » (sa boutique) et gestion (toutes)
-    document.body.classList.toggle("no-bobines-saisie", droit === "boutique" || !scope.length);
-    if (droit !== "boutique" && scope.length) {
+    // Saisie des bobines utilisées : admin (toutes les boutiques) et CC « saisie » (sa boutique) uniquement.
+    // Les CC « Toutes + approvisionnement » consultent et approvisionnent, mais ne saisissent pas l'utilisation.
+    const peutSaisir = (isAdmin() || droit === "saisie") && scope.length > 0;
+    document.body.classList.toggle("no-bobines-saisie", !peutSaisir);
+    if (peutSaisir) {
       const ucur = $("#bu-boutique").value;
       $("#bu-boutique").innerHTML = scope.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
       $("#bu-boutique").value = f || (scope.some((b) => b.code === ucur) ? ucur : scope[0].code);
@@ -2534,7 +2536,7 @@
         '<label class="switch-cell" title="Autoriser ce CC à voir le stock de toutes les boutiques (sinon seulement la sienne)"><input type="checkbox" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "> " +
         (c.voirStock ? "Toutes" : '<span class="muted">Sa boutique</span>') + "</label></td><td>" +
         '<select class="inline-select" data-cc-bobines="' + esc(c.code) + '" title="Accès au menu Bobines">' +
-        [["boutique", "Consultation (sa boutique)"], ["saisie", "Saisie utilisation (sa boutique)"], ["gestion", "Toutes + approvisionnement"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
+        [["boutique", "Consultation (sa boutique)"], ["saisie", "Saisie utilisation (sa boutique)"], ["gestion", "Toutes + approvisionnement (sans saisie)"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
         "</select></td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
         "</td><td>" + (reposLabel(c) || '<span class="muted">—</span>') + '</td><td class="hist">' + hist + '</td><td class="wrap">' +

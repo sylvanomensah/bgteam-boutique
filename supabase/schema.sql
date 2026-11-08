@@ -850,7 +850,8 @@ create policy bobines_select on public.bobines_mvts for select to authenticated
   using (public.bobines_droit() = 'gestion' or (public.bobines_droit() in ('boutique', 'saisie') and boutique = public.my_boutique()));
 drop policy if exists bobines_insert on public.bobines_mvts;
 create policy bobines_insert on public.bobines_mvts for insert to authenticated
-  with check (created_by = auth.uid() and date <= current_date and (public.bobines_droit() = 'gestion'
+  with check (created_by = auth.uid() and date <= current_date and (public.is_admin()
+    or (public.bobines_droit() = 'gestion' and type = 'Approvisionnement')
     or (public.bobines_droit() = 'saisie' and boutique = public.my_boutique() and type = 'Utilisation')));
 drop policy if exists bobines_delete on public.bobines_mvts;
 create policy bobines_delete on public.bobines_mvts for delete to authenticated
