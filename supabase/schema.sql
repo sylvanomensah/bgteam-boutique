@@ -104,6 +104,16 @@ create table if not exists public.boutiques (
   created_at timestamptz not null default now()
 );
 alter table public.ccs add column if not exists boutique text references public.boutiques(code) on update cascade on delete set null;
+-- Autorisation « Entrées de stock » donnée par l'admin à certains CC (par boutique).
+alter table public.ccs add column if not exists entrees boolean not null default false;
+
+-- Vrai si l'utilisateur est admin, ou vendeur actif dont le CC est autorisé aux entrées de stock.
+create or replace function public.can_entrees() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or exists (
+    select 1 from public.profiles p join public.ccs c on c.code = p.cc
+    where p.id = auth.uid() and p.actif and c.actif and c.entrees);
+$$;
 
 -- ---------- Courses (achats au marché) ----------
 -- Une course = un reçu : plusieurs produits achetés + les frais (retrait, transport, autres).
@@ -366,6 +376,7 @@ declare
   v_boutique text;
 begin
   if not public.is_member() then raise exception 'Compte non autorisé'; end if;
+  if not public.can_entrees() then raise exception 'Votre CC n''est pas autorisé à faire des entrées de stock. Demandez à l''administrateur.'; end if;
   select * into prof from public.profiles where id = auth.uid();
   if v_marche = '' then raise exception 'Indiquez le marché de la course'; end if;
   if length(regexp_replace(v_tel, '\D', '', 'g')) < 8 then raise exception 'Indiquez un numéro de téléphone du fournisseur valide (8 chiffres minimum)'; end if;
@@ -463,6 +474,7 @@ declare
   v_code text;
 begin
   if not public.is_member() then raise exception 'Compte non autorisé'; end if;
+  if not public.can_entrees() then raise exception 'Votre CC n''est pas autorisé à faire des entrées de stock. Demandez à l''administrateur.'; end if;
   if length(v_nom) < 2 then raise exception 'Indiquez la désignation du produit'; end if;
   if v_cat = '' then raise exception 'Choisissez la catégorie du produit'; end if;
   if p_pv is null or p_pv <= 0 then raise exception 'Indiquez un prix de vente valide'; end if;
@@ -488,7 +500,7 @@ drop policy if exists recus_select on storage.objects;
 create policy recus_select on storage.objects for select to authenticated using (bucket_id = 'recus' and public.is_member());
 drop policy if exists recus_insert on storage.objects;
 create policy recus_insert on storage.objects for insert to authenticated
-  with check (bucket_id = 'recus' and public.is_member() and name like 'courses/%');
+  with check (bucket_id = 'recus' and public.can_entrees() and name like 'courses/%');
 drop policy if exists recus_delete on storage.objects;
 create policy recus_delete on storage.objects for delete to authenticated using (bucket_id = 'recus' and public.is_admin());
 
@@ -499,7 +511,7 @@ begin
   if p_statut not in ('Validée', 'Annulée') then raise exception 'Statut invalide'; end if;
   select * into c from public.courses where id = p_id;
   if not found then raise exception 'Course introuvable'; end if;
-  if not public.is_admin() and (not public.is_member() or c.created_by is distinct from auth.uid() or c.created_at < now() - interval '2 hours') then
+  if not public.is_admin() and (not public.can_entrees() or c.created_by is distinct from auth.uid() or c.created_at < now() - interval '2 hours') then
     raise exception 'Délai de 2 heures dépassé : seul l''administrateur peut modifier cette course.';
   end if;
   update public.courses set statut = p_statut where id = p_id;
@@ -549,11 +561,11 @@ drop policy if exists entries_select on public.entries;
 create policy entries_select on public.entries for select to authenticated using (public.is_member());
 drop policy if exists entries_insert on public.entries;
 create policy entries_insert on public.entries for insert to authenticated
-  with check (public.is_member() and statut = 'Validée' and course_id is null);
+  with check (public.can_entrees() and statut = 'Validée' and course_id is null);
 drop policy if exists entries_update on public.entries;
 create policy entries_update on public.entries for update to authenticated
-  using (public.is_admin() or (public.is_member() and course_id is null and created_by = auth.uid() and created_at > now() - interval '2 hours'))
-  with check (public.is_admin() or (public.is_member() and course_id is null and created_by = auth.uid()));
+  using (public.is_admin() or (public.can_entrees() and course_id is null and created_by = auth.uid() and created_at > now() - interval '2 hours'))
+  with check (public.is_admin() or (public.can_entrees() and course_id is null and created_by = auth.uid()));
 
 -- Courses : lecture pour les membres ; écriture via save_course() / set_course_statut() ; suppression admin.
 alter table public.courses enable row level security;

@@ -110,7 +110,7 @@
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA",
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -370,6 +370,12 @@
   }
 
   // ---------- Navigation ----------
+  // Entrées de stock : admin, ou CC autorisé par l'admin (colonne ccs.entrees, contrôlée aussi côté serveur).
+  function canEntrees() {
+    if (isAdmin()) return true;
+    const c = me && me.cc ? ccByCode(me.cc) : null;
+    return !!(c && c.actif && c.entrees);
+  }
   function canView(view) { return !!document.getElementById("view-" + view) && (isAdmin() || !ADMIN_VIEWS.includes(view)); }
   function show(view) {
     if (!canView(view)) view = isAdmin() ? "dashboard" : "caisse";
@@ -384,6 +390,8 @@
     if (b) show(b.dataset.view);
   });
   function render(view) {
+    // CC non autorisé : pas de formulaire de saisie, seulement l'historique des courses.
+    document.body.classList.toggle("no-entrees", !canEntrees());
     $("#brand-name").textContent = db.settings.nom;
     document.title = db.settings.nom + " — Boutique";
     ({
@@ -1016,6 +1024,7 @@
   });
 
   // ---------- Stock ----------
+  let stockFiltreInit = false;
   function renderStock() {
     const admin = isAdmin();
     const q = $("#s-search").value.trim().toLowerCase();
@@ -1024,6 +1033,8 @@
     $("#s-boutique").innerHTML = '<option value="ALL">Stock commun (toutes les boutiques)</option>' +
       db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
     $("#s-boutique").value = db.boutiques.some((b) => b.code === bcur) ? bcur : "ALL";
+    // Un CC voit d'abord le stock de sa boutique (il peut changer le filtre).
+    if (!admin && !stockFiltreInit) { stockFiltreInit = true; const mb = me.cc && ccBoutique(me.cc); if (mb && db.boutiques.some((b) => b.code === mb)) $("#s-boutique").value = mb; }
     const bq = $("#s-boutique").value;
     $("#s-title").textContent = bq === "ALL" ? "Stock commun — toutes les boutiques" : "Stock — " + boutiqueName(bq);
     const list = db.products.filter((p) => !q || (p.nom + " " + p.code + " " + p.categorie).toLowerCase().includes(q));
@@ -1044,9 +1055,9 @@
       (p.valide ? "" : '<span class="sub">Créé par ' + esc(p.creePar || "—") + (p.creeParCc ? " (" + ccLabel(p.creeParCc) + ")" : "") +
         (p.creeLe ? " le " + fmtDate(String(p.creeLe).slice(0, 10)) : "") + "</span>") +
       "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(Math.round(p.cmp)) + '</td><td class="num admin-only">' +
-      (lastPurchase(p.code) ? num(Math.round(lastPurchase(p.code).pu)) : '<span class="muted">—</span>') + '</td><td class="num">' + num(p.pv) +
-      '</td><td class="num">' + num(stockInitialOf(p, bq)) + '</td><td class="num">' + num(p.stockMin) + '</td><td class="num">' + num(totalEntrees(p.code, bq)) + '</td><td class="num">' + num(totalVentes(p.code, bq)) +
-      '</td><td class="num"><b>' + num(stockActuel(p, bq)) + "</b></td><td>" + statutBadge(statutStock(p, bq)) + "</td><td>" +
+      (lastPurchase(p.code) ? num(Math.round(lastPurchase(p.code).pu)) : '<span class="muted">—</span>') + '</td><td class="num admin-only">' + num(p.pv) +
+      '</td><td class="num admin-only">' + num(stockInitialOf(p, bq)) + '</td><td class="num admin-only">' + num(p.stockMin) + '</td><td class="num admin-only">' + num(totalEntrees(p.code, bq)) + '</td><td class="num admin-only">' + num(totalVentes(p.code, bq)) +
+      '</td><td class="num"><b>' + num(stockActuel(p, bq)) + "</b></td><td>" + statutBadge(statutStock(p, bq)) + '</td><td class="admin-only">' +
       (admin && !p.valide ? '<button class="btn small success" data-pvalid="' + esc(p.code) + '">✓ Valider</button> ' : "") +
       (admin ? '<button class="btn small" data-prices="' + esc(p.code) + '">Prix</button> <button class="btn small" data-edit="' + esc(p.code) + '">Modifier</button> <button class="btn small danger" data-pdel="' + esc(p.code) + '">✕</button>' : "") +
       "</td></tr>"
@@ -1458,35 +1469,48 @@
   }
 
   function renderEntrees() {
-    if (!courseLines.length && !editingCourseId) resetCourseForm();
-    renderCourseForm();
-    const fcur = $("#eh-cc").value || "ALL";
-    $("#eh-cc").innerHTML = '<option value="ALL">Tous les CC</option>' +
-      db.settings.ccList.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("") +
-      '<option value="NONE">Sans CC (admin)</option>';
-    $("#eh-cc").value = Array.from($("#eh-cc").options).some((o) => o.value === fcur) ? fcur : "ALL";
+    if (canEntrees()) {
+      if (!courseLines.length && !editingCourseId) resetCourseForm();
+      renderCourseForm();
+    }
+    renderEhFilters();
     renderEntryHistory();
   }
+  // Filtres de l'historique : boutique → seuls ses CC ; CC choisi d'abord → sa boutique est sélectionnée.
+  function renderEhFilters() {
+    const bcur = $("#eh-boutique").value || "ALL";
+    $("#eh-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' +
+      db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    $("#eh-boutique").value = db.boutiques.some((b) => b.code === bcur) ? bcur : "ALL";
+    const bq = $("#eh-boutique").value;
+    const fcur = $("#eh-cc").value || "ALL";
+    const list = db.settings.ccList.filter((c) => bq === "ALL" || c.boutique === bq);
+    $("#eh-cc").innerHTML = '<option value="ALL">Tous les CC</option>' +
+      list.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("") +
+      '<option value="NONE">Sans CC (admin)</option>';
+    $("#eh-cc").value = Array.from($("#eh-cc").options).some((o) => o.value === fcur) ? fcur : "ALL";
+  }
+  $("#eh-boutique").addEventListener("change", () => { renderEhFilters(); renderEntryHistory(); });
 
   // ----- Historique : jours → courses (cliquer pour le détail) + entrées simples -----
   function canEditCourse(c) {
     if (isAdmin()) return true;
-    return c.createdBy === me.id && c.createdAt && Date.now() - new Date(c.createdAt).getTime() < EDIT_WINDOW_MS;
+    return canEntrees() && c.createdBy === me.id && c.createdAt && Date.now() - new Date(c.createdAt).getTime() < EDIT_WINDOW_MS;
   }
   function courseLinesOf(c) { return db.entries.filter((x) => x.courseId === c.id); }
   function courseTotal(c) { return courseLinesOf(c).reduce((a, x) => a + (x.prixTotal || 0), 0) + c.retrait + c.transport + c.autres; }
   function renderEntryHistory() {
-    const fcc = $("#eh-cc").value;
+    const fcc = $("#eh-cc").value, fbq = $("#eh-boutique").value || "ALL";
     const q = "";
-    const ccOk = (cc) => (fcc === "ALL" ? true : fcc === "NONE" ? !cc : cc === fcc);
+    const ccOk = (cc, bq) => (fbq === "ALL" || bq === fbq) && (fcc === "ALL" ? true : fcc === "NONE" ? !cc : cc === fcc);
     const matches = (code, extra) => {
       if (!q) return true;
       const p = productByCode(code);
       return ((p ? p.nom : "") + " " + code + " " + (extra || "")).toLowerCase().includes(q);
     };
-    const courses = db.courses.filter((c) => ccOk(c.cc) &&
+    const courses = db.courses.filter((c) => ccOk(c.cc, c.boutique) &&
       (!q || courseLinesOf(c).some((x) => matches(x.code, [c.saisiPar, c.obs, c.marche, c.tel].join(" ")))));
-    const simples = db.entries.filter((x) => !x.courseId && ccOk(x.cc) && matches(x.code, (x.saisiPar || "") + " " + (x.obs || "")));
+    const simples = db.entries.filter((x) => !x.courseId && ccOk(x.cc, x.boutique) && matches(x.code, (x.saisiPar || "") + " " + (x.obs || "")));
 
     const sel = $("#eh-date");
     const curDate = sel.value;
@@ -1574,7 +1598,12 @@
       signedPhotoUrl(img.dataset.photoPath).then((u) => { img.src = u; img.dataset.zoom = u; }).catch(() => { img.alt = "Photo indisponible"; });
     });
   }
-  ["#eh-cc", "#eh-date"].forEach((id) => $(id).addEventListener("change", renderEntryHistory));
+  $("#eh-cc").addEventListener("change", () => {
+    const cc = $("#eh-cc").value;
+    if (cc !== "ALL" && cc !== "NONE" && $("#eh-boutique").value === "ALL" && ccBoutique(cc)) { $("#eh-boutique").value = ccBoutique(cc); renderEhFilters(); $("#eh-cc").value = cc; }
+    renderEntryHistory();
+  });
+  $("#eh-date").addEventListener("change", renderEntryHistory);
   function entryDetail(ls) {
     const admin = isAdmin();
     return '<table class="table inner"><thead><tr><th>Heure</th><th>Article</th><th>Code</th><th class="num">Quantité</th><th>Statut</th><th>CC</th><th>Saisi par</th><th>Observation</th><th></th></tr></thead><tbody>' +
@@ -1732,7 +1761,8 @@
       const ccs = db.settings.ccList.filter((c) => c.boutique === b.code);
       return "<tr><td><b>" + esc(b.code) + '</b></td><td><input class="inline-input" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '"></td><td>' +
         (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + '</td><td class="wrap">' +
-        (ccs.length ? ccs.map((c) => esc(ccName(c.code))).join("<br>") : '<span class="muted">Aucun CC</span>') + "</td><td>" +
+        (ccs.length ? ccs.map((c) => esc(ccName(c.code)) + (c.entrees ? ' <span class="badge ok" title="Autorisé aux entrées de stock">📦 Entrées</span>' : "")).join("<br>") : '<span class="muted">Aucun CC</span>') +
+        (ccs.length && !ccs.some((c) => c.entrees) ? '<br><span class="sub">Aucun CC autorisé aux entrées de stock</span>' : "") + "</td><td>" +
         '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button> " +
         (b.code === INITIAL_BOUTIQUE ? '<span class="sub">Boutique d\'origine (stock initial)</span>' : '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button>') +
         "</td></tr>";
@@ -1944,7 +1974,8 @@
       '<div class="info-row"><span>Rôle</span><span>' + (isAdmin() ? "Administrateur" : "Vendeur") + "</span></div>" +
       (c ? '<div class="info-row"><span>Code commercial</span><span>' + esc(ccName(code)) + "</span></div>" +
         '<div class="info-row"><span>Boutique</span><span>🏬 ' + esc(boutiqueName(c.boutique)) + "</span></div>" +
-        '<div class="info-row"><span>Affecté depuis</span><span>' + (agentDebut(c) ? fmtDate(agentDebut(c)) : "—") + "</span></div>"
+        '<div class="info-row"><span>Affecté depuis</span><span>' + (agentDebut(c) ? fmtDate(agentDebut(c)) : "—") + "</span></div>" +
+        '<div class="info-row"><span>Entrées de stock</span><span>' + (canEntrees() ? "✅ Autorisé" : "Non autorisé (géré par l'administrateur)") + "</span></div>"
         : '<p class="hint">Aucun code commercial lié à votre compte.</p>') + "</div>";
     if (c) {
       const st = ccStatusOn(code, t);
@@ -2109,6 +2140,8 @@
         '<select class="inline-select" data-cc-bq="' + esc(c.code) + '"><option value="">— Non affecté —</option>' +
         db.boutiques.map((b) => '<option value="' + esc(b.code) + '"' + (b.code === c.boutique ? " selected" : "") + ">" + esc(b.nom) + "</option>").join("") +
         "</select></td><td>" +
+        '<label class="switch-cell" title="Autoriser ce CC à faire les entrées de stock de sa boutique"><input type="checkbox" data-cc-entrees="' + esc(c.code) + '"' + (c.entrees ? " checked" : "") + "> " +
+        (c.entrees ? "Autorisé" : '<span class="muted">Non</span>') + "</label></td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
         "</td><td>" + (reposLabel(c) || '<span class="muted">—</span>') + '</td><td class="hist">' + hist + '</td><td class="wrap">' +
         '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
@@ -2117,7 +2150,7 @@
           : '<button class="btn small" data-cc-reactiver="' + esc(c.code) + '">Réactiver</button> ') +
         (hasSales ? "" : '<button class="btn small danger" data-cc-del="' + esc(c.code) + '">✕</button>') +
         "</td></tr>";
-    }).join("") : '<tr><td colspan="6" class="empty">Aucun code commercial.</td></tr>';
+    }).join("") : '<tr><td colspan="8" class="empty">Aucun code commercial.</td></tr>';
   }
 
   let ccMode = null, ccTarget = null;
@@ -2171,6 +2204,12 @@
     }, msg || ccLabel(cc.code) + " — " + nom);
   }
   $("#cc-rows").addEventListener("change", (e) => {
+    const ent = e.target.closest("[data-cc-entrees]");
+    if (ent) {
+      const code = ent.dataset.ccEntrees, on = ent.checked;
+      return act(async () => chk(await sb.from("ccs").update({ entrees: on }).eq("code", code)),
+        ccName(code) + (on ? " peut maintenant faire les entrées de stock (" + boutiqueName(ccBoutique(code)) + ")." : " ne peut plus faire d'entrées de stock."));
+    }
     const sel = e.target.closest("[data-cc-bq]");
     if (sel) {
       const code = sel.dataset.ccBq, bq = sel.value;
