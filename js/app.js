@@ -816,7 +816,8 @@
   function setPhotoPreview(url, label) {
     $("#co-photo-preview").innerHTML = url
       ? '<img src="' + esc(url) + '" alt="Reçu" data-zoom="' + esc(url) + '"><span>' + esc(label || "") + '</span><button class="btn small danger" id="co-photo-rm">Retirer la photo</button>'
-      : '<span>Aucune photo (facultatif). Sur téléphone, le bouton ouvre l\'appareil photo.</span>';
+      : "<span>" + (isAdmin() ? "Aucune photo (facultatif pour l'admin)." : "Aucune photo — <b>obligatoire</b>.") + " Sur téléphone, le bouton ouvre l'appareil photo.</span>";
+    $("#co-photo-req").classList.toggle("hidden", isAdmin());
   }
   function resetCourseForm() {
     editingCourseId = null;
@@ -1010,6 +1011,8 @@
     if (!marche) { $("#co-marche").focus(); return toast("Indiquez le marché de la course."); }
     if (tel.replace(/\D/g, "").length < 8) { $("#co-tel").focus(); return toast("Indiquez le téléphone du fournisseur (8 chiffres minimum)."); }
     if (!filled.length) return toast("Ajoutez au moins un produit.");
+    const hasPhoto = !!coPhotoBlob || (!!coPhotoPath && !coPhotoRemoved);
+    if (!isAdmin() && !hasPhoto) return toast("La photo du reçu est obligatoire : touchez « 📷 Photo du reçu ».");
     for (const l of filled) {
       if (!l.code) return toast("Choisissez le produit de chaque ligne.");
       if (!(Number(l.qte) > 0)) return toast("Quantité invalide pour " + (productByCode(l.code) || {}).nom + ".");
