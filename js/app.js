@@ -374,7 +374,7 @@
     return { ca, qte, tickets, marge, lignes: list.length };
   }
   function kpiHtml(items) {
-    return items.map(([l, v, c]) => '<div class="kpi ' + (c || "") + '"><div class="label">' + l + '</div><div class="value">' + v + "</div></div>").join("");
+    return items.map(([l, v, c, attrs]) => '<div class="kpi ' + (c || "") + '"' + (attrs ? " " + attrs : "") + '><div class="label">' + l + '</div><div class="value">' + v + "</div></div>").join("");
   }
 
   // ---------- Navigation ----------
@@ -1050,7 +1050,14 @@
   });
 
   // ---------- Stock ----------
-  let stockFiltreInit = false;
+  let stockFiltreInit = false, stockVue = "stock";
+  $("#stock-kpis").addEventListener("click", (e) => {
+    const t = e.target.closest("[data-sv]");
+    if (!t) return;
+    // Recliquer sur la case active revient aux produits en stock
+    stockVue = stockVue === t.dataset.sv && t.dataset.sv !== "stock" ? "stock" : t.dataset.sv;
+    renderStock();
+  });
   function renderStock() {
     const admin = isAdmin();
     const q = $("#s-search").value.trim().toLowerCase();
@@ -1077,14 +1084,24 @@
     if (!admin && !stockFiltreInit && myBq) { stockFiltreInit = true; $("#s-boutique").value = myBq; }
     const bq = $("#s-boutique").value;
     $("#s-title").textContent = bq === "ALL" ? "Stock commun — toutes les boutiques" : "Stock — " + boutiqueName(bq);
-    const list = db.products.filter((p) => !q || (p.nom + " " + p.code + " " + p.categorie).toLowerCase().includes(q));
+    // Vue : produits en stock (par défaut), en rupture, sous seuil ou tous — choisie en cliquant sur les cases.
+    const enVue = {
+      stock: (p) => stockActuel(p, bq) > 0 || !p.valide,
+      rupture: (p) => statutStock(p, bq) === "RUPTURE",
+      seuil: (p) => statutStock(p, bq) === "STOCK FAIBLE",
+      tous: () => true
+    };
+    const vueLib = { stock: "produits en stock", rupture: "produits en rupture", seuil: "produits sous le seuil", tous: "tous les produits" };
+    $("#s-title").textContent += " · " + vueLib[stockVue];
+    const list = db.products.filter((p) => enVue[stockVue](p) && (!q || (p.nom + " " + p.code + " " + p.categorie).toLowerCase().includes(q)));
     const stockTotal = db.products.reduce((a, p) => a + stockActuel(p, bq), 0);
     const valeur = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.cmp), 0);
-    const k = [["Produits", db.products.length], ["Stock total", num(stockTotal)]];
+    const tile = (v) => 'data-sv="' + v + '" title="Cliquer pour afficher les ' + vueLib[v] + '" style="cursor:pointer' + (stockVue === v ? ";outline:2px solid var(--primary)" : "") + '"';
+    const k = [["Produits", db.products.length, "", tile("tous")], ["En stock", db.products.filter(enVue.stock).length, "", tile("stock")], ["Stock total", num(stockTotal)]];
     if (admin) k.push(["Valeur du stock (achat)", money(valeur)]);
     k.push(["Valeur du stock (vente)", money(db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv), 0))]);
-    k.push(["En rupture", db.products.filter((p) => statutStock(p, bq) === "RUPTURE").length, "danger"]);
-    k.push(["Sous seuil", db.products.filter((p) => statutStock(p, bq) === "STOCK FAIBLE").length, "warn"]);
+    k.push(["En rupture", db.products.filter(enVue.rupture).length, "danger", tile("rupture")]);
+    k.push(["Sous seuil", db.products.filter(enVue.seuil).length, "warn", tile("seuil")]);
     const nPending = db.products.filter((p) => !p.valide).length;
     if (nPending) k.push(["À valider", nPending, "warn"]);
     $("#stock-kpis").innerHTML = kpiHtml(k);
@@ -1103,7 +1120,7 @@
       (admin && !p.valide ? '<button class="btn small success" data-pvalid="' + esc(p.code) + '">✓ Valider</button> ' : "") +
       (admin ? '<button class="btn small" data-prices="' + esc(p.code) + '">Prix</button> <button class="btn small" data-edit="' + esc(p.code) + '">Modifier</button> <button class="btn small danger" data-pdel="' + esc(p.code) + '">✕</button>' : "") +
       "</td></tr>"
-    ).join("") : '<tr><td colspan="14" class="empty">Aucun produit.</td></tr>';
+    ).join("") : '<tr><td colspan="14" class="empty">Aucun produit dans cette vue (' + vueLib[stockVue] + ").</td></tr>";
     // Totaux des produits affichés (tient compte de la recherche)
     const totStock = sorted.reduce((a, p) => a + stockActuel(p, bq), 0);
     const totVente = sorted.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv), 0);
