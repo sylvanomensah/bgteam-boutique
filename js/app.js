@@ -2037,8 +2037,12 @@
     } else {
       const x = bobinesOf(f);
       const stCls = x.reste <= 0 ? "danger" : x.reste <= BOBINE_SEUIL ? "warn" : "";
+      // Une seule case « Utilisation moyenne » : le chiffre s'affiche après avoir choisi jour / semaine / mois.
+      const per = { jour: [1, "par jour"], semaine: [7, "par semaine"], mois: [30, "par mois"] };
+      const moySel = '<select id="bb-moy-per" class="inline-select" style="margin-left:6px">' +
+        '<option value="">— Choisir —</option>' + Object.keys(per).map((k) => '<option value="' + k + '"' + (bobMoyPer === k ? " selected" : "") + ">Moyenne " + per[k][1] + "</option>").join("") + "</select>";
       $("#bb-kpis").innerHTML = kpiHtml([
-        ["Moyenne / jour", moyHtml(x.parJour)], ["Moyenne / semaine", moyHtml(x.parJour * 7)], ["Moyenne / mois", moyHtml(x.parJour * 30)],
+        ["Utilisation moyenne" + moySel, bobMoyPer ? '<span style="color:#2a78d6">' + moyHtml(x.parJour * per[bobMoyPer][0]) + '</span><span class="sub" style="color:#2a78d6">bobine(s) ' + per[bobMoyPer][1] + "</span>" : '<span class="muted">—</span>', "info"],
         ["Bobines restantes", num(x.reste), stCls],
         ["Statut", bobineStatut(x.reste)],
         ["Autonomie estimée", autonomieHtml(x)],
@@ -2075,6 +2079,12 @@
     }).join("") : '<tr><td colspan="7" class="empty">Aucun mouvement de bobines.</td></tr>';
   }
   $("#bb-filtre").addEventListener("change", renderBobines);
+  let bobMoyPer = "";
+  $("#bb-kpis").addEventListener("change", (e) => {
+    if (e.target.id !== "bb-moy-per") return;
+    bobMoyPer = e.target.value;
+    renderBobines();
+  });
   $("#bu-save").addEventListener("click", (e) => {
     const bq = $("#bu-boutique").value, qte = Number($("#bu-qte").value), date = $("#bu-date").value || today();
     if (!bq) return toast("Choisissez la boutique.");
