@@ -96,6 +96,24 @@ create table if not exists public.ccs (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Courses (achats au marché) ----------
+-- Une course = un reçu : plusieurs produits achetés + les frais (retrait, transport, autres).
+create table if not exists public.courses (
+  id uuid primary key default gen_random_uuid(),
+  date date not null default current_date,
+  cc text references public.ccs(code) on update cascade,
+  saisi_par text not null default '',
+  created_by uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  frais_retrait numeric not null default 0 check (frais_retrait >= 0),
+  frais_transport numeric not null default 0 check (frais_transport >= 0),
+  autres_frais numeric not null default 0 check (autres_frais >= 0),
+  autres_libelle text not null default '',
+  obs text not null default '',
+  statut text not null default 'Validée' check (statut in ('Validée', 'Annulée'))
+);
+create index if not exists courses_date_idx on public.courses (date);
+
 -- ---------- Entrées de stock ----------
 create table if not exists public.entries (
   id uuid primary key default gen_random_uuid(),
@@ -110,14 +128,25 @@ create table if not exists public.entries (
 alter table public.entries add column if not exists cc text references public.ccs(code) on update cascade;
 alter table public.entries add column if not exists saisi_par text not null default '';
 create index if not exists entries_date_idx on public.entries (date);
+-- Lignes de course : prix total payé, part des frais et coût de revient unitaire.
+alter table public.entries add column if not exists course_id uuid references public.courses(id) on delete cascade;
+alter table public.entries add column if not exists prix_total numeric check (prix_total >= 0);
+alter table public.entries add column if not exists frais_part numeric;
+alter table public.entries add column if not exists cout_unitaire numeric;
+create index if not exists entries_course_idx on public.entries (course_id);
 
 -- Renseigne automatiquement l'auteur, son CC et l'heure de saisie ;
 -- empêche un vendeur de changer ces informations ou d'antidater une entrée.
+-- Les lignes de course sont écrites par save_course(), qui fixe elle-même ces valeurs.
 create or replace function public.entries_before_write() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare prof public.profiles%rowtype;
 begin
   select * into prof from public.profiles where id = auth.uid();
+  if tg_op = 'INSERT' and new.course_id is not null then
+    new.created_at := now();
+    return new;
+  end if;
   if tg_op = 'INSERT' then
     new.created_by := auth.uid();
     new.created_at := now();
@@ -141,6 +170,9 @@ end $$;
 drop trigger if exists entries_before_write on public.entries;
 create trigger entries_before_write before insert or update on public.entries
   for each row execute function public.entries_before_write();
+
+-- Coût moyen pondéré (CMP) courant de chaque produit (admin uniquement, voir product_costs).
+alter table public.product_costs add column if not exists cmp numeric;
 
 -- ---------- Ventes ----------
 create sequence if not exists public.ticket_seq;
@@ -215,6 +247,163 @@ revoke all on function public.sync_ticket_seq() from public, anon;
 grant execute on function public.sync_ticket_seq() to authenticated;
 
 -- =====================================================================
+-- Coût moyen pondéré (CMP) et coût de chaque vente
+-- =====================================================================
+-- Coût de revient unitaire figé sur chaque ligne de vente (pour des marges justes dans le temps).
+alter table public.sales add column if not exists cout_unitaire numeric;
+
+-- Rejoue l'historique d'un produit (stock initial, entrées validées, ventes) dans l'ordre
+-- chronologique : met à jour le CMP du produit et le coût de chaque vente.
+create or replace function public.recompute_cmp(p_code text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  st numeric;
+  cm numeric;
+  ev record;
+  prod public.products%rowtype;
+begin
+  select * into prod from public.products where code = p_code;
+  if not found then return; end if;
+  st := prod.stock_initial;
+  select coalesce(pa, 0) into cm from public.product_costs where code = p_code;
+  cm := coalesce(cm, 0);
+  for ev in
+    select 0 as kind, e.date as d, e.created_at as t, e.qte, e.cout_unitaire as cu, null::uuid as sid, true as counted
+      from public.entries e where e.code = p_code and e.statut = 'Validée'
+    union all
+    select 1, s.date, s.created_at, s.qte, null::numeric, s.id, s.valide = 'OUI'
+      from public.sales s where s.code = p_code
+    order by 2 nulls first, 3, 1
+  loop
+    if ev.kind = 0 then
+      if ev.cu is not null then
+        if st <= 0 then cm := ev.cu; else cm := (st * cm + ev.qte * ev.cu) / (st + ev.qte); end if;
+      end if;
+      st := st + ev.qte;
+    else
+      update public.sales set cout_unitaire = round(cm, 2)
+        where id = ev.sid and cout_unitaire is distinct from round(cm, 2);
+      if ev.counted then st := st - ev.qte; end if;
+    end if;
+  end loop;
+  update public.product_costs set cmp = round(cm, 2) where code = p_code;
+  if not found then insert into public.product_costs (code, pa, cmp) values (p_code, 0, round(cm, 2)); end if;
+end $$;
+revoke all on function public.recompute_cmp(text) from public, anon, authenticated;
+
+create or replace function public.trg_recompute_cmp() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op in ('INSERT', 'UPDATE') then perform public.recompute_cmp(new.code); end if;
+  if tg_op = 'DELETE' or (tg_op = 'UPDATE' and old.code is distinct from new.code) then perform public.recompute_cmp(old.code); end if;
+  return null;
+end $$;
+drop trigger if exists entries_cmp on public.entries;
+create trigger entries_cmp after insert or delete or update of statut, qte, code, date, cout_unitaire on public.entries
+  for each row execute function public.trg_recompute_cmp();
+drop trigger if exists sales_cmp on public.sales;
+create trigger sales_cmp after insert or delete or update of valide, qte, code, date on public.sales
+  for each row execute function public.trg_recompute_cmp();
+drop trigger if exists costs_cmp on public.product_costs;
+create trigger costs_cmp after update of pa on public.product_costs
+  for each row execute function public.trg_recompute_cmp();
+drop trigger if exists products_cmp on public.products;
+create trigger products_cmp after update of stock_initial on public.products
+  for each row execute function public.trg_recompute_cmp();
+
+-- =====================================================================
+-- Courses : création / modification (2 h pour un vendeur) et annulation
+-- =====================================================================
+create or replace function public.save_course(
+  p_id uuid, p_date date, p_cc text,
+  p_frais_retrait numeric, p_frais_transport numeric, p_autres_frais numeric, p_autres_libelle text,
+  p_obs text, p_lines jsonb
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  admin boolean := public.is_admin();
+  prof public.profiles%rowtype;
+  c public.courses%rowtype;
+  cid uuid;
+  l jsonb;
+  n integer;
+  sous_total numeric := 0;
+  frais numeric;
+  part numeric;
+  old_codes text[];
+  q numeric;
+  pt numeric;
+begin
+  if not public.is_member() then raise exception 'Compte non autorisé'; end if;
+  select * into prof from public.profiles where id = auth.uid();
+  n := coalesce(jsonb_array_length(p_lines), 0);
+  if n = 0 then raise exception 'Ajoutez au moins un produit à la course'; end if;
+  frais := coalesce(p_frais_retrait, 0) + coalesce(p_frais_transport, 0) + coalesce(p_autres_frais, 0);
+  if coalesce(p_frais_retrait, 0) < 0 or coalesce(p_frais_transport, 0) < 0 or coalesce(p_autres_frais, 0) < 0 then
+    raise exception 'Frais invalides';
+  end if;
+  for l in select * from jsonb_array_elements(p_lines) loop
+    if not exists (select 1 from public.products where code = l ->> 'code') then raise exception 'Produit inconnu : %', l ->> 'code'; end if;
+    if coalesce((l ->> 'qte')::numeric, 0) <= 0 then raise exception 'Quantité invalide'; end if;
+    if coalesce((l ->> 'prix_total')::numeric, -1) < 0 then raise exception 'Prix total invalide'; end if;
+    sous_total := sous_total + (l ->> 'prix_total')::numeric;
+  end loop;
+
+  if p_id is null then
+    insert into public.courses (date, cc, saisi_par, created_by, frais_retrait, frais_transport, autres_frais, autres_libelle, obs)
+    values (
+      case when admin then coalesce(p_date, current_date) else current_date end,
+      case when admin then nullif(p_cc, '') else prof.cc end,
+      coalesce(nullif(prof.nom, ''), prof.email, ''), auth.uid(),
+      coalesce(p_frais_retrait, 0), coalesce(p_frais_transport, 0), coalesce(p_autres_frais, 0),
+      coalesce(p_autres_libelle, ''), coalesce(p_obs, '')
+    ) returning id into cid;
+  else
+    select * into c from public.courses where id = p_id for update;
+    if not found then raise exception 'Course introuvable'; end if;
+    if not admin and (c.created_by is distinct from auth.uid() or c.created_at < now() - interval '2 hours') then
+      raise exception 'Délai de 2 heures dépassé : seul l''administrateur peut modifier cette course.';
+    end if;
+    update public.courses set
+      date = case when admin then coalesce(p_date, c.date) else c.date end,
+      cc = case when admin then nullif(p_cc, '') else c.cc end,
+      frais_retrait = coalesce(p_frais_retrait, 0), frais_transport = coalesce(p_frais_transport, 0),
+      autres_frais = coalesce(p_autres_frais, 0), autres_libelle = coalesce(p_autres_libelle, ''), obs = coalesce(p_obs, '')
+    where id = p_id;
+    delete from public.entries where course_id = p_id;
+    cid := p_id;
+  end if;
+
+  select * into c from public.courses where id = cid;
+  for l in select * from jsonb_array_elements(p_lines) loop
+    q := (l ->> 'qte')::numeric;
+    pt := (l ->> 'prix_total')::numeric;
+    part := case when sous_total > 0 then frais * pt / sous_total else frais / n end;
+    insert into public.entries (date, code, qte, statut, obs, cc, saisi_par, created_by, course_id, prix_total, frais_part, cout_unitaire)
+    values (c.date, l ->> 'code', q, c.statut, '', c.cc, c.saisi_par, c.created_by, cid, pt, round(part, 2), round((pt + part) / q, 2));
+  end loop;
+  return cid;
+end $$;
+revoke all on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb) from public, anon;
+grant execute on function public.save_course(uuid, date, text, numeric, numeric, numeric, text, text, jsonb) to authenticated;
+
+create or replace function public.set_course_statut(p_id uuid, p_statut text) returns void
+language plpgsql security definer set search_path = public as $$
+declare c public.courses%rowtype;
+begin
+  if p_statut not in ('Validée', 'Annulée') then raise exception 'Statut invalide'; end if;
+  select * into c from public.courses where id = p_id;
+  if not found then raise exception 'Course introuvable'; end if;
+  if not public.is_admin() and (not public.is_member() or c.created_by is distinct from auth.uid() or c.created_at < now() - interval '2 hours') then
+    raise exception 'Délai de 2 heures dépassé : seul l''administrateur peut modifier cette course.';
+  end if;
+  update public.courses set statut = p_statut where id = p_id;
+  update public.entries set statut = p_statut where course_id = p_id;
+end $$;
+revoke all on function public.set_course_statut(uuid, text) from public, anon;
+grant execute on function public.set_course_statut(uuid, text) to authenticated;
+
+-- =====================================================================
 -- Sécurité (Row Level Security)
 -- =====================================================================
 alter table public.profiles enable row level security;
@@ -254,11 +443,19 @@ create policy product_costs_admin on public.product_costs for all to authenticat
 drop policy if exists entries_select on public.entries;
 create policy entries_select on public.entries for select to authenticated using (public.is_member());
 drop policy if exists entries_insert on public.entries;
-create policy entries_insert on public.entries for insert to authenticated with check (public.is_member() and statut = 'Validée');
+create policy entries_insert on public.entries for insert to authenticated
+  with check (public.is_member() and statut = 'Validée' and course_id is null);
 drop policy if exists entries_update on public.entries;
 create policy entries_update on public.entries for update to authenticated
-  using (public.is_admin() or (public.is_member() and created_by = auth.uid() and created_at > now() - interval '2 hours'))
-  with check (public.is_admin() or (public.is_member() and created_by = auth.uid()));
+  using (public.is_admin() or (public.is_member() and course_id is null and created_by = auth.uid() and created_at > now() - interval '2 hours'))
+  with check (public.is_admin() or (public.is_member() and course_id is null and created_by = auth.uid()));
+
+-- Courses : lecture pour les membres ; écriture via save_course() / set_course_statut() ; suppression admin.
+alter table public.courses enable row level security;
+drop policy if exists courses_select on public.courses;
+create policy courses_select on public.courses for select to authenticated using (public.is_member());
+drop policy if exists courses_delete on public.courses;
+create policy courses_delete on public.courses for delete to authenticated using (public.is_admin());
 drop policy if exists entries_delete on public.entries;
 create policy entries_delete on public.entries for delete to authenticated using (public.is_admin());
 
@@ -270,3 +467,6 @@ create policy sales_admin_write on public.sales for all to authenticated using (
 
 -- Aucun accès anonyme.
 revoke all on all tables in schema public from anon;
+
+-- Calcule le coût moyen de tous les produits (sans effet si déjà à jour).
+select public.recompute_cmp(code) from public.products;

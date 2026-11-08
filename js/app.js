@@ -14,7 +14,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -89,18 +89,19 @@
     return all;
   }
   async function reload() {
-    const [settingsRes, products, costs, ccs, entries, sales, users] = await Promise.all([
+    const [settingsRes, products, costs, ccs, entries, sales, users, courses] = await Promise.all([
       sb.from("settings").select("*").eq("id", 1).maybeSingle(),
       fetchAll("products", "code"),
       isAdmin() ? fetchAll("product_costs", "code") : Promise.resolve([]),
       fetchAll("ccs", "code"),
       fetchAll("entries", "created_at"),
       fetchAll("sales", "created_at"),
-      isAdmin() ? fetchAll("profiles", "created_at") : Promise.resolve([])
+      isAdmin() ? fetchAll("profiles", "created_at") : Promise.resolve([]),
+      fetchAll("courses", "created_at")
     ]);
     const st = chk(settingsRes) || {};
-    const pa = {};
-    costs.forEach((c) => { pa[c.code] = Number(c.pa); });
+    const pa = {}, cmp = {};
+    costs.forEach((c) => { pa[c.code] = Number(c.pa); cmp[c.code] = c.cmp == null ? Number(c.pa) : Number(c.cmp); });
     db = {
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
@@ -109,16 +110,24 @@
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
-        code: p.code, nom: p.nom, categorie: p.categorie, pa: pa[p.code] || 0, pv: Number(p.pv),
+        code: p.code, nom: p.nom, categorie: p.categorie, pa: pa[p.code] || 0, cmp: cmp[p.code] || 0, pv: Number(p.pv),
         stockInitial: Number(p.stock_initial), stockMin: Number(p.stock_min)
       })),
       entries: entries.map((x) => ({
         id: x.id, date: x.date || "", code: x.code, qte: Number(x.qte), statut: x.statut, obs: x.obs,
-        cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at
+        cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at,
+        courseId: x.course_id || null, prixTotal: x.prix_total == null ? null : Number(x.prix_total),
+        fraisPart: x.frais_part == null ? 0 : Number(x.frais_part), coutUnitaire: x.cout_unitaire == null ? null : Number(x.cout_unitaire)
+      })),
+      courses: courses.map((c) => ({
+        id: c.id, date: c.date || "", cc: c.cc ? String(c.cc) : "", saisiPar: c.saisi_par || "", createdBy: c.created_by, createdAt: c.created_at,
+        retrait: Number(c.frais_retrait) || 0, transport: Number(c.frais_transport) || 0, autres: Number(c.autres_frais) || 0,
+        autresLib: c.autres_libelle || "", obs: c.obs || "", statut: c.statut
       })),
       sales: sales.map((s) => ({
         id: s.id, date: s.date, ticket: Number(s.ticket), client: s.client, code: s.code, nom: s.nom, qte: Number(s.qte), pu: Number(s.pu),
-        cc: String(s.cc), vendeur: s.vendeur || "", valide: s.valide, numClient: s.num_client || "", adresseClient: s.adresse_client || ""
+        cc: String(s.cc), vendeur: s.vendeur || "", valide: s.valide, numClient: s.num_client || "", adresseClient: s.adresse_client || "",
+        cout: s.cout_unitaire == null ? null : Number(s.cout_unitaire)
       })),
       users
     };
@@ -301,9 +310,11 @@
     const ca = list.reduce((a, s) => a + lineTotal(s), 0);
     const qte = list.reduce((a, s) => a + Number(s.qte), 0);
     const tickets = new Set(list.map((s) => s.ticket)).size;
+    // Marge avec le coût de revient figé sur chaque vente (CMP au moment de la vente).
     const marge = list.reduce((a, s) => {
       const p = productByCode(s.code);
-      return a + (p ? (Number(s.pu) - Number(p.pa)) * Number(s.qte) : 0);
+      const cout = s.cout != null ? s.cout : p ? p.cmp : 0;
+      return a + (Number(s.pu) - cout) * Number(s.qte);
     }, 0);
     return { ca, qte, tickets, marge, lignes: list.length };
   }
@@ -688,7 +699,7 @@
     const q = $("#s-search").value.trim().toLowerCase();
     const list = db.products.filter((p) => !q || (p.nom + " " + p.code + " " + p.categorie).toLowerCase().includes(q));
     const stockTotal = db.products.reduce((a, p) => a + stockActuel(p), 0);
-    const valeur = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p)) * Number(p.pa), 0);
+    const valeur = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p)) * Number(p.cmp), 0);
     const k = [["Produits", db.products.length], ["Stock total", num(stockTotal)]];
     if (admin) k.push(["Valeur du stock (achat)", money(valeur)]);
     k.push(["En rupture", db.products.filter((p) => statutStock(p) === "RUPTURE").length, "danger"]);
@@ -696,14 +707,37 @@
     $("#stock-kpis").innerHTML = kpiHtml(k);
 
     $("#s-rows").innerHTML = list.length ? list.map((p) =>
-      "<tr><td>" + esc(p.code) + "</td><td>" + esc(p.nom) + "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(p.pa) + '</td><td class="num">' + num(p.pv) +
+      "<tr><td>" + esc(p.code) + "</td><td>" + esc(p.nom) + "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(Math.round(p.cmp)) + '</td><td class="num admin-only">' +
+      (lastPurchase(p.code) ? num(Math.round(lastPurchase(p.code).pu)) : '<span class="muted">—</span>') + '</td><td class="num">' + num(p.pv) +
       '</td><td class="num">' + num(p.stockInitial) + '</td><td class="num">' + num(p.stockMin) + '</td><td class="num">' + num(totalEntrees(p.code)) + '</td><td class="num">' + num(totalVentes(p.code)) +
       '</td><td class="num"><b>' + num(stockActuel(p)) + "</b></td><td>" + statutBadge(statutStock(p)) + "</td><td>" +
-      (admin ? '<button class="btn small" data-edit="' + esc(p.code) + '">Modifier</button> <button class="btn small danger" data-pdel="' + esc(p.code) + '">✕</button>' : "") +
+      (admin ? '<button class="btn small" data-prices="' + esc(p.code) + '">Prix</button> <button class="btn small" data-edit="' + esc(p.code) + '">Modifier</button> <button class="btn small danger" data-pdel="' + esc(p.code) + '">✕</button>' : "") +
       "</td></tr>"
-    ).join("") : '<tr><td colspan="12" class="empty">Aucun produit.</td></tr>';
+    ).join("") : '<tr><td colspan="13" class="empty">Aucun produit.</td></tr>';
   }
   $("#s-search").addEventListener("input", renderStock);
+
+  // Achats avec prix (lignes de course validées) d'un produit, du plus récent au plus ancien.
+  function purchases(code) {
+    return db.entries
+      .filter((x) => x.code === code && x.statut === "Validée" && x.prixTotal != null && x.qte > 0)
+      .map((x) => ({ x, pu: x.prixTotal / x.qte }))
+      .sort((a, b) => (b.x.date || "").localeCompare(a.x.date || "") || String(b.x.createdAt || "").localeCompare(String(a.x.createdAt || "")));
+  }
+  function lastPurchase(code) { return purchases(code)[0] || null; }
+  function openPrices(p) {
+    const list = purchases(p.code);
+    $("#ph-title").textContent = "Prix d'achat — " + p.nom;
+    $("#ph-info").textContent = "Coût moyen actuel : " + money(Math.round(p.cmp)) + " · Prix de vente : " + money(p.pv) +
+      " · Marge unitaire actuelle : " + money(Math.round(p.pv - p.cmp));
+    $("#ph-table").innerHTML = list.length
+      ? '<thead><tr><th>Date</th><th class="num">Quantité</th><th class="num">Prix total</th><th class="num">Prix unitaire</th><th class="num">Coût de revient</th><th>CC</th><th>Saisi par</th></tr></thead><tbody>' +
+        list.map(({ x, pu }) => "<tr><td>" + fmtDate(x.date) + '</td><td class="num">' + num(x.qte) + '</td><td class="num">' + num(x.prixTotal) +
+          '</td><td class="num">' + num(Math.round(pu)) + '</td><td class="num">' + num(Math.round(x.coutUnitaire || pu)) + "</td><td>" +
+          (x.cc ? ccLabel(x.cc) : "Admin") + "</td><td>" + esc(x.saisiPar || "—") + "</td></tr>").join("") + "</tbody>"
+      : '<tbody><tr><td class="empty">Aucun achat avec prix enregistré pour ce produit.</td></tr></tbody>';
+    $("#price-dialog").showModal();
+  }
 
   let editingCode = null;
   function openProduct(p) {
@@ -721,6 +755,8 @@
   $("#s-rows").addEventListener("click", (e) => {
     const ed = e.target.closest("[data-edit]");
     const del = e.target.closest("[data-pdel]");
+    const pr = e.target.closest("[data-prices]");
+    if (pr) return openPrices(productByCode(pr.dataset.prices));
     if (ed) openProduct(productByCode(ed.dataset.edit));
     if (del) {
       const code = del.dataset.pdel;
@@ -766,24 +802,169 @@
     const min = Math.max(0, Math.ceil((EDIT_WINDOW_MS - (Date.now() - new Date(x.createdAt).getTime())) / 60000));
     return min >= 60 ? Math.floor(min / 60) + " h " + String(min % 60).padStart(2, "0") : min + " min";
   }
-  function renderEntrees() {
-    const admin = isAdmin();
-    if (!$("#e-date").value || !admin) $("#e-date").value = today();
-    $("#e-date").readOnly = !admin;
-    const sel = $("#e-product").value;
-    $("#e-product").innerHTML = productOptions(sel);
+  // ----- Course (achat au marché) : saisie -----
+  let courseLines = [];
+  let editingCourseId = null;
 
-    const ecc = $("#e-cc");
+  function newCourseLine() { return { code: "", qte: "", total: "" }; }
+  function resetCourseForm() {
+    editingCourseId = null;
+    courseLines = [newCourseLine()];
+    $("#co-retrait").value = 0;
+    $("#co-transport").value = 0;
+    $("#co-autres").value = 0;
+    $("#co-autres-lib").value = "";
+    $("#co-obs").value = "";
+    $("#co-date").value = today();
+    $("#co-title").textContent = "Nouvelle course (achat au marché)";
+    $("#co-cancel-edit").classList.add("hidden");
+    $("#co-save").textContent = "Enregistrer la course";
+  }
+  // Calcule prix unitaire, part des frais, coût de revient et marge de chaque ligne (même règle que la base).
+  function computeCourse(lines, retrait, transport, autres) {
+    const valid = lines.filter((l) => l.code && Number(l.qte) > 0 && l.total !== "" && Number(l.total) >= 0);
+    const sousTotal = valid.reduce((a, l) => a + Number(l.total), 0);
+    const frais = (Number(retrait) || 0) + (Number(transport) || 0) + (Number(autres) || 0);
+    const n = valid.length;
+    let margeTotale = 0;
+    const rows = lines.map((l) => {
+      const ok = valid.includes(l);
+      if (!ok) return { ok: false };
+      const p = productByCode(l.code);
+      const qte = Number(l.qte), total = Number(l.total);
+      const part = sousTotal > 0 ? (frais * total) / sousTotal : frais / n;
+      const pu = total / qte;
+      const cr = (total + part) / qte;
+      const pv = p ? Number(p.pv) : 0;
+      const mu = pv - cr;
+      margeTotale += mu * qte;
+      return { ok: true, pu, part, cr, pv, mu, mt: mu * qte, pct: pv > 0 ? (mu / pv) * 100 : 0 };
+    });
+    const totalCourse = sousTotal + frais;
+    return { rows, sousTotal, frais, totalCourse, margeTotale, ventePotentielle: valid.reduce((a, l) => a + Number(l.qte) * ((productByCode(l.code) || {}).pv || 0), 0) };
+  }
+  function money0(n) { return money(Math.round(n)); }
+  function margeHtml(v, pct) {
+    return '<span class="' + (v >= 0 ? "pos" : "neg") + '">' + money0(v) + (pct != null ? " (" + Math.round(pct) + " %)" : "") + "</span>";
+  }
+  function renderCourseForm() {
+    const admin = isAdmin();
+    $("#co-date").readOnly = !admin;
+    if (!$("#co-date").value) $("#co-date").value = today();
+    if (!admin && !editingCourseId) $("#co-date").value = today();
+    const ecc = $("#co-cc");
     if (admin) {
       const cur = ecc.value;
-      ecc.innerHTML = '<option value="">— Aucun (admin) —</option>' + ccOptions(false, cur, true);
+      ecc.innerHTML = '<option value="">— Aucun (admin) —</option>' + ccOptions(false, cur, false);
       ecc.value = Array.from(ecc.options).some((o) => o.value === cur) ? cur : "";
       ecc.disabled = false;
     } else {
       ecc.innerHTML = me.cc ? '<option value="' + esc(me.cc) + '">' + esc(ccName(me.cc)) + "</option>" : '<option value="">— Aucun CC lié —</option>';
       ecc.disabled = true;
     }
+    if (!courseLines.length) courseLines = [newCourseLine()];
+    $("#co-lines").innerHTML = courseLines.map((l, i) =>
+      '<tr data-idx="' + i + '"><td><select data-f="code"><option value="">— Choisir —</option>' + productOptions(l.code) + "</select></td>" +
+      '<td class="num"><input type="number" min="1" data-f="qte" value="' + esc(l.qte) + '"></td>' +
+      '<td class="num"><input type="number" min="0" data-f="total" value="' + esc(l.total) + '"></td>' +
+      '<td class="num" data-c="pu"></td><td class="num" data-c="cr"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
+      '<td><button class="btn small danger" data-rmline="' + i + '" title="Retirer">✕</button></td></tr>'
+    ).join("");
+    updateCourseCalc();
+  }
+  function updateCourseCalc() {
+    const c = computeCourse(courseLines, $("#co-retrait").value, $("#co-transport").value, $("#co-autres").value);
+    c.rows.forEach((r, i) => {
+      const tr = document.querySelector('#co-lines tr[data-idx="' + i + '"]');
+      if (!tr) return;
+      const set = (k, v) => { tr.querySelector('[data-c="' + k + '"]').innerHTML = v; };
+      if (!r.ok) { ["pu", "cr", "pv", "mu"].forEach((k) => set(k, '<span class="muted">—</span>')); return; }
+      set("pu", money0(r.pu));
+      set("cr", money0(r.cr));
+      set("pv", money0(r.pv));
+      set("mu", margeHtml(r.mu, r.pct));
+    });
+    const autresLib = $("#co-autres-lib").value.trim();
+    $("#co-summary").innerHTML =
+      '<div class="sum-row"><span>Sous-total des achats</span><b>' + money0(c.sousTotal) + "</b></div>" +
+      '<div class="sum-row"><span>Frais de retrait</span><span>' + money0(Number($("#co-retrait").value) || 0) + "</span></div>" +
+      '<div class="sum-row"><span>Transport aller-retour</span><span>' + money0(Number($("#co-transport").value) || 0) + "</span></div>" +
+      '<div class="sum-row"><span>' + esc(autresLib || "Autres frais") + "</span><span>" + money0(Number($("#co-autres").value) || 0) + "</span></div>" +
+      '<div class="sum-row"><span>Total des frais</span><span>' + money0(c.frais) + "</span></div>" +
+      '<div class="sum-row big"><span>TOTAL DE LA COURSE</span><span>' + money0(c.totalCourse) + "</span></div>" +
+      '<div class="sum-row"><span>Valeur de vente du stock acheté</span><span>' + money0(c.ventePotentielle) + "</span></div>" +
+      '<div class="sum-row"><span>Marge potentielle totale</span><b>' + margeHtml(c.margeTotale, c.ventePotentielle > 0 ? (c.margeTotale / c.ventePotentielle) * 100 : null) + "</b></div>";
+  }
+  $("#co-lines").addEventListener("input", (e) => {
+    const el = e.target.closest("[data-f]");
+    if (!el) return;
+    const i = Number(el.closest("tr").dataset.idx);
+    courseLines[i][el.dataset.f] = el.value;
+    updateCourseCalc();
+  });
+  $("#co-lines").addEventListener("change", (e) => {
+    const el = e.target.closest('[data-f="code"]');
+    if (!el) return;
+    courseLines[Number(el.closest("tr").dataset.idx)].code = el.value;
+    updateCourseCalc();
+  });
+  $("#co-lines").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-rmline]");
+    if (!b) return;
+    courseLines.splice(Number(b.dataset.rmline), 1);
+    renderCourseForm();
+  });
+  $("#co-add-line").addEventListener("click", () => {
+    courseLines.push(newCourseLine());
+    renderCourseForm();
+    const last = document.querySelector("#co-lines tr:last-child select");
+    if (last) last.focus();
+  });
+  ["#co-retrait", "#co-transport", "#co-autres", "#co-autres-lib"].forEach((id) => $(id).addEventListener("input", updateCourseCalc));
+  $("#co-cancel-edit").addEventListener("click", () => { resetCourseForm(); renderCourseForm(); });
+  $("#co-save").addEventListener("click", (ev) => {
+    const filled = courseLines.filter((l) => l.code || l.qte !== "" || l.total !== "");
+    if (!filled.length) return toast("Ajoutez au moins un produit.");
+    for (const l of filled) {
+      if (!l.code) return toast("Choisissez le produit de chaque ligne.");
+      if (!(Number(l.qte) > 0)) return toast("Quantité invalide pour " + (productByCode(l.code) || {}).nom + ".");
+      if (l.total === "" || !(Number(l.total) >= 0)) return toast("Indiquez le prix total payé pour " + (productByCode(l.code) || {}).nom + ".");
+    }
+    const date = isAdmin() ? ($("#co-date").value || today()) : today();
+    const wasEditing = !!editingCourseId;
+    act(async () => chk(await sb.rpc("save_course", {
+      p_id: editingCourseId, p_date: date, p_cc: isAdmin() ? $("#co-cc").value : null,
+      p_frais_retrait: Number($("#co-retrait").value) || 0, p_frais_transport: Number($("#co-transport").value) || 0,
+      p_autres_frais: Number($("#co-autres").value) || 0, p_autres_libelle: $("#co-autres-lib").value.trim(),
+      p_obs: $("#co-obs").value.trim(),
+      p_lines: filled.map((l) => ({ code: l.code, qte: Number(l.qte), prix_total: Number(l.total) }))
+    })), wasEditing ? "Course modifiée." : "Course enregistrée, stock mis à jour.", ev.currentTarget).then((r) => {
+      if (!r.ok) return;
+      openDays.add(date);
+      resetCourseForm();
+      renderCourseForm();
+    });
+  });
+  function openCourseEdit(c) {
+    editingCourseId = c.id;
+    courseLines = db.entries.filter((x) => x.courseId === c.id).map((x) => ({ code: x.code, qte: String(x.qte), total: String(x.prixTotal == null ? "" : x.prixTotal) }));
+    $("#co-retrait").value = c.retrait;
+    $("#co-transport").value = c.transport;
+    $("#co-autres").value = c.autres;
+    $("#co-autres-lib").value = c.autresLib;
+    $("#co-obs").value = c.obs;
+    $("#co-date").value = c.date || today();
+    renderCourseForm();
+    if (isAdmin()) $("#co-cc").value = c.cc || "";
+    $("#co-title").textContent = "Modification de la course du " + fmtDate(c.date) + " (" + (c.saisiPar || "—") + ")";
+    $("#co-cancel-edit").classList.remove("hidden");
+    $("#co-save").textContent = "Enregistrer les modifications";
+    $("#course-card").scrollIntoView({ behavior: "smooth" });
+  }
 
+  function renderEntrees() {
+    if (!courseLines.length && !editingCourseId) resetCourseForm();
+    renderCourseForm();
     const fcur = $("#eh-cc").value || "ALL";
     $("#eh-cc").innerHTML = '<option value="ALL">Tous les CC</option>' +
       db.settings.ccList.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("") +
@@ -791,48 +972,96 @@
     $("#eh-cc").value = Array.from($("#eh-cc").options).some((o) => o.value === fcur) ? fcur : "ALL";
     renderEntryHistory();
   }
+
+  // ----- Historique : jours → courses (reçus) + entrées simples -----
+  function canEditCourse(c) {
+    if (isAdmin()) return true;
+    return c.createdBy === me.id && c.createdAt && Date.now() - new Date(c.createdAt).getTime() < EDIT_WINDOW_MS;
+  }
+  function courseLinesOf(c) { return db.entries.filter((x) => x.courseId === c.id); }
+  function courseTotal(c) { return courseLinesOf(c).reduce((a, x) => a + (x.prixTotal || 0), 0) + c.retrait + c.transport + c.autres; }
   function renderEntryHistory() {
     const fcc = $("#eh-cc").value;
     const q = $("#eh-search").value.trim().toLowerCase();
-    const byCc = db.entries.filter((x) => !(fcc === "NONE" ? x.cc : fcc !== "ALL" && x.cc !== fcc));
+    const ccOk = (cc) => (fcc === "ALL" ? true : fcc === "NONE" ? !cc : cc === fcc);
+    const matches = (code, who, obs) => {
+      if (!q) return true;
+      const p = productByCode(code);
+      return ((p ? p.nom : "") + " " + code + " " + (who || "") + " " + (obs || "")).toLowerCase().includes(q);
+    };
+    const courses = db.courses.filter((c) => ccOk(c.cc) && (!q || courseLinesOf(c).some((x) => matches(x.code, c.saisiPar, c.obs))));
+    const simples = db.entries.filter((x) => !x.courseId && ccOk(x.cc) && matches(x.code, x.saisiPar, x.obs));
 
-    // Liste des dates d'entrée disponibles (selon le CC choisi)
     const sel = $("#eh-date");
     const curDate = sel.value;
-    const dates = Array.from(new Set(byCc.map((x) => x.date || ""))).sort().reverse();
+    const dates = Array.from(new Set(courses.map((c) => c.date || "").concat(simples.map((x) => x.date || "")))).sort().reverse();
     sel.innerHTML = '<option value="">Toutes les dates</option>' +
       dates.map((d) => '<option value="' + esc(d) + '">' + (d ? cap(fmtLong(d)) : "Sans date") + "</option>").join("");
     sel.value = dates.includes(curDate) ? curDate : "";
     const fdate = sel.value;
     if (fdate) openDays.add(fdate);
-
-    const list = byCc.filter((x) => {
-      if (fdate && (x.date || "") !== fdate) return false;
-      if (q) {
-        const p = productByCode(x.code);
-        if (!((p ? p.nom : "") + " " + x.code + " " + (x.obs || "") + " " + (x.saisiPar || "")).toLowerCase().includes(q)) return false;
-      }
-      return true;
-    });
-    const days = {};
-    list.forEach((x) => { (days[x.date || ""] = days[x.date || ""] || []).push(x); });
-    const keys = Object.keys(days).sort().reverse();
+    const keys = fdate ? [fdate] : dates;
     if (entriesFirstRender && keys.length) { openDays.add(keys[0]); entriesFirstRender = false; }
-    if (!keys.length) { $("#e-days").innerHTML = '<tr><td colspan="6" class="empty">Aucune entrée.</td></tr>'; return; }
+    if (!keys.length) { $("#e-days").innerHTML = '<tr><td colspan="7" class="empty">Aucune entrée de stock.</td></tr>'; return; }
 
     $("#e-days").innerHTML = keys.map((d) => {
-      const ls = days[d].sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
-      const valid = ls.filter((x) => x.statut === "Validée");
-      const ccs = Array.from(new Set(ls.map((x) => (x.cc ? ccLabel(x.cc) : "Admin")))).join(", ");
-      const who = Array.from(new Set(ls.map((x) => x.saisiPar).filter(Boolean))).join(", ") || "—";
+      const dc = courses.filter((c) => (c.date || "") === d).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+      const ds = simples.filter((x) => (x.date || "") === d).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+      const validLines = dc.filter((c) => c.statut === "Validée").flatMap(courseLinesOf).concat(ds.filter((x) => x.statut === "Validée"));
+      const montant = dc.filter((c) => c.statut === "Validée").reduce((a, c) => a + courseTotal(c), 0);
+      const ccs = Array.from(new Set(dc.map((c) => c.cc).concat(ds.map((x) => x.cc)).map((cc) => (cc ? ccLabel(cc) : "Admin")))).join(", ");
+      const who = Array.from(new Set(dc.map((c) => c.saisiPar).concat(ds.map((x) => x.saisiPar)).filter(Boolean))).join(", ") || "—";
       const open = openDays.has(d);
       let h = '<tr class="clickable' + (open ? " selected" : "") + '" data-day="' + esc(d) + '"><td class="caret">' + (open ? "▾" : "▸") + "</td><td><b>" +
-        (d ? cap(fmtLong(d)) : "Sans date") + '</b></td><td class="num">' + new Set(valid.map((x) => x.code)).size + '</td><td class="num">' +
-        num(valid.reduce((a, x) => a + Number(x.qte), 0)) + "</td><td>" + esc(ccs) + "</td><td>" + esc(who) + "</td></tr>";
-      if (open) h += '<tr class="detail"><td colspan="6">' + entryDetail(ls) + "</td></tr>";
+        (d ? cap(fmtLong(d)) : "Sans date") + "</b>" + (dc.length ? ' <span class="muted">· ' + dc.length + " course" + (dc.length > 1 ? "s" : "") + "</span>" : "") +
+        '</td><td class="num">' + new Set(validLines.map((x) => x.code)).size + '</td><td class="num">' + num(validLines.reduce((a, x) => a + Number(x.qte), 0)) +
+        '</td><td class="num">' + (montant ? money0(montant) : '<span class="muted">—</span>') + "</td><td>" + esc(ccs) + "</td><td>" + esc(who) + "</td></tr>";
+      if (open) {
+        h += '<tr class="detail"><td colspan="7">' + dc.map(courseReceipt).join("") +
+          (ds.length ? '<h3 class="sub-title">Entrées sans détail de prix</h3>' + entryDetail(ds) : "") + "</td></tr>";
+      }
       return h;
     }).join("");
   }
+  function courseReceipt(c) {
+    const admin = isAdmin();
+    const lines = courseLinesOf(c);
+    const sousTotal = lines.reduce((a, x) => a + (x.prixTotal || 0), 0);
+    let margeTot = 0, venteTot = 0;
+    const heure = c.createdAt ? new Date(c.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
+    const badge = c.statut === "Validée" ? '<span class="badge ok">Validée</span>' : '<span class="badge mute">Annulée</span>';
+    let actions;
+    if (canEditCourse(c)) {
+      actions = '<button class="btn small" data-cedit="' + c.id + '">Modifier</button> ' +
+        '<button class="btn small" data-ctoggle="' + c.id + '">' + (c.statut === "Validée" ? "Annuler" : "Rétablir") + "</button> " +
+        (admin ? '<button class="btn small danger" data-cdel="' + c.id + '">✕</button>' : '<span class="sub">modifiable encore ' + remainingTime(c) + "</span>");
+    } else {
+      actions = '<span class="muted">🔒 Verrouillée</span>';
+    }
+    const rows = lines.map((x) => {
+      const p = productByCode(x.code);
+      const pv = p ? Number(p.pv) : 0;
+      const pu = x.prixTotal != null ? x.prixTotal / x.qte : 0;
+      const cr = x.coutUnitaire != null ? x.coutUnitaire : pu;
+      const mu = pv - cr;
+      margeTot += mu * x.qte;
+      venteTot += pv * x.qte;
+      return "<tr><td>" + esc(p ? p.nom : x.code) + '</td><td class="num">' + num(x.qte) + '</td><td class="num">' + money0(x.prixTotal || 0) +
+        '</td><td class="num">' + money0(pu) + '</td><td class="num">' + money0(x.fraisPart || 0) + '</td><td class="num">' + money0(cr) +
+        '</td><td class="num">' + money0(pv) + '</td><td class="num">' + margeHtml(mu, pv > 0 ? (mu / pv) * 100 : null) + '</td><td class="num">' + margeHtml(mu * x.qte) + "</td></tr>";
+    }).join("");
+    return '<div class="course-receipt' + (c.statut === "Validée" ? "" : " off") + '">' +
+      '<div class="course-head"><b>Course de ' + heure + "</b><span>" + (c.cc ? esc(ccName(c.cc)) : "Admin") + "</span><span>Saisie par " + esc(c.saisiPar || "—") + "</span>" + badge +
+      (c.obs ? '<span class="muted">' + esc(c.obs) + "</span>" : "") + '<span class="actions">' + actions + "</span></div>" +
+      '<div class="table-wrap"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix total payé</th><th class="num">Prix unitaire</th>' +
+      '<th class="num">Part des frais</th><th class="num">Coût de revient unit.</th><th class="num">Prix de vente</th><th class="num">Marge unitaire</th><th class="num">Marge totale</th></tr></thead><tbody>' +
+      rows + "</tbody></table></div>" +
+      '<div class="course-foot"><span>Sous-total achats : <b>' + money0(sousTotal) + "</b></span><span>Retrait : " + money0(c.retrait) + "</span><span>Transport : " + money0(c.transport) +
+      "</span><span>" + esc(c.autresLib || "Autres frais") + " : " + money0(c.autres) + "</span><span>Total course : <b>" + money0(sousTotal + c.retrait + c.transport + c.autres) +
+      "</b></span><span>Marge potentielle : <b>" + margeHtml(margeTot, venteTot > 0 ? (margeTot / venteTot) * 100 : null) + "</b></span></div></div>";
+  }
+  ["#eh-cc", "#eh-date"].forEach((id) => $(id).addEventListener("change", renderEntryHistory));
+  $("#eh-search").addEventListener("input", renderEntryHistory);
   function entryDetail(ls) {
     const admin = isAdmin();
     return '<table class="table inner"><thead><tr><th>Heure</th><th>Article</th><th>Code</th><th class="num">Quantité</th><th>Statut</th><th>CC</th><th>Saisi par</th><th>Observation</th><th></th></tr></thead><tbody>' +
@@ -853,20 +1082,6 @@
           esc(x.saisiPar || "—") + "</td><td>" + esc(x.obs) + '</td><td class="keep">' + actions + "</td></tr>";
       }).join("") + "</tbody></table>";
   }
-  ["#eh-cc", "#eh-date"].forEach((id) => $(id).addEventListener("change", renderEntryHistory));
-  $("#eh-search").addEventListener("input", renderEntryHistory);
-
-  $("#e-add").addEventListener("click", (ev) => {
-    const qte = Number($("#e-qte").value);
-    const code = $("#e-product").value;
-    if (!code) return toast("Choisissez un produit.");
-    if (!(qte > 0)) return toast("Quantité invalide.");
-    const row = { date: isAdmin() ? ($("#e-date").value || today()) : today(), code, qte, statut: "Validée", obs: $("#e-obs").value.trim() };
-    if (isAdmin()) row.cc = $("#e-cc").value || null;
-    openDays.add(row.date);
-    act(async () => chk(await sb.from("entries").insert(row)), "Entrée enregistrée, stock mis à jour.", ev.currentTarget)
-      .then((r) => { if (r.ok) $("#e-qte").value = 1; });
-  });
 
   // Mise à jour d'une entrée : la base refuse silencieusement si le délai est dépassé, on le détecte.
   async function updateEntry(id, patch) {
@@ -898,6 +1113,22 @@
     act(() => updateEntry(id, patch), "Entrée modifiée.");
   });
   $("#e-days").addEventListener("click", (e) => {
+    const ce = e.target.closest("[data-cedit]");
+    const ct = e.target.closest("[data-ctoggle]");
+    const cd = e.target.closest("[data-cdel]");
+    if (ce) return openCourseEdit(db.courses.find((c) => c.id === ce.dataset.cedit));
+    if (ct) {
+      const c = db.courses.find((x) => x.id === ct.dataset.ctoggle);
+      const statut = c.statut === "Validée" ? "Annulée" : "Validée";
+      return act(async () => chk(await sb.rpc("set_course_statut", { p_id: c.id, p_statut: statut })), "Course : " + statut, ct);
+    }
+    if (cd) {
+      if (!confirm("Supprimer définitivement cette course et tous ses produits ?\nAstuce : utilisez plutôt « Annuler » pour garder l'historique.")) return;
+      return act(async () => {
+        const rows = chk(await sb.from("courses").delete().eq("id", cd.dataset.cdel).select("id"));
+        if (!rows || !rows.length) throw new Error("Suppression refusée.");
+      }, "Course supprimée.", cd);
+    }
     const ed = e.target.closest("[data-eedit]");
     const t = e.target.closest("[data-etoggle]");
     const d = e.target.closest("[data-edel]");
@@ -1149,7 +1380,7 @@
 
   // Sauvegarde / import
   $("#p-export").addEventListener("click", () => {
-    const data = { version: 2, exportedAt: new Date().toISOString(), settings: db.settings, products: db.products, entries: db.entries, sales: db.sales };
+    const data = { version: 3, exportedAt: new Date().toISOString(), settings: db.settings, products: db.products, entries: db.entries, sales: db.sales, courses: db.courses };
     download("sauvegarde-" + (db.settings.nom || "boutique") + "-" + today() + ".json", JSON.stringify(data, null, 2), "application/json");
   });
   $("#p-import").addEventListener("change", (e) => {

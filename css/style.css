@@ -198,6 +198,27 @@ tr.detail > td { padding: 4px 8px 14px 28px; background: var(--bg); white-space:
 .table.inner { background: #fff; border: 1px solid var(--border); border-radius: 8px; }
 .table.inner th { background: #fff; }
 
+/* Courses (achats au marché) */
+.sub-title { font-size: .95rem; margin: 16px 0 8px; color: var(--muted); }
+.course-lines input, .course-lines select { padding: 6px 8px; }
+.course-lines input[type=number] { width: 110px; text-align: right; }
+.course-lines td { vertical-align: middle; }
+.course-bottom { margin: 16px 0 8px; }
+.course-summary { background: var(--bg); border-radius: 10px; padding: 14px 16px; align-self: start; }
+.sum-row { display: flex; justify-content: space-between; padding: 4px 0; font-variant-numeric: tabular-nums; }
+.sum-row.big { font-size: 1.15rem; font-weight: 700; border-top: 1px solid var(--border); margin-top: 6px; padding-top: 8px; }
+.pos { color: var(--success); }
+.neg { color: var(--danger); }
+.course-receipt { border: 1px solid var(--border); border-radius: 10px; background: #fff; margin: 8px 0 12px; overflow: hidden; }
+.course-receipt.off { opacity: .6; }
+.course-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 14px; background: #fafbfc; border-bottom: 1px solid var(--border); }
+.course-head .actions { margin-left: auto; }
+.course-foot { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 10px 14px; border-top: 1px solid var(--border); font-size: .9rem; font-variant-numeric: tabular-nums; }
+.course-foot b { font-size: 1rem; }
+.course-receipt .table { border: 0; }
+
+#price-dialog { width: min(860px, 96vw); }
+
 /* Dialog */
 dialog { border: 0; border-radius: var(--radius); padding: 20px; width: min(520px, 94vw); }
 dialog::backdrop { background: rgba(20, 33, 61, .45); }

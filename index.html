@@ -288,7 +288,7 @@
         <div class="table-wrap">
           <table class="table">
             <thead><tr>
-              <th>Code</th><th>Désignation</th><th>Catégorie</th><th class="num admin-only">PU achat</th><th class="num">PU vente</th>
+              <th>Code</th><th>Désignation</th><th>Catégorie</th><th class="num admin-only">Coût moyen</th><th class="num admin-only">Dernier achat</th><th class="num">PU vente</th>
               <th class="num">Stock initial</th><th class="num">Stock min</th><th class="num">Entrées</th><th class="num">Ventes</th>
               <th class="num">Stock actuel</th><th>Statut</th><th></th>
             </tr></thead>
@@ -301,17 +301,41 @@
     <!-- ENTREES -->
     <section id="view-entrees" class="view">
       <h1>Entrées de stock</h1>
-      <div class="card">
-        <h2>Nouvelle entrée</h2>
-        <div class="form form-inline">
-          <label>Date<input type="date" id="e-date"></label>
-          <label>Produit<select id="e-product"></select></label>
-          <label>Quantité<input type="number" id="e-qte" min="1" value="1"></label>
-          <label>CC<select id="e-cc"></select></label>
-          <label>Observation<input id="e-obs" value="Réapprovisionnement"></label>
-          <button class="btn primary" id="e-add">Enregistrer</button>
+      <div class="card" id="course-card">
+        <div class="toolbar">
+          <h2 id="co-title">Nouvelle course (achat au marché)</h2>
+          <button class="btn small hidden" id="co-cancel-edit">Annuler la modification</button>
         </div>
-        <p class="hint">Un vendeur peut modifier ou annuler ses propres entrées pendant <b>2 heures</b>. Passé ce délai, seul l'administrateur peut le faire.</p>
+        <div class="form form-inline">
+          <label>Date<input type="date" id="co-date"></label>
+          <label>CC<select id="co-cc"></select></label>
+          <label>Observation<input id="co-obs" placeholder="Ex. : marché d'Adawlato"></label>
+        </div>
+        <h3 class="sub-title">Produits achetés — recopiez le reçu du marché</h3>
+        <div class="table-wrap">
+          <table class="table course-lines">
+            <thead><tr>
+              <th>Produit</th><th class="num">Quantité</th><th class="num">Prix total payé</th><th class="num">Prix d'achat unitaire</th>
+              <th class="num">Coût de revient unitaire</th><th class="num">Prix de vente</th><th class="num">Marge unitaire</th><th></th>
+            </tr></thead>
+            <tbody id="co-lines"></tbody>
+          </table>
+        </div>
+        <button class="btn" id="co-add-line">+ Ajouter un produit</button>
+        <div class="grid2 course-bottom">
+          <div>
+            <h3 class="sub-title">Frais de la course</h3>
+            <div class="form">
+              <label>Frais de retrait<input type="number" min="0" id="co-retrait" value="0"></label>
+              <label>Transport aller-retour<input type="number" min="0" id="co-transport" value="0"></label>
+              <label>Autres frais (libellé)<input id="co-autres-lib" placeholder="Ex. : manutention"></label>
+              <label>Autres frais (montant)<input type="number" min="0" id="co-autres" value="0"></label>
+            </div>
+          </div>
+          <div class="course-summary" id="co-summary"></div>
+        </div>
+        <p class="hint">Les frais sont répartis sur les produits au prorata de leur prix d'achat pour obtenir le <b>coût de revient</b>. La marge est calculée avec le prix de vente défini par l'administrateur. Un vendeur peut modifier ou annuler sa course pendant <b>2 heures</b> ; ensuite seul l'administrateur peut le faire.</p>
+        <div class="actions"><button class="btn success" id="co-save">Enregistrer la course</button></div>
       </div>
       <div class="card">
         <h2>Historique des entrées</h2>
@@ -320,10 +344,10 @@
           <label>Date d'entrée<select id="eh-date"></select></label>
           <label>Produit / saisi par<input id="eh-search" placeholder="Rechercher"></label>
         </div>
-        <p class="hint">Choisissez une date (ou cliquez sur une date de la liste) pour voir tous les articles entrés ce jour-là.</p>
+        <p class="hint">Choisissez une date (ou cliquez sur une date de la liste) pour revoir le détail de toutes les courses de ce jour.</p>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th></th><th>Date</th><th class="num">Produits</th><th class="num">Quantité totale</th><th>CC</th><th>Saisi par</th></tr></thead>
+            <thead><tr><th></th><th>Date</th><th class="num">Produits</th><th class="num">Quantité totale</th><th class="num">Montant total</th><th>CC</th><th>Saisi par</th></tr></thead>
             <tbody id="e-days"></tbody>
           </table>
         </div>
@@ -403,7 +427,7 @@
         <label>Code article<input name="code" required></label>
         <label>Catégorie<input name="categorie" list="cat-list"></label>
         <label class="full">Désignation<input name="nom" required></label>
-        <label>PU achat<input type="number" name="pa" min="0" value="0"></label>
+        <label>Prix d'achat du stock initial<input type="number" name="pa" min="0" value="0"></label>
         <label>PU vente<input type="number" name="pv" min="0" value="0"></label>
         <label>Stock initial<input type="number" name="stockInitial" value="0"></label>
         <label>Stock minimum<input type="number" name="stockMin" min="0" value="5"></label>
@@ -430,6 +454,16 @@
         <button class="btn" value="cancel" formnovalidate>Annuler</button>
         <button class="btn primary" value="ok">Enregistrer</button>
       </div>
+    </form>
+  </dialog>
+
+  <!-- Modal historique des prix d'achat -->
+  <dialog id="price-dialog">
+    <form method="dialog">
+      <h2 id="ph-title">Historique des prix d'achat</h2>
+      <p class="hint" id="ph-info"></p>
+      <div class="table-wrap"><table class="table" id="ph-table"></table></div>
+      <div class="actions"><button class="btn" value="cancel">Fermer</button></div>
     </form>
   </dialog>
 
