@@ -225,6 +225,13 @@ tr.detail > td { padding: 4px 8px 14px 28px; background: var(--bg); white-space:
 .report-grid .report div:first-child strong { font-size: 1.35rem; color: var(--primary); }
 .table tfoot td { font-weight: 700; background: var(--primary-soft); border-top: 2px solid var(--primary); white-space: nowrap; }
 .filterbar label { min-width: 170px; }
+.report .perf { grid-column: 1 / -1; border-radius: 8px; padding: 9px 10px; font-size: .88rem; line-height: 1.35; }
+.report .perf span { display: block; font-size: .82rem; margin-top: 2px; color: inherit; opacity: .9; }
+.report .perf.best { background: var(--success-soft); color: var(--success); }
+.report .perf.worst { background: var(--danger-soft); color: var(--danger); }
+.report .perf.muted { background: var(--bg); }
+.live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); margin-right: 6px; animation: pulse 1.6s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 /* Produits créés par un CC, en attente de validation par l'admin */
 .table tr.pending td { background: #fff3e0; }
 .table tr.pending td:first-child { box-shadow: inset 4px 0 0 #f08c00; }

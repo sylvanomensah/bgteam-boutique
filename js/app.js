@@ -198,6 +198,7 @@
     else authMsg("Compte créé. Vérifiez votre boîte e-mail pour confirmer l'adresse, puis connectez-vous.", true);
   });
   document.querySelectorAll("[data-logout]").forEach((b) => b.addEventListener("click", async () => {
+    stopRealtime();
     await sb.auth.signOut();
     me = null; db = emptyDb(); cart = []; currentView = null;
     screen("auth");
@@ -223,6 +224,7 @@
       screen("app");
       const start = location.hash.slice(1);
       show(canView(start) ? start : isAdmin() ? "dashboard" : "caisse");
+      startRealtime();
     } catch (e) {
       console.error(e);
       $("#loading-msg").innerHTML = esc(errMsg(e)) + '<br><br><button class="btn" onclick="location.reload()">Réessayer</button>';
@@ -232,6 +234,31 @@
   async function softRefresh() {
     if (!me || document.querySelector("dialog[open]") || Date.now() - lastReload < 20000) return;
     try { await reload(); if (currentView) render(currentView); } catch (e) { /* hors ligne : on réessaiera */ }
+  }
+  // Temps réel : une vente, une entrée ou une course enregistrée ailleurs met à jour cet écran.
+  let rtChannel = null, rtTimer = null, rtLive = false;
+  const RT_VIEWS = ["ventes", "dashboard", "stock", "stats", "facture"];
+  function startRealtime() {
+    if (rtChannel || !sb) return;
+    const onChange = () => {
+      clearTimeout(rtTimer);
+      rtTimer = setTimeout(async () => {
+        if (!me || document.querySelector("dialog[open]")) return;
+        try {
+          await reload();
+          if (RT_VIEWS.includes(currentView)) render(currentView);
+          else if (currentView === "entrees") renderEntryHistory();
+        } catch (e) { /* hors ligne */ }
+      }, 700);
+    };
+    rtChannel = sb.channel("bgteam-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "sales" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "courses" }, onChange)
+      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
+  }
+  function stopRealtime() {
+    if (rtChannel) { sb.removeChannel(rtChannel); rtChannel = null; rtLive = false; }
   }
   window.addEventListener("focus", softRefresh);
   setInterval(() => { if (document.visibilityState === "visible") softRefresh(); }, 120000);
@@ -637,11 +664,33 @@
     const cc = $("#r-cc").value;
     return db.sales.filter((s) => isCountedSale(s) && (cc === "ALL" || s.cc === cc) && filterFn(s));
   }
-  function reportHtml(list) {
+  function reportHtml(list, periodFn) {
     const r = summarize(list);
     return '<div><span>Vente totale</span><strong>' + money(r.ca) + "</strong></div>" +
-      '<div><span>Tickets</span><strong>' + num(r.tickets) + "</strong></div>" +
-      '<div><span>Quantités</span><strong>' + num(r.qte) + "</strong></div>";
+      '<div><span>Quantités</span><strong>' + num(r.qte) + "</strong></div>" + perfHtml(periodFn);
+  }
+  // Classement des CC sur la période (tous les CC, quel que soit le filtre) :
+  // chiffre d'affaires validé ; le « à encourager » est le CC actif le plus bas, avec l'écart à combler.
+  function perfHtml(periodFn) {
+    const byCc = {};
+    db.sales.filter((s) => isCountedSale(s) && periodFn(s)).forEach((s) => { byCc[s.cc] = (byCc[s.cc] || 0) + lineTotal(s); });
+    const ranked = db.settings.ccList
+      .filter((c) => c.actif || byCc[c.code])
+      .map((c) => ({ c, ca: byCc[c.code] || 0 }))
+      .sort((a, b) => b.ca - a.ca);
+    const actives = ranked.filter((x) => x.c.actif);
+    if (ranked.length < 2) return '<div class="perf muted">Classement disponible à partir de 2 CC actifs.</div>';
+    if (!ranked[0].ca) return '<div class="perf muted">Pas encore de ventes sur la période.</div>';
+    const best = ranked[0];
+    const worst = actives[actives.length - 1];
+    let h = '<div class="perf best">🏆 Meilleur vendeur : <b>' + esc(ccName(best.c.code)) + "</b><span>" + money(best.ca) + "</span></div>";
+    if (worst && worst.c.code !== best.c.code && worst.ca < best.ca) {
+      h += '<div class="perf worst">⚠ À encourager : <b>' + esc(ccName(worst.c.code)) + "</b><span>" + money(worst.ca) + " · " +
+        Math.round((worst.ca / best.ca) * 100) + " % du meilleur — il lui manque <b>" + money(best.ca - worst.ca) + "</b> pour l'égaler</span></div>";
+    } else {
+      h += '<div class="perf muted">Égalité entre les CC.</div>';
+    }
+    return h;
   }
   function heureOf(s) {
     return s.createdAt ? new Date(s.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
@@ -664,11 +713,15 @@
     const ccTxt = $("#r-cc").value === "ALL" ? "Tous les CC" : ccName($("#r-cc").value);
 
     $("#r-jour-label").textContent = cap(fmtLong(jour)) + " · " + ccTxt;
-    $("#r-jour").innerHTML = reportHtml(salesForReport((s) => s.date === jour));
+    const fJour = (s) => s.date === jour;
+    const fSem = (s) => s.date >= lundi && s.date <= dimanche;
+    const fMois = (s) => (s.date || "").slice(0, 7) === mois;
+    const fAn = (s) => (s.date || "").slice(0, 4) === annee;
+    $("#r-jour").innerHTML = reportHtml(salesForReport(fJour), fJour);
     $("#r-semaine-label").textContent = "Du lundi " + fmtDate(lundi) + " au dimanche " + fmtDate(dimanche);
-    $("#r-semaine-res").innerHTML = reportHtml(salesForReport((s) => s.date >= lundi && s.date <= dimanche));
-    $("#r-mois-res").innerHTML = reportHtml(salesForReport((s) => (s.date || "").slice(0, 7) === mois));
-    $("#r-annee-res").innerHTML = reportHtml(salesForReport((s) => (s.date || "").slice(0, 4) === annee));
+    $("#r-semaine-res").innerHTML = reportHtml(salesForReport(fSem), fSem);
+    $("#r-mois-res").innerHTML = reportHtml(salesForReport(fMois), fMois);
+    $("#r-annee-res").innerHTML = reportHtml(salesForReport(fAn), fAn);
     renderSalesHistory();
   }
   // Historique des ventes de la date choisie (toutes les ventes du jour, au fur et à mesure)
@@ -700,7 +753,8 @@
     $("#v-foot").innerHTML = '<tr><td colspan="3">TOTAL ' + (cc === "ALL" ? "DES VENTES" : "— " + esc(ccName(cc))) +
       " · " + num(tot.tickets) + " ticket" + (tot.tickets > 1 ? "s" : "") + '</td><td class="num">' + num(tot.qte) +
       '</td><td class="num">' + money(tot.ca) + '</td><td colspan="4">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
-    $("#v-refresh-info").textContent = "Mis à jour à " + new Date(lastReload || Date.now()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    $("#v-refresh-info").innerHTML = (rtLive ? '<span class="live-dot"></span>En direct · ' : "") + "mis à jour à " +
+      new Date(lastReload || Date.now()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
   ["#v-date", "#r-semaine", "#r-mois", "#r-annee", "#r-cc"].forEach((id) => $(id).addEventListener("change", renderVentes));
   $("#v-search").addEventListener("input", renderSalesHistory);

@@ -542,5 +542,17 @@ create policy sales_admin_write on public.sales for all to authenticated using (
 -- Aucun accès anonyme.
 revoke all on all tables in schema public from anon;
 
+-- Temps réel : diffuse les nouvelles ventes, entrées et courses aux écrans ouverts
+-- (les règles de sécurité ci-dessus s'appliquent aussi à cette diffusion).
+do $$
+declare t text;
+begin
+  foreach t in array array['sales', 'entries', 'courses'] loop
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end $$;
+
 -- Calcule le coût moyen de tous les produits (sans effet si déjà à jour).
 select public.recompute_cmp(code) from public.products;
