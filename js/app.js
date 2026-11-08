@@ -693,13 +693,13 @@
       '</td><td class="num">' + s.ticket + "</td><td>" + esc(s.client) +
       '</td><td class="keep">' + (admin ? '<button class="btn small" data-toggle="' + s.id + '">' + badge(s) + "</button>" : badge(s)) +
       "</td><td>" + (admin ? '<button class="btn small danger" data-del="' + s.id + '" title="Supprimer">✕</button>' : "") + "</td></tr>"
-    ).join("") : '<tr><td colspan="10" class="empty">Aucune vente pour cette date' + (cc === "ALL" ? "" : " et ce CC") + ".</td></tr>";
+    ).join("") : '<tr><td colspan="9" class="empty">Aucune vente pour cette date' + (cc === "ALL" ? "" : " et ce CC") + ".</td></tr>";
 
     const valides = rows.filter(isCountedSale);
     const tot = summarize(valides);
     $("#v-foot").innerHTML = '<tr><td colspan="3">TOTAL ' + (cc === "ALL" ? "DES VENTES" : "— " + esc(ccName(cc))) +
       " · " + num(tot.tickets) + " ticket" + (tot.tickets > 1 ? "s" : "") + '</td><td class="num">' + num(tot.qte) +
-      '</td><td class="num">' + money(tot.ca) + '</td><td colspan="5">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
+      '</td><td class="num">' + money(tot.ca) + '</td><td colspan="4">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
     $("#v-refresh-info").textContent = "Mis à jour à " + new Date(lastReload || Date.now()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
   ["#v-date", "#r-semaine", "#r-mois", "#r-annee", "#r-cc"].forEach((id) => $(id).addEventListener("change", renderVentes));
