@@ -224,10 +224,19 @@
     screen("loading");
     $("#loading-msg").textContent = "Chargement…";
     try {
-      const { data: { user } } = await sb.auth.getUser();
-      if (!user) return screen("auth");
+      const hadSession = !!(await sb.auth.getSession()).data.session;
+      const { data: { user }, error: uerr } = await sb.auth.getUser();
+      // Erreur réseau : on ne déconnecte pas, on laisse réessayer.
+      if (!user && uerr && /fetch|network/i.test(uerr.message || "")) throw uerr;
+      const refused = async () => {
+        await sb.auth.signOut({ scope: "local" });
+        screen("auth");
+        authMsg("Votre demande d'accès a été refusée. Vous pouvez faire une nouvelle demande avec « Créer un compte ».");
+      };
+      if (!user) return hadSession ? refused() : screen("auth");
       const prof = chk(await sb.from("profiles").select("*").eq("id", user.id).maybeSingle());
-      if (!prof || !prof.actif) {
+      if (!prof) return refused();
+      if (!prof.actif) {
         $("#pending-email").textContent = user.email;
         return screen("pending");
       }
@@ -2015,12 +2024,14 @@
     document.body.classList.toggle("no-bobines-gestion", droit !== "gestion");
     const st = scope.map((b) => ({ b, ...bobinesOf(b.code) }));
     const mois = t.slice(0, 7);
-    $("#bb-kpis").innerHTML = kpiHtml([
-      ["Bobines restantes", num(st.reduce((a, x) => a + Math.max(0, x.reste), 0))],
-      ["Boutiques en rupture", st.filter((x) => x.reste <= 0).length, "danger"],
-      ["Stock faible", st.filter((x) => x.reste > 0 && x.reste <= BOBINE_SEUIL).length, "warn"],
-      ["Utilisées ce mois", num(db.bobines.filter((x) => x.type === "Utilisation" && scope.some((b) => b.code === x.boutique) && x.date.slice(0, 7) === mois).reduce((a, x) => a + x.qte, 0))]
-    ]);
+    // Gestion : vue réseau (ruptures) ; CC de boutique : moyennes d'utilisation de sa boutique.
+    const jour = st.reduce((a, x) => a + x.parJour, 0);
+    const moyennes = [["Moyenne / jour", moyHtml(jour)], ["Moyenne / semaine", moyHtml(jour * 7)], ["Moyenne / mois", moyHtml(jour * 30)]];
+    const restantes = ["Bobines restantes", num(st.reduce((a, x) => a + Math.max(0, x.reste), 0))];
+    const utilMois = ["Utilisées ce mois", num(db.bobines.filter((x) => x.type === "Utilisation" && scope.some((b) => b.code === x.boutique) && x.date.slice(0, 7) === mois).reduce((a, x) => a + x.qte, 0))];
+    $("#bb-kpis").innerHTML = kpiHtml(droit === "gestion"
+      ? [...moyennes, restantes, ["Boutiques en rupture", st.filter((x) => x.reste <= 0).length, "danger"], ["Stock faible", st.filter((x) => x.reste > 0 && x.reste <= BOBINE_SEUIL).length, "warn"]]
+      : [restantes, ...moyennes, utilMois]);
     $("#bb-rows").innerHTML = st.length ? st.sort((a, b) => a.reste - b.reste).map((x) => "<tr><td><b>" + esc(x.b.nom) + '</b></td><td class="num">' + num(x.recues) + '</td><td class="num">' + num(x.utilisees) +
       '</td><td class="num"><b>' + num(x.reste) + "</b></td><td>" + bobineStatut(x.reste) + '</td><td class="num">' + moyHtml(x.parJour) + '</td><td class="num">' + moyHtml(x.parJour * 7) +
       '</td><td class="num">' + moyHtml(x.parJour * 30) + "</td><td>" + autonomieHtml(x) + "</td><td>" + (x.appro ? fmtDate(x.appro) : '<span class="muted">Jamais</span>') + "</td></tr>").join("")
@@ -2441,7 +2452,7 @@
         (u.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge warn">En attente</span>') + '</td><td class="wrap">' +
         (self ? '<span class="muted">(vous)</span>' : (u.actif
           ? '<button class="btn small" data-uactif="0">Suspendre</button>'
-          : '<button class="btn small success" data-uactif="1">Valider</button>')) +
+          : '<button class="btn small success" data-uactif="1">Valider</button>' + (u.role === "admin" ? "" : ' <button class="btn small danger" data-urefuse="1">Refuser</button>'))) +
         "</td></tr>";
     }).join("") : '<tr><td colspan="6" class="empty">Aucun utilisateur.</td></tr>';
   }
@@ -2464,6 +2475,12 @@
     });
   });
   $("#u-rows").addEventListener("click", (e) => {
+    const rf = e.target.closest("[data-urefuse]");
+    if (rf) {
+      const u = db.users.find((x) => x.id === rf.closest("tr").dataset.uid);
+      if (!u || !confirm("Refuser la demande de " + (u.nom || u.email) + " (" + u.email + ") ?\n\nLe compte sera supprimé : la personne devra faire une nouvelle demande pour accéder à l'application.")) return;
+      return act(async () => chk(await sb.rpc("refuse_user", { p_id: u.id })), "Demande refusée : " + u.email + ".", rf);
+    }
     const b = e.target.closest("[data-uactif]");
     if (!b) return;
     const id = b.closest("tr").dataset.uid;

@@ -759,6 +759,24 @@ drop policy if exists charges_global_delete on public.charges;
 create policy charges_global_delete on public.charges for delete to authenticated
   using (public.is_global() and created_by = auth.uid() and created_at > now() - interval '2 hours');
 
+-- Refus d'une demande d'accès : le compte en attente est supprimé ; la personne devra refaire une demande.
+-- (ses éventuelles saisies passées sont conservées, sans lien vers le compte)
+create or replace function public.refuse_user(p_id uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare prof public.profiles%rowtype;
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if p_id = auth.uid() then raise exception 'Vous ne pouvez pas refuser votre propre compte'; end if;
+  select * into prof from public.profiles where id = p_id;
+  if not found then raise exception 'Utilisateur introuvable'; end if;
+  if prof.actif then raise exception 'Ce compte est actif : suspendez-le d''abord'; end if;
+  if prof.role = 'admin' then raise exception 'Impossible de refuser un compte administrateur'; end if;
+  delete from auth.users where id = p_id;
+  return coalesce(prof.email, '');
+end $$;
+revoke all on function public.refuse_user(uuid) from public, anon;
+grant execute on function public.refuse_user(uuid) to authenticated;
+
 -- =====================================================================
 -- Remontée des fonds de vente (chaque lundi, pour la semaine lundi → dimanche écoulée)
 -- =====================================================================
