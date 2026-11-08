@@ -1765,7 +1765,8 @@
         (ccs.length ? ccs.map((c) => esc(ccName(c.code)) + (c.entrees ? ' <span class="badge ok" title="Autorisé aux entrées de stock">📦 Entrées</span>' : "")).join("<br>") : '<span class="muted">Aucun CC</span>') +
         (ccs.length && !ccs.some((c) => c.entrees) ? '<br><span class="sub">Aucun CC autorisé aux entrées de stock</span>' : "") + "</td><td>" +
         '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button> " +
-        (b.code === INITIAL_BOUTIQUE ? '<span class="sub">Boutique d\'origine (stock initial)</span>' : '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button>') +
+        '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button>' +
+        (b.code === INITIAL_BOUTIQUE ? '<span class="sub">Boutique d\'origine (porte le stock initial)</span>' : "") +
         "</td></tr>";
     }).join("") : '<tr><td colspan="6" class="empty">Aucune boutique.</td></tr>';
     renderCcTable();
@@ -2031,7 +2032,11 @@
         "<li><b>" + num(ventes.length) + "</b> ligne(s) de vente (" + money(ca) + ")</li>" +
         "<li><b>" + num(courses.length) + "</b> course(s) avec leurs produits et " + courses.filter((c) => c.recuPath).length + " photo(s) de reçus</li>" +
         "<li><b>" + num(entrees.length) + "</b> entrée(s) de stock</li>" +
-        "<li><b>" + num(ccs.length) + "</b> CC désaffecté(s) (ils restent dans RH, à réaffecter)</li></ul></div>" +
+        "<li><b>" + num(db.charges.filter((c) => c.boutique === b.code).length) + "</b> charge(s) de la boutique</li>" +
+        "<li><b>" + num(ccs.length) + "</b> CC désaffecté(s) (ils restent dans RH, à réaffecter)</li>" +
+        (b.code === INITIAL_BOUTIQUE ? "<li>Le <b>stock initial</b> repris de l'Excel est remis à <b>0</b> (le catalogue et les prix sont conservés)</li>" : "") +
+        "</ul></div>" +
+        (db.boutiques.length < 2 ? '<p class="v-alert danger">Créez d\'abord une autre boutique : il doit toujours en rester au moins une.</p>' : "") +
         '<p class="hint">Pensez à télécharger une sauvegarde (Paramètres) avant. Confirmez avec votre mot de passe.</p>';
       $("#cp-ok").textContent = "Supprimer définitivement";
     }

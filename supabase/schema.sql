@@ -631,8 +631,10 @@ declare r jsonb; nv int; nc int; ne int; ncc int; photos text[];
 begin
   if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
   if not public.check_my_password(p_password) then raise exception 'Mot de passe incorrect'; end if;
-  if p_code = 'B1' then raise exception 'La boutique d''origine (B1) porte le stock initial : elle ne peut pas être supprimée'; end if;
   if not exists (select 1 from public.boutiques where code = p_code) then raise exception 'Boutique introuvable'; end if;
+  if not exists (select 1 from public.boutiques where code <> p_code) then raise exception 'Créez d''abord une autre boutique : il doit toujours en rester au moins une'; end if;
+  -- B1 (boutique d'origine / simulation) porte le stock initial repris de l'Excel : il disparaît avec elle.
+  if p_code = 'B1' then update public.products set stock_initial = 0 where stock_initial <> 0; end if;
   select coalesce(array_agg(recu_path) filter (where recu_path is not null), '{}') into photos from public.courses where boutique = p_code;
   delete from public.sales where boutique = p_code; get diagnostics nv = row_count;
   delete from public.courses where boutique = p_code; get diagnostics nc = row_count;
