@@ -864,7 +864,7 @@
   function summaryBox(s) {
     const frais = s.retrait + s.transport + s.autres;
     return '<div class="sum-row"><span>Sous-total des achats</span><b>' + money0(s.sousTotal) + "</b></div>" +
-      '<div class="sum-row"><span>Frais de retrait</span><span>' + money0(s.retrait) + "</span></div>" +
+      '<div class="sum-row"><span>Frais de retrait mobile money</span><span>' + money0(s.retrait) + "</span></div>" +
       '<div class="sum-row"><span>Transport aller-retour</span><span>' + money0(s.transport) + "</span></div>" +
       '<div class="sum-row"><span>' + esc(s.autresLib || "Autres frais") + "</span><span>" + money0(s.autres) + "</span></div>" +
       '<div class="sum-row"><span>Total des frais</span><span>' + money0(frais) + "</span></div>" +
