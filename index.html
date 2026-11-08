@@ -77,6 +77,7 @@
       <button data-view="entrees">Entrées stock</button>
       <button data-view="facture">Facturation</button>
       <button data-view="rh" class="admin-only">RH</button>
+      <button data-view="compte">Mon compte</button>
       <button data-view="parametres" class="admin-only">Paramètres</button>
     </nav>
     <div class="user-box">
@@ -417,9 +418,26 @@
       </div>
     </section>
 
+    <!-- MON COMPTE -->
+    <section id="view-compte" class="view">
+      <h1>Mon compte</h1>
+      <div id="compte-body"></div>
+    </section>
+
     <!-- RH -->
     <section id="view-rh" class="view">
-      <h1>RH — boutiques &amp; affectation des CC</h1>
+      <h1>RH — personnel, boutiques &amp; affectation des CC</h1>
+      <div class="card filterbar">
+        <label>Boutique<select id="rh-boutique"></select></label>
+        <label class="cc-filter">Code commercial<select id="rh-cc"></select></label>
+        <label>Planning : semaine du<input type="date" id="rh-week"></label>
+      </div>
+      <div id="rh-fiche"></div>
+      <div class="card">
+        <h2 id="rh-planning-title">Planning de la semaine</h2>
+        <div class="table-wrap"><table class="table planning" id="rh-planning"></table></div>
+        <p class="hint">✓ = en service · <b>R</b> = jour de repos · <b>C</b> = congé. Cliquez sur un CC pour ouvrir sa fiche.</p>
+      </div>
       <div class="card">
         <div class="toolbar">
           <h2>Boutiques</h2>
@@ -428,7 +446,7 @@
         <p class="hint">Jusqu'à 10 boutiques. Tapez le nom puis Entrée pour le modifier. Chaque vente est rattachée à la boutique de son CC au moment de la vente.</p>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>Code</th><th>Nom de la boutique</th><th>Statut</th><th>CC affectés</th><th class="num">Ventes du jour</th><th></th></tr></thead>
+            <thead><tr><th>Code</th><th>Nom de la boutique</th><th>Statut</th><th>CC affectés</th><th></th></tr></thead>
             <tbody id="bq-rows"></tbody>
           </table>
         </div>
@@ -441,7 +459,7 @@
         <p class="hint"><b>Nom du CC</b> : tapez un nom puis Entrée, il s'affichera partout à côté du code (« CC 01 — Nom »). Lier un vendeur à un CC sans nom lui donne automatiquement le nom du vendeur. Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant.</p>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Boutique</th><th>Statut</th><th>Historique des vendeurs</th><th class="num">Ventes (CA total)</th><th></th></tr></thead>
+            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Boutique</th><th>Statut</th><th>Jours de repos</th><th>Historique des vendeurs</th><th></th></tr></thead>
             <tbody id="cc-rows"></tbody>
           </table>
         </div>
@@ -480,6 +498,24 @@
         <label id="cc-nom-wrap">Nom du vendeur<input name="nom"></label>
         <label id="cc-date-wrap">Date<input type="date" name="date"></label>
       </div>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Modal congé -->
+  <dialog id="conge-dialog">
+    <form method="dialog" id="conge-form">
+      <h2 id="cg-title">Congé</h2>
+      <div class="form">
+        <label>Début<input type="date" name="debut" required></label>
+        <label>Fin (dernier jour de congé)<input type="date" name="fin" required></label>
+        <div class="full">Durée rapide : <button type="button" class="btn small" data-cg-weeks="1">1 semaine</button> <button type="button" class="btn small" data-cg-weeks="2">2 semaines</button> <button type="button" class="btn small" data-cg-weeks="3">3 semaines</button> <button type="button" class="btn small" data-cg-weeks="4">4 semaines</button></div>
+        <label class="full">Motif<input name="motif" placeholder="Ex. : congé annuel"></label>
+      </div>
+      <p class="hint" id="cg-days"></p>
       <div class="actions">
         <button class="btn" value="cancel" formnovalidate>Annuler</button>
         <button class="btn primary" value="ok">Enregistrer</button>

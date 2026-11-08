@@ -646,6 +646,44 @@ end $$;
 revoke all on function public.assign_cc_boutique(text, text) from public, anon;
 grant execute on function public.assign_cc_boutique(text, text) to authenticated;
 
+-- =====================================================================
+-- RH : jours de repos, fiches (admin uniquement) et congés
+-- =====================================================================
+-- Jours de repos hebdomadaires du CC (1 = lundi … 7 = dimanche)
+alter table public.ccs add column if not exists repos smallint[] not null default '{}';
+
+-- Fiche RH confidentielle : visible et modifiable uniquement par l'admin
+create table if not exists public.rh_fiches (
+  cc text primary key references public.ccs(code) on update cascade on delete cascade,
+  telephone text not null default '',
+  contact_urgence text not null default '',
+  date_embauche date,
+  notes text not null default '',
+  updated_at timestamptz not null default now()
+);
+alter table public.rh_fiches enable row level security;
+drop policy if exists rh_fiches_admin on public.rh_fiches;
+create policy rh_fiches_admin on public.rh_fiches for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- Congés : 1 semaine par défaut, prolongeables. Le CC ne voit que les siens ; l'admin gère tout.
+create table if not exists public.conges (
+  id uuid primary key default gen_random_uuid(),
+  cc text not null references public.ccs(code) on update cascade on delete cascade,
+  debut date not null,
+  fin date not null,
+  motif text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (fin >= debut)
+);
+create index if not exists conges_cc_idx on public.conges (cc, debut);
+alter table public.conges enable row level security;
+drop policy if exists conges_select on public.conges;
+create policy conges_select on public.conges for select to authenticated
+  using (public.is_admin() or (public.is_member() and cc = (select p.cc from public.profiles p where p.id = auth.uid())));
+drop policy if exists conges_admin on public.conges;
+create policy conges_admin on public.conges for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
 -- Démarrage : une première boutique avec tous les CC existants et leurs ventes.
 do $$
 begin
@@ -669,7 +707,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

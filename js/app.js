@@ -14,7 +14,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -89,7 +89,7 @@
     return all;
   }
   async function reload() {
-    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques] = await Promise.all([
+    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches] = await Promise.all([
       sb.from("settings").select("*").eq("id", 1).maybeSingle(),
       fetchAll("products", "code"),
       isAdmin() ? fetchAll("product_costs", "code") : Promise.resolve([]),
@@ -98,7 +98,9 @@
       fetchAll("sales", "created_at"),
       isAdmin() ? fetchAll("profiles", "created_at") : Promise.resolve([]),
       fetchAll("courses", "created_at"),
-      fetchAll("boutiques", "code")
+      fetchAll("boutiques", "code"),
+      fetchAll("conges", "debut"),
+      isAdmin() ? fetchAll("rh_fiches", "cc") : Promise.resolve([])
     ]);
     const st = chk(settingsRes) || {};
     const pa = {}, cmp = {};
@@ -107,7 +109,7 @@
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA",
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "" }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -133,6 +135,8 @@
         cout: s.cout_unitaire == null ? null : Number(s.cout_unitaire), createdAt: s.created_at, boutique: s.boutique || ""
       })),
       users,
+      conges: conges.map((g) => ({ id: g.id, cc: String(g.cc), debut: g.debut, fin: g.fin, motif: g.motif || "" })),
+      fiches,
       boutiques: boutiques.map((b) => ({ code: b.code, nom: b.nom, actif: b.actif !== false }))
         .sort((a, b) => Number(a.code.replace(/\D/g, "")) - Number(b.code.replace(/\D/g, "")) || a.code.localeCompare(b.code))
     };
@@ -240,7 +244,7 @@
   }
   // Temps réel : une vente, une entrée ou une course enregistrée ailleurs met à jour cet écran.
   let rtChannel = null, rtTimer = null, rtLive = false;
-  const RT_VIEWS = ["ventes", "dashboard", "stock", "stats", "facture", "rh"];
+  const RT_VIEWS = ["ventes", "dashboard", "stock", "stats", "facture", "rh", "compte"];
   function startRealtime() {
     if (rtChannel || !sb) return;
     const onChange = () => {
@@ -260,6 +264,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "courses" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "ccs" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "boutiques" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "conges" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -380,7 +385,7 @@
     document.title = db.settings.nom + " — Boutique";
     ({
       dashboard: renderDashboard, caisse: renderCaisse, ventes: renderVentes, stats: renderStats,
-      stock: renderStock, entrees: renderEntrees, facture: renderFacture, parametres: renderParametres, rh: renderRh
+      stock: renderStock, entrees: renderEntrees, facture: renderFacture, parametres: renderParametres, rh: renderRh, compte: renderCompte
     })[view]();
   }
   function productOptions(selected) {
@@ -1544,19 +1549,254 @@
 
   // ---------- RH : boutiques et affectation des CC ----------
   function renderRh() {
-    const jour = today();
+    renderRhFilters();
+    // Ne pas effacer une saisie en cours dans la fiche (mise à jour temps réel)
+    const typing = document.activeElement && $("#rh-fiche").contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
+    if (!typing) renderFiche();
+    renderPlanning();
     $("#bq-rows").innerHTML = db.boutiques.length ? db.boutiques.map((b) => {
       const ccs = db.settings.ccList.filter((c) => c.boutique === b.code);
-      const caJour = db.sales.filter((s) => isCountedSale(s) && s.date === jour && saleBoutique(s) === b.code).reduce((a, s) => a + lineTotal(s), 0);
       return "<tr><td><b>" + esc(b.code) + '</b></td><td><input class="inline-input" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '"></td><td>' +
         (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + '</td><td class="wrap">' +
-        (ccs.length ? ccs.map((c) => esc(ccName(c.code))).join("<br>") : '<span class="muted">Aucun CC</span>') + '</td><td class="num">' + money(caJour) + "</td><td>" +
+        (ccs.length ? ccs.map((c) => esc(ccName(c.code))).join("<br>") : '<span class="muted">Aucun CC</span>') + "</td><td>" +
         '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button> " +
         (b.code === INITIAL_BOUTIQUE ? '<span class="sub">Boutique d\'origine (stock initial)</span>' : '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button>') +
         "</td></tr>";
     }).join("") : '<tr><td colspan="6" class="empty">Aucune boutique.</td></tr>';
     renderCcTable();
   }
+  // ---------- RH : repos, congés, fiche CC, planning ----------
+  const JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+  const JOURS_LONG = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
+  function isoDow(d) { const x = parse(d).getDay(); return x === 0 ? 7 : x; } // 1 = lundi … 7 = dimanche
+  function reposLabel(c) { return (c && c.repos && c.repos.length) ? c.repos.slice().sort().map((j) => JOURS[j - 1]).join(", ") : ""; }
+  function congesOf(cc) { return db.conges.filter((g) => g.cc === cc).sort((a, b) => b.debut.localeCompare(a.debut)); }
+  function congeOn(cc, date) { return db.conges.find((g) => g.cc === cc && g.debut <= date && g.fin >= date) || null; }
+  function nbJours(g) { return Math.round((parse(g.fin) - parse(g.debut)) / 86400000) + 1; }
+  function ccStatusOn(code, date) {
+    const g = congeOn(code, date);
+    if (g) return { k: "conge", label: "En congé jusqu'au " + fmtDate(g.fin), g };
+    const c = ccByCode(code);
+    if (c && c.repos.includes(isoDow(date))) return { k: "repos", label: "Jour de repos" };
+    return { k: "service", label: "En service" };
+  }
+  function statusBadge(st) { return '<span class="badge ' + st.k + '">' + esc(st.label) + "</span>"; }
+  function nextRepos(c, from) {
+    if (!c || !c.repos.length) return "";
+    for (let i = 0; i < 8; i++) { const d = addDays(from, i); if (c.repos.includes(isoDow(d))) return d; }
+    return "";
+  }
+  function anciennete(dateEmb) {
+    if (!dateEmb) return "";
+    const m = Math.max(0, Math.floor((parse(today()) - parse(dateEmb)) / (86400000 * 30.44)));
+    return m >= 12 ? Math.floor(m / 12) + " an" + (m >= 24 ? "s" : "") + (m % 12 ? " " + (m % 12) + " mois" : "") : m + " mois";
+  }
+  function joursActivite(cc, mois) { return new Set(db.sales.filter((s) => s.cc === cc && isCountedSale(s) && (s.date || "").slice(0, 7) === mois).map((s) => s.date)).size; }
+  function agentDebut(c) { const a = c && c.agents.filter((x) => !x.fin).pop(); return a ? a.debut : ""; }
+
+  function renderRhFilters() {
+    const bcur = $("#rh-boutique").value || "ALL";
+    $("#rh-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("") +
+      '<option value="NONE">CC non affectés</option>';
+    $("#rh-boutique").value = Array.from($("#rh-boutique").options).some((o) => o.value === bcur) ? bcur : "ALL";
+    const b = $("#rh-boutique").value;
+    const ccur = $("#rh-cc").value || "ALL";
+    const list = db.settings.ccList.filter((c) => b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b));
+    $("#rh-cc").innerHTML = '<option value="ALL">— Choisir un CC —</option>' + list.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("");
+    $("#rh-cc").value = list.some((c) => c.code === ccur) ? ccur : "ALL";
+    if (!$("#rh-week").value) $("#rh-week").value = today();
+  }
+  $("#rh-boutique").addEventListener("change", () => { renderRhFilters(); renderFiche(); renderPlanning(); });
+  $("#rh-cc").addEventListener("change", () => {
+    const cc = $("#rh-cc").value;
+    if (cc !== "ALL" && $("#rh-boutique").value === "ALL" && ccBoutique(cc)) { $("#rh-boutique").value = ccBoutique(cc); renderRhFilters(); $("#rh-cc").value = cc; }
+    renderFiche(); renderPlanning();
+  });
+  $("#rh-week").addEventListener("change", renderPlanning);
+
+  // Fiche RH complète d'un CC (admin)
+  function renderFiche() {
+    const code = $("#rh-cc").value;
+    if (!code || code === "ALL") { $("#rh-fiche").innerHTML = '<div class="card"><p class="hint" style="margin:0">Choisissez une boutique puis un CC pour afficher sa fiche RH (repos, congés, contacts, notes).</p></div>'; return; }
+    const c = ccByCode(code);
+    const f = db.fiches.find((x) => x.cc === code) || {};
+    const st = ccStatusOn(code, today());
+    const user = db.users.find((u) => u.cc === code);
+    const conges = congesOf(code);
+    const t = today(), mois = t.slice(0, 7);
+    const enCours = conges.filter((g) => g.debut <= t && g.fin >= t);
+    const aVenir = conges.filter((g) => g.debut > t);
+    const passes = conges.filter((g) => g.fin < t);
+    const joursAn = conges.filter((g) => g.debut.slice(0, 4) === t.slice(0, 4)).reduce((a, g) => a + nbJours(g), 0);
+    const congeRow = (g) => '<div class="info-row"><span>' + fmtDate(g.debut) + " → " + fmtDate(g.fin) + " · " + nbJours(g) + " j" + (g.motif ? " · " + esc(g.motif) : "") +
+      '</span><span style="white-space:nowrap">' + (g.fin >= t ? '<button class="btn small" data-cg-ext="' + g.id + '" title="Prolonger d\'une semaine">+1 semaine</button> <button class="btn small" data-cg-edit="' + g.id + '">Modifier</button> ' : "") +
+      '<button class="btn small danger" data-cg-del="' + g.id + '">✕</button></span></div>';
+    const hist = c.agents.length ? c.agents.map((a) => esc(a.nom) + " : " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui")).join("<br>") : "Aucun vendeur affecté";
+    $("#rh-fiche").innerHTML = '<div class="card">' +
+      '<div class="fiche-head"><h2>' + esc(ccName(code)) + "</h2>" + statusBadge(st) +
+      "<span>🏬 " + esc(boutiqueName(c.boutique)) + "</span>" + (c.actif ? "" : '<span class="badge mute">CC inactif</span>') + "</div>" +
+      '<div class="fiche-grid">' +
+      // Identité & contacts (admin uniquement)
+      "<div><h3>Identité & contacts <span class=\"muted\">(admin)</span></h3>" +
+      '<div class="form">' +
+      '<label>Téléphone<input id="rf-tel" type="tel" value="' + esc(f.telephone || "") + '" placeholder="Ex. : 90 12 34 56"></label>' +
+      '<label>Contact d\'urgence<input id="rf-urg" value="' + esc(f.contact_urgence || "") + '" placeholder="Nom et téléphone"></label>' +
+      '<label>Date d\'embauche<input id="rf-emb" type="date" value="' + esc(f.date_embauche || "") + '"></label>' +
+      "<label>Ancienneté<input readonly value=\"" + esc(anciennete(f.date_embauche) || "—") + '"></label>' +
+      '<label class="full">Notes RH (confidentielles)<textarea id="rf-notes" rows="3" placeholder="Remarques, avertissements, objectifs…">' + esc(f.notes || "") + "</textarea></label>" +
+      "</div>" +
+      '<div class="info-row"><span>Compte de connexion</span><span>' + (user ? esc(user.email) + (user.actif ? "" : " (en attente)") : "Aucun compte lié") + "</span></div>" +
+      '<div class="info-row"><span>Vendeur actuel depuis</span><span>' + (agentDebut(c) ? fmtDate(agentDebut(c)) : "—") + "</span></div>" +
+      '<div class="info-row"><span>Jours d\'activité ce mois</span><span>' + joursActivite(code, mois) + " jour(s) avec au moins une vente</span></div>" +
+      '<div class="actions" style="margin-top:10px"><button class="btn primary" id="rf-save">Enregistrer la fiche</button></div></div>' +
+      // Repos & congés
+      "<div><h3>Jours de repos hebdomadaires</h3>" +
+      '<div class="repos-days">' + JOURS_LONG.map((j, i) => '<label><input type="checkbox" data-repos="' + (i + 1) + '"' + (c.repos.includes(i + 1) ? " checked" : "") + "> " + j + "</label>").join("") + "</div>" +
+      '<p class="hint" style="margin:6px 0 14px">' + (c.repos.length ? "Prochain repos : " + fmtLong(nextRepos(c, t)) : "Aucun jour de repos défini.") + "</p>" +
+      '<div class="toolbar" style="margin-bottom:4px"><h3 style="margin:0;margin-right:auto">Congés</h3><button class="btn small primary" id="cg-new">+ Congé (1 semaine)</button></div>' +
+      '<p class="hint" style="margin:0 0 6px">' + joursAn + " jour(s) de congé en " + t.slice(0, 4) + ".</p>" +
+      (enCours.length ? "<b>En cours</b>" + enCours.map(congeRow).join("") : "") +
+      (aVenir.length ? "<b>À venir</b>" + aVenir.map(congeRow).join("") : "") +
+      (passes.length ? '<details><summary class="muted">Congés passés (' + passes.length + ")</summary>" + passes.map(congeRow).join("") + "</details>" : "") +
+      (!conges.length ? '<p class="muted">Aucun congé enregistré.</p>' : "") + "</div>" +
+      // Historique
+      '<div><h3>Historique des vendeurs du CC</h3><p class="hist" style="margin:0">' + hist + "</p></div>" +
+      "</div></div>";
+  }
+  // Enregistrer la fiche
+  $("#rh-fiche").addEventListener("click", (e) => {
+    const code = $("#rh-cc").value;
+    if (e.target.closest("#rf-save")) {
+      const row = { cc: code, telephone: $("#rf-tel").value.trim(), contact_urgence: $("#rf-urg").value.trim(), date_embauche: $("#rf-emb").value || null, notes: $("#rf-notes").value.trim(), updated_at: new Date().toISOString() };
+      return act(async () => chk(await sb.from("rh_fiches").upsert(row)), "Fiche RH enregistrée.", e.target);
+    }
+    if (e.target.closest("#cg-new")) return openConge(null, code);
+    const ext = e.target.closest("[data-cg-ext]");
+    if (ext) {
+      const g = db.conges.find((x) => x.id === ext.dataset.cgExt);
+      return act(async () => chk(await sb.from("conges").update({ fin: addDays(g.fin, 7) }).eq("id", g.id)), "Congé prolongé jusqu'au " + fmtDate(addDays(g.fin, 7)) + ".", ext);
+    }
+    const ed = e.target.closest("[data-cg-edit]");
+    if (ed) return openConge(db.conges.find((x) => x.id === ed.dataset.cgEdit), code);
+    const del = e.target.closest("[data-cg-del]");
+    if (del) {
+      if (!confirm("Supprimer ce congé ?")) return;
+      return act(async () => chk(await sb.from("conges").delete().eq("id", del.dataset.cgDel)), "Congé supprimé.", del);
+    }
+  });
+  // Jours de repos (enregistrés dès qu'on coche / décoche)
+  $("#rh-fiche").addEventListener("change", (e) => {
+    if (!e.target.closest("[data-repos]")) return;
+    const code = $("#rh-cc").value;
+    const repos = Array.from(document.querySelectorAll("#rh-fiche [data-repos]:checked")).map((x) => Number(x.dataset.repos));
+    act(async () => chk(await sb.from("ccs").update({ repos }).eq("code", code)), "Jours de repos : " + (repos.length ? repos.map((j) => JOURS_LONG[j - 1]).join(", ") : "aucun") + ".");
+  });
+
+  // Congé : 1 semaine par défaut, prolongeable
+  let editingConge = null, congeCc = null;
+  function updateCongeDays() {
+    const f = $("#conge-form");
+    const d = f.elements.debut.value, fi = f.elements.fin.value;
+    $("#cg-days").textContent = d && fi && fi >= d ? nbJours({ debut: d, fin: fi }) + " jour(s) de congé, reprise le " + fmtLong(addDays(fi, 1)) + "." : "";
+  }
+  function openConge(g, cc) {
+    editingConge = g; congeCc = cc;
+    const f = $("#conge-form");
+    f.reset();
+    $("#cg-title").textContent = (g ? "Modifier le congé — " : "Nouveau congé — ") + ccName(cc);
+    f.elements.debut.value = g ? g.debut : today();
+    f.elements.fin.value = g ? g.fin : addDays(today(), 6);
+    f.elements.motif.value = g ? g.motif : "";
+    updateCongeDays();
+    $("#conge-dialog").showModal();
+  }
+  $("#conge-form").addEventListener("input", updateCongeDays);
+  $("#conge-form").addEventListener("click", (e) => {
+    const w = e.target.closest("[data-cg-weeks]");
+    if (!w) return;
+    const f = $("#conge-form");
+    if (!f.elements.debut.value) f.elements.debut.value = today();
+    f.elements.fin.value = addDays(f.elements.debut.value, 7 * Number(w.dataset.cgWeeks) - 1);
+    updateCongeDays();
+  });
+  $("#conge-form").addEventListener("submit", (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
+    const f = e.target;
+    const row = { cc: congeCc, debut: f.elements.debut.value, fin: f.elements.fin.value, motif: f.elements.motif.value.trim() };
+    if (!row.debut || !row.fin || row.fin < row.debut) { e.preventDefault(); return toast("Dates de congé invalides."); }
+    const overlap = db.conges.find((g) => g.cc === congeCc && (!editingConge || g.id !== editingConge.id) && g.debut <= row.fin && g.fin >= row.debut);
+    if (overlap) { e.preventDefault(); return toast("Ce congé chevauche celui du " + fmtDate(overlap.debut) + " au " + fmtDate(overlap.fin) + "."); }
+    const id = editingConge ? editingConge.id : null;
+    act(async () => chk(id ? await sb.from("conges").update(row).eq("id", id) : await sb.from("conges").insert(row)), "Congé enregistré.");
+  });
+
+  // Planning de la semaine (boutique choisie)
+  function renderPlanning() {
+    const b = $("#rh-boutique").value;
+    const lundi = mondayOf($("#rh-week").value || today());
+    const days = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(lundi, i));
+    const list = db.settings.ccList.filter((c) => c.actif && (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)));
+    $("#rh-planning-title").textContent = "Planning de la semaine du " + fmtDate(lundi) + " au " + fmtDate(days[6]) + " — " + (b === "ALL" ? "toutes les boutiques" : b === "NONE" ? "CC non affectés" : boutiqueName(b));
+    const t = today();
+    $("#rh-planning").innerHTML = "<thead><tr><th>CC</th>" + (b === "ALL" ? "<th>Boutique</th>" : "") +
+      days.map((d, i) => '<th class="' + (d === t ? "today" : "") + '">' + JOURS[i] + "<br><small>" + fmtDate(d).slice(0, 5) + "</small></th>").join("") + "<th>En service</th></tr></thead><tbody>" +
+      (list.length ? list.map((c) => {
+        const st = days.map((d) => ccStatusOn(c.code, d));
+        return '<tr class="clickable" data-plan-cc="' + esc(c.code) + '"><td>' + esc(ccName(c.code)) + "</td>" + (b === "ALL" ? "<td>" + esc(boutiqueName(c.boutique)) + "</td>" : "") +
+          st.map((s, i) => '<td class="' + (s.k === "conge" ? "c" : s.k === "repos" ? "r" : "s") + (days[i] === t ? " today" : "") + '">' + (s.k === "conge" ? "C" : s.k === "repos" ? "R" : "✓") + "</td>").join("") +
+          "<td>" + st.filter((s) => s.k === "service").length + " / 7</td></tr>";
+      }).join("") : '<tr><td colspan="10" class="empty">Aucun CC actif.</td></tr>') + "</tbody>";
+  }
+  $("#rh-planning").addEventListener("click", (e) => {
+    const tr = e.target.closest("[data-plan-cc]");
+    if (!tr) return;
+    const cc = tr.dataset.planCc;
+    if (ccBoutique(cc) && $("#rh-boutique").value === "ALL") $("#rh-boutique").value = ccBoutique(cc);
+    renderRhFilters();
+    $("#rh-cc").value = cc;
+    renderFiche();
+    $("#rh-fiche").scrollIntoView({ behavior: "smooth" });
+  });
+
+  // ---------- Mon compte (chaque utilisateur) ----------
+  function renderCompte() {
+    const t = today(), mois = t.slice(0, 7);
+    const code = me.cc;
+    const c = code ? ccByCode(code) : null;
+    let h = '<div class="compte-grid">';
+    h += '<div class="card"><h2>Mon profil</h2>' +
+      '<div class="info-row"><span>Nom</span><span>' + esc(me.nom || "—") + "</span></div>" +
+      '<div class="info-row"><span>E-mail</span><span>' + esc(me.email || "—") + "</span></div>" +
+      '<div class="info-row"><span>Rôle</span><span>' + (isAdmin() ? "Administrateur" : "Vendeur") + "</span></div>" +
+      (c ? '<div class="info-row"><span>Code commercial</span><span>' + esc(ccName(code)) + "</span></div>" +
+        '<div class="info-row"><span>Boutique</span><span>🏬 ' + esc(boutiqueName(c.boutique)) + "</span></div>" +
+        '<div class="info-row"><span>Affecté depuis</span><span>' + (agentDebut(c) ? fmtDate(agentDebut(c)) : "—") + "</span></div>"
+        : '<p class="hint">Aucun code commercial lié à votre compte.</p>') + "</div>";
+    if (c) {
+      const st = ccStatusOn(code, t);
+      const mine = congesOf(code);
+      const avenir = mine.filter((g) => g.fin >= t).sort((a, b) => a.debut.localeCompare(b.debut));
+      const lundi = mondayOf(t);
+      h += '<div class="card"><h2>Aujourd\'hui ' + statusBadge(st) + "</h2>" +
+        '<div class="info-row"><span>Mes jours de repos</span><span>' + (reposLabel(c) || "Non définis") + "</span></div>" +
+        '<div class="info-row"><span>Prochain jour de repos</span><span>' + (nextRepos(c, t) ? cap(fmtLong(nextRepos(c, t))) : "—") + "</span></div>" +
+        '<div class="info-row"><span>Ma semaine</span><span>' + [0, 1, 2, 3, 4, 5, 6].map((i) => {
+          const d = addDays(lundi, i), s = ccStatusOn(code, d);
+          return '<span class="badge ' + s.k + '" title="' + esc(s.label) + '" style="margin-left:2px' + (d === t ? ";outline:2px solid var(--primary)" : "") + '">' + JOURS[i] + "</span>";
+        }).join("") + "</span></div>" +
+        "<h3 style=\"margin:14px 0 6px\">Mes congés</h3>" +
+        (avenir.length ? avenir.map((g) => '<div class="info-row"><span>' + fmtDate(g.debut) + " → " + fmtDate(g.fin) + (g.motif ? " · " + esc(g.motif) : "") + "</span><span>" + nbJours(g) + " j" + (g.debut <= t ? " (en cours)" : "") + "</span></div>").join("")
+          : '<p class="muted" style="margin:0">Aucun congé en cours ou à venir.</p>') +
+        (mine.length > avenir.length ? '<p class="hint" style="margin:6px 0 0">' + (mine.length - avenir.length) + " congé(s) passé(s).</p>" : "") + "</div>";
+      const my = db.sales.filter((s) => s.cc === code && isCountedSale(s));
+      const jour = summarize(my.filter((s) => s.date === t)), m = summarize(my.filter((s) => (s.date || "").slice(0, 7) === mois));
+      h += '<div class="card"><h2>Mes ventes</h2><div class="report">' +
+        "<div><span>Aujourd'hui</span><strong>" + money(jour.ca) + "</strong></div><div><span>Tickets aujourd'hui</span><strong>" + num(jour.tickets) + "</strong></div>" +
+        "<div><span>Ce mois</span><strong>" + money(m.ca) + "</strong></div><div><span>Jours d'activité ce mois</span><strong>" + joursActivite(code, mois) + "</strong></div></div></div>";
+    }
+    $("#compte-body").innerHTML = h + "</div>";
+  }
+
   // Création / suppression de boutique : confirmation par le mot de passe de l'admin (vérifié par la base).
   let cpAction = null;
   function openConfirmPwd(action) {
@@ -1686,7 +1926,6 @@
   // Codes commerciaux
   function renderCcTable() {
     $("#cc-rows").innerHTML = db.settings.ccList.length ? db.settings.ccList.map((c) => {
-      const ca = db.sales.filter((s) => isCountedSale(s) && s.cc === c.code).reduce((a, s) => a + lineTotal(s), 0);
       const hist = c.agents.length
         ? c.agents.map((a) => esc(a.nom) + " : " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui")).join("<br>")
         : "Aucun vendeur affecté";
@@ -1697,7 +1936,7 @@
         db.boutiques.map((b) => '<option value="' + esc(b.code) + '"' + (b.code === c.boutique ? " selected" : "") + ">" + esc(b.nom) + "</option>").join("") +
         "</select></td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
-        '</td><td class="hist">' + hist + '</td><td class="num">' + money(ca) + '</td><td class="wrap">' +
+        "</td><td>" + (reposLabel(c) || '<span class="muted">—</span>') + '</td><td class="hist">' + hist + '</td><td class="wrap">' +
         '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
         (c.actif
           ? '<button class="btn small" data-cc-depart="' + esc(c.code) + '">Départ / désactiver</button> '
