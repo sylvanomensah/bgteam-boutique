@@ -822,7 +822,7 @@
     editingCourseId = null;
     courseLines = [newCourseLine()];
     ["#co-retrait", "#co-transport", "#co-autres"].forEach((id) => { $(id).value = 0; });
-    ["#co-autres-lib", "#co-obs", "#co-marche", "#co-tel"].forEach((id) => { $(id).value = ""; });
+    ["#co-autres-lib", "#co-marche", "#co-tel"].forEach((id) => { $(id).value = ""; });
     $("#co-date").value = today();
     $("#co-title").textContent = "Nouvelle course (achat au marché)";
     $("#co-cancel-edit").classList.add("hidden");
@@ -897,7 +897,7 @@
       '<tr data-idx="' + i + '"><td><select data-f="code"><option value="">— Choisir —</option>' + productOptions(l.code) + "</select></td>" +
       '<td class="num"><input type="number" min="1" data-f="qte" value="' + esc(l.qte) + '"></td>' +
       '<td class="num"><input type="number" min="0" data-f="total" value="' + esc(l.total) + '"></td>' +
-      '<td class="num" data-c="pu"></td><td class="num" data-c="cr"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
+      '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
       '<td><button class="btn small danger" data-rmline="' + i + '" title="Retirer">✕</button></td></tr>'
     ).join("");
     updateCourseCalc();
@@ -908,9 +908,8 @@
       const tr = document.querySelector('#co-lines tr[data-idx="' + i + '"]');
       if (!tr) return;
       const set = (k, v) => { tr.querySelector('[data-c="' + k + '"]').innerHTML = v; };
-      if (!r.ok) { ["pu", "cr", "pv", "mu"].forEach((k) => set(k, '<span class="muted">—</span>')); return; }
+      if (!r.ok) { ["pu", "pv", "mu"].forEach((k) => set(k, '<span class="muted">—</span>')); return; }
       set("pu", money0(r.pu));
-      set("cr", money0(r.cr));
       set("pv", money0(r.pv));
       set("mu", margeHtml(r.mu, r.pct));
     });
@@ -1034,7 +1033,7 @@
         p_id: editingCourseId, p_date: date, p_cc: isAdmin() ? $("#co-cc").value : null,
         p_frais_retrait: Number($("#co-retrait").value) || 0, p_frais_transport: Number($("#co-transport").value) || 0,
         p_autres_frais: Number($("#co-autres").value) || 0, p_autres_libelle: $("#co-autres-lib").value.trim(),
-        p_obs: $("#co-obs").value.trim(),
+        p_obs: "",
         p_lines: filled.map((l) => ({ code: l.code, qte: Number(l.qte), prix_total: Number(l.total) })),
         p_marche: marche, p_fournisseur_tel: tel, p_recu_path: recuPath
       }));
@@ -1055,7 +1054,6 @@
     $("#co-transport").value = c.transport;
     $("#co-autres").value = c.autres;
     $("#co-autres-lib").value = c.autresLib;
-    $("#co-obs").value = c.obs;
     $("#co-marche").value = c.marche;
     $("#co-tel").value = c.tel;
     $("#co-date").value = c.date || today();
@@ -1091,7 +1089,7 @@
   function courseTotal(c) { return courseLinesOf(c).reduce((a, x) => a + (x.prixTotal || 0), 0) + c.retrait + c.transport + c.autres; }
   function renderEntryHistory() {
     const fcc = $("#eh-cc").value;
-    const q = $("#eh-search").value.trim().toLowerCase();
+    const q = "";
     const ccOk = (cc) => (fcc === "ALL" ? true : fcc === "NONE" ? !cc : cc === fcc);
     const matches = (code, extra) => {
       if (!q) return true;
@@ -1150,7 +1148,7 @@
       margeTot += mu * x.qte;
       venteTot += pv * x.qte;
       return "<tr><td>" + esc(p ? p.nom : x.code) + '</td><td class="num">' + num(x.qte) + '</td><td class="num">' + money0(x.prixTotal || 0) +
-        '</td><td class="num">' + money0(pu) + '</td><td class="num">' + money0(x.fraisPart || 0) + '</td><td class="num">' + money0(cr) +
+        '</td><td class="num">' + money0(pu) + '</td><td class="num">' + money0(x.fraisPart || 0) +
         '</td><td class="num">' + money0(pv) + '</td><td class="num">' + margeHtml(mu, pv > 0 ? (mu / pv) * 100 : null) + '</td><td class="num">' + margeHtml(mu * x.qte) + "</td></tr>";
     }).join("");
     const heure = c.createdAt ? new Date(c.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
@@ -1176,7 +1174,7 @@
       (c.tel ? '<span>Fournisseur : <a href="tel:' + esc(c.tel.replace(/[^\d+]/g, "")) + '">' + esc(c.tel) + "</a></span>" : "") +
       (c.obs ? '<span class="muted">' + esc(c.obs) + "</span>" : "") + "</div>" +
       '<div class="course-detail"><div class="table-wrap"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix total payé</th><th class="num">Prix unitaire</th>' +
-      '<th class="num">Part des frais</th><th class="num">Coût de revient unit.</th><th class="num">Prix de vente</th><th class="num">Marge unitaire</th><th class="num">Marge totale</th></tr></thead><tbody>' +
+      '<th class="num">Part des frais</th><th class="num">Prix de vente</th><th class="num">Marge unitaire</th><th class="num">Marge totale</th></tr></thead><tbody>' +
       rows + "</tbody></table></div>" +
       '<div class="course-summary">' + summaryBox({ sousTotal, retrait: c.retrait, transport: c.transport, autres: c.autres, autresLib: c.autresLib, vente: venteTot, marge: margeTot }) + "</div></div>" +
       (c.recuPath ? '<div class="receipt-photo"><div class="sub-title">Photo du reçu</div><img alt="Photo du reçu" data-photo-path="' + esc(c.recuPath) + '"></div>' : "") +
@@ -1189,7 +1187,6 @@
     });
   }
   ["#eh-cc", "#eh-date"].forEach((id) => $(id).addEventListener("change", renderEntryHistory));
-  $("#eh-search").addEventListener("input", renderEntryHistory);
   function entryDetail(ls) {
     const admin = isAdmin();
     return '<table class="table inner"><thead><tr><th>Heure</th><th>Article</th><th>Code</th><th class="num">Quantité</th><th>Statut</th><th>CC</th><th>Saisi par</th><th>Observation</th><th></th></tr></thead><tbody>' +
