@@ -690,7 +690,7 @@
       "<td>" + fmtDate(s.date) + "</td><td>" + heureOf(s) + "</td><td>" + esc(s.nom) + pendingBadge(productByCode(s.code)) +
       '</td><td class="num">' + num(s.qte) + '</td><td class="num"><b>' + money(lineTotal(s)) + "</b></td><td>" + ccLabel(s.cc) +
       (vendeurOf(s) ? '<span class="sub">' + esc(vendeurOf(s)) + "</span>" : "") +
-      '</td><td class="num">' + s.ticket + "</td><td>" + esc(s.client) +
+      '</td><td class="num">' + s.ticket +
       '</td><td class="keep">' + (admin ? '<button class="btn small" data-toggle="' + s.id + '">' + badge(s) + "</button>" : badge(s)) +
       "</td><td>" + (admin ? '<button class="btn small danger" data-del="' + s.id + '" title="Supprimer">✕</button>' : "") + "</td></tr>"
     ).join("") : '<tr><td colspan="9" class="empty">Aucune vente pour cette date' + (cc === "ALL" ? "" : " et ce CC") + ".</td></tr>";
