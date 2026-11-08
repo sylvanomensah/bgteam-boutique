@@ -69,10 +69,9 @@
       </div>
     </div>
     <nav id="nav">
-      <button data-view="dashboard" class="admin-only">Accueil</button>
+      <button data-view="dashboard" class="admin-only">Tableau de bord</button>
       <button data-view="caisse">Caisse</button>
       <button data-view="ventes">Historique des ventes</button>
-      <button data-view="stats" class="admin-only">Statistiques</button>
       <button data-view="stock">Stock</button>
       <button data-view="entrees">Entrées stock</button>
       <button data-view="facture">Facturation</button>
@@ -89,16 +88,18 @@
   </header>
 
   <main>
-    <!-- ACCUEIL -->
-    <section id="view-dashboard" class="view active">
-      <h1>Tableau de bord</h1>
-      <div class="card filterbar">
+    <!-- TABLEAU DE BORD -->
+    <section id="view-dashboard" class="view">
+      <div class="toolbar"><h1 style="margin:0;margin-right:auto">Tableau de bord</h1>
+        <span class="hint" id="tb-live" style="margin:0"></span>
+        <button class="btn small" data-view-link="stats">Statistiques détaillées par CC</button>
+      </div>
+      <div class="card filterbar" style="margin-top:12px">
         <div class="seg" id="d-periode">
           <button data-p="jour" class="active">Jour</button>
           <button data-p="semaine">Semaine</button>
           <button data-p="mois">Mois</button>
           <button data-p="annee">Année</button>
-          <button data-p="tout">Tout</button>
         </div>
         <div class="nav-date" id="d-nav">
           <button class="btn small" id="d-prev" title="Période précédente">◀</button>
@@ -106,44 +107,62 @@
           <button class="btn small" id="d-next" title="Période suivante">▶</button>
           <button class="btn small" id="d-today">Aujourd'hui</button>
         </div>
-        <label class="cc-filter">Code commercial<select id="d-cc"></select></label>
+        <label class="cc-filter">Boutique<select id="d-boutique"></select></label>
       </div>
       <p class="period-label" id="d-label"></p>
-      <div class="kpis" id="kpis"></div>
+
+      <div class="kpis kpi-hero" id="kpis"></div>
+
       <div class="card">
-        <h2>Ventes par code commercial <span class="muted" id="d-cc-title"></span></h2>
-        <p class="hint">Cliquez sur une ligne pour filtrer le tableau de bord sur ce CC.</p>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>CC</th><th>Vendeur(s) sur la période</th><th>Statut</th><th class="num">Tickets</th><th class="num">Quantités</th><th class="num">Chiffre d'affaires</th><th class="num">Part</th></tr></thead>
-            <tbody id="d-cc-rows"></tbody>
-          </table>
-        </div>
+        <h2>⚠ À surveiller <span class="muted" id="tb-alert-count"></span></h2>
+        <div id="tb-alerts"></div>
       </div>
+
       <div class="grid2">
         <div class="card">
-          <h2>Meilleures ventes <span class="muted">(période et CC choisis)</span></h2>
-          <div id="top-products"></div>
+          <h2 id="tb-trend-title">Évolution du chiffre d'affaires et de la marge brute</h2>
+          <div class="chart-box"><canvas id="ch-trend"></canvas></div>
+          <details class="data-table"><summary>Voir les données</summary><div class="table-wrap"><table class="table" id="tb-trend-table"></table></div></details>
         </div>
         <div class="card">
-          <h2>Alertes stock <span class="muted">(stock actuel)</span></h2>
-          <div id="alerts"></div>
+          <h2>Bénéfice net par boutique</h2>
+          <div class="chart-box"><canvas id="ch-boutiques"></canvas></div>
+          <p class="hint" style="margin:6px 0 0">Bénéfice net = marge brute (ventes − coût d'achat des produits vendus) − charges de la boutique.</p>
         </div>
       </div>
-      <h2>Stock (situation actuelle)</h2>
-      <div class="kpis" id="stock-kpis-dash"></div>
+
       <div class="card">
-        <h2>Règles de fonctionnement</h2>
-        <ol class="rules">
-          <li>Les produits et leurs stocks de départ sont conservés dans <b>Stock</b>.</li>
-          <li>Une entrée <b>Validée</b> augmente le stock. Une entrée <b>Annulée</b> reste dans l'historique mais ne compte pas.</li>
-          <li>Une vente <b>OUI</b> (validée) diminue le stock et alimente les statistiques.</li>
-          <li>Une vente <b>NON</b> est ignorée dans les calculs.</li>
-          <li>La facture se construit à partir du numéro de ticket choisi.</li>
-        </ol>
+        <h2>Résultat par boutique <span class="muted" id="tb-bq-period"></span></h2>
+        <div class="table-wrap"><table class="table" id="tb-bq-table"></table></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>Top 10 des produits par marge brute</h2>
+          <div class="chart-box tall"><canvas id="ch-produits"></canvas></div>
+          <details class="data-table"><summary>Voir les données</summary><div class="table-wrap"><table class="table" id="tb-prod-table"></table></div></details>
+        </div>
+        <div class="card">
+          <div class="toolbar"><h2 style="margin:0;margin-right:auto">Charges de la période</h2><button class="btn small primary" id="ch-new">+ Ajouter une charge</button></div>
+          <div class="chart-box"><canvas id="ch-charges"></canvas></div>
+          <div class="table-wrap"><table class="table" id="tb-charges-table"></table></div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h2>Ventes par code commercial</h2>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>CC</th><th>Boutique</th><th class="num">Tickets</th><th class="num">Chiffre d'affaires</th><th class="num">Marge brute</th><th class="num">Part</th></tr></thead>
+            <tbody id="d-cc-rows"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2>Stock par boutique <span class="muted">(situation actuelle)</span></h2>
+          <div class="table-wrap"><table class="table" id="tb-stock-table"></table></div>
+        </div>
       </div>
     </section>
-
     <!-- CAISSE -->
     <section id="view-caisse" class="view">
       <h1>Caisse — nouvelle vente</h1>
@@ -505,6 +524,29 @@
     </form>
   </dialog>
 
+  <!-- Modal charge -->
+  <dialog id="charge-dialog">
+    <form method="dialog" id="charge-form">
+      <h2>Ajouter une charge</h2>
+      <div class="form">
+        <label>Date<input type="date" name="date" required></label>
+        <label>Boutique<select name="boutique"></select></label>
+        <label>Catégorie<select name="categorie">
+          <option>Loyer</option><option>Salaires</option><option>Électricité</option><option>Eau</option>
+          <option>Internet / téléphone</option><option>Transport</option><option>Taxes et impôts</option>
+          <option>Entretien / réparations</option><option>Sécurité</option><option>Autres</option>
+        </select></label>
+        <label>Montant<input type="number" name="montant" min="1" required></label>
+        <label class="full">Libellé<input name="libelle" placeholder="Ex. : loyer de novembre"></label>
+      </div>
+      <p class="hint">Une charge « Générale » (sans boutique) est déduite du bénéfice global, pas de celui d'une boutique.</p>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Modal congé -->
   <dialog id="conge-dialog">
     <form method="dialog" id="conge-form">
@@ -613,6 +655,7 @@
   <div id="toast" class="toast"></div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/app.js"></script>
   <script>

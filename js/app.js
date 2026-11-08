@@ -11,10 +11,10 @@
   let cart = [];
   let currentView = null;
   let lastReload = 0;
-  const dash = { periode: "jour", ref: today(), cc: "ALL" };
+  const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -89,7 +89,7 @@
     return all;
   }
   async function reload() {
-    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches] = await Promise.all([
+    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges] = await Promise.all([
       sb.from("settings").select("*").eq("id", 1).maybeSingle(),
       fetchAll("products", "code"),
       isAdmin() ? fetchAll("product_costs", "code") : Promise.resolve([]),
@@ -100,7 +100,8 @@
       fetchAll("courses", "created_at"),
       fetchAll("boutiques", "code"),
       fetchAll("conges", "debut"),
-      isAdmin() ? fetchAll("rh_fiches", "cc") : Promise.resolve([])
+      isAdmin() ? fetchAll("rh_fiches", "cc") : Promise.resolve([]),
+      isAdmin() ? fetchAll("charges", "date") : Promise.resolve([])
     ]);
     const st = chk(settingsRes) || {};
     const pa = {}, cmp = {};
@@ -137,6 +138,7 @@
       users,
       conges: conges.map((g) => ({ id: g.id, cc: String(g.cc), debut: g.debut, fin: g.fin, motif: g.motif || "" })),
       fiches,
+      charges: charges.map((c) => ({ id: c.id, date: c.date, boutique: c.boutique || "", categorie: c.categorie, libelle: c.libelle || "", montant: Number(c.montant) })),
       boutiques: boutiques.map((b) => ({ code: b.code, nom: b.nom, actif: b.actif !== false }))
         .sort((a, b) => Number(a.code.replace(/\D/g, "")) - Number(b.code.replace(/\D/g, "")) || a.code.localeCompare(b.code))
     };
@@ -265,6 +267,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "ccs" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "boutiques" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "conges" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "charges" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -411,70 +414,214 @@
     if (p === "annee") return "Année " + ref.slice(0, 4);
     return "Tout l'historique";
   }
+  // ---------- Tableau de bord (pilotage) ----------
+  const CH = { blue: "#2a78d6", orange: "#eb6834", grid: "#e1e0d9", axis: "#c3c2b7", muted: "#898781", ink: "#0b0b0b" };
+  const charts = {};
+  function prevRange(p, ref) {
+    if (p === "jour") return periodRange(p, addDays(ref, -1));
+    if (p === "semaine") return periodRange(p, addDays(ref, -7));
+    if (p === "mois") return periodRange(p, addMonths(ref, -1));
+    return periodRange(p, (Number(ref.slice(0, 4)) - 1) + "-01-01");
+  }
+  function costOf(s) { if (s.cout != null) return s.cout; const p = productByCode(s.code); return p ? p.cmp : 0; }
+  function salesIn(du, au, bq) { return db.sales.filter((s) => isCountedSale(s) && s.date >= du && s.date <= au && (bq === "ALL" || saleBoutique(s) === bq)); }
+  function chargesIn(du, au, bq) { return db.charges.filter((c) => c.date >= du && c.date <= au && (bq === "ALL" || c.boutique === bq)); }
+  function metrics(du, au, bq) {
+    const ls = salesIn(du, au, bq);
+    const ca = ls.reduce((a, s) => a + lineTotal(s), 0);
+    const cogs = ls.reduce((a, s) => a + costOf(s) * Number(s.qte), 0);
+    const charges = chargesIn(du, au, bq).reduce((a, c) => a + c.montant, 0);
+    const tickets = new Set(ls.map((s) => s.ticket)).size;
+    return { ls, ca, cogs, marge: ca - cogs, charges, net: ca - cogs - charges, tickets, qte: ls.reduce((a, s) => a + Number(s.qte), 0), panier: tickets ? ca / tickets : 0 };
+  }
+  function pct(a, b) { return b ? Math.round((a / b) * 100) : 0; }
+  function deltaHtml(cur, prev, upIsGood) {
+    if (!prev) return '<div class="delta">— pas de comparaison</div>';
+    const d = Math.round(((cur - prev) / Math.abs(prev)) * 100);
+    if (!d) return '<div class="delta">= stable vs période préc.</div>';
+    const good = upIsGood ? d > 0 : d < 0;
+    return '<div class="delta ' + (good ? "up" : "down") + '">' + (d > 0 ? "▲ +" : "▼ ") + d + " % vs période préc.</div>";
+  }
+  function heroTile(label, value, delta, cls) {
+    return '<div class="kpi ' + (cls || "") + '"><div class="label">' + label + '</div><div class="value">' + value + "</div>" + (delta || "") + "</div>";
+  }
+  // Produits "suivis" dans une boutique : stock initial ou au moins un mouvement
+  function handledIn(p, bq) {
+    if (bq === "ALL") return true;
+    return stockInitialOf(p, bq) > 0 || db.entries.some((e) => e.code === p.code && e.boutique === bq) || db.sales.some((s) => s.code === p.code && saleBoutique(s) === bq);
+  }
+  function stockStats(bq) {
+    const prods = db.products.filter((p) => handledIn(p, bq));
+    const rupt = prods.filter((p) => statutStock(p, bq) === "RUPTURE");
+    const faible = prods.filter((p) => statutStock(p, bq) === "STOCK FAIBLE");
+    return {
+      rupt, faible,
+      unites: prods.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)), 0),
+      valeur: prods.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.cmp), 0)
+    };
+  }
+  // Axe temporel du graphique selon la période
+  function trendBuckets(p, ref) {
+    if (p === "annee") {
+      const y = ref.slice(0, 4);
+      return Array.from({ length: 12 }, (_, i) => { const m = y + "-" + String(i + 1).padStart(2, "0"); return { label: cap(parse(m + "-01").toLocaleDateString("fr-FR", { month: "short" })), du: m + "-01", au: lastDayOfMonth(m + "-01") }; });
+    }
+    let du, au;
+    if (p === "jour") { au = ref; du = addDays(ref, -13); } else [du, au] = periodRange(p, ref);
+    const out = [];
+    for (let d = du; d <= au; d = addDays(d, 1)) out.push({ label: fmtDate(d).slice(0, 5), du: d, au: d });
+    return out;
+  }
+  const fmtAxis = (v) => (Math.abs(v) >= 1e6 ? (v / 1e6).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " M" : Math.abs(v) >= 1e3 ? (v / 1e3).toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + " k" : num(v));
+  function baseOptions(extra) {
+    return Object.assign({
+      responsive: true, maintainAspectRatio: false, animation: { duration: 250 },
+      plugins: {
+        legend: { labels: { color: "#52514e", boxWidth: 12, boxHeight: 12, usePointStyle: true, font: { family: "system-ui, -apple-system, Segoe UI, sans-serif" } } },
+        tooltip: { callbacks: { label: (c) => (c.dataset.label ? c.dataset.label + " : " : "") + money(Math.round(c.parsed.y != null && c.chart.options.indexAxis !== "y" ? c.parsed.y : c.parsed.x)) } }
+      },
+      scales: {
+        x: { grid: { color: CH.grid, drawTicks: false }, border: { color: CH.axis }, ticks: { color: CH.muted, padding: 6 } },
+        y: { grid: { color: CH.grid, drawTicks: false }, border: { color: CH.axis }, ticks: { color: CH.muted, padding: 6 } }
+      }
+    }, extra || {});
+  }
+  function drawChart(id, config) {
+    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+    const el = document.getElementById(id);
+    if (!window.Chart) { el.parentElement.innerHTML = '<p class="muted">Graphique indisponible (connexion requise).</p>'; return; }
+    charts[id] = new Chart(el, config);
+  }
+
   function renderDashboard() {
-    fillCcSelect($("#d-cc"), true, false);
-    $("#d-cc").value = dash.cc;
-    if ($("#d-cc").value !== dash.cc) { dash.cc = "ALL"; $("#d-cc").value = "ALL"; }
+    if (!dash.boutique) dash.boutique = "ALL";
+    const bsel = $("#d-boutique");
+    bsel.innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    bsel.value = db.boutiques.some((b) => b.code === dash.boutique) ? dash.boutique : "ALL";
+    dash.boutique = bsel.value;
+    const bq = dash.boutique;
     $("#d-ref").value = dash.ref;
     document.querySelectorAll("#d-periode button").forEach((b) => b.classList.toggle("active", b.dataset.p === dash.periode));
-    $("#d-nav").style.visibility = dash.periode === "tout" ? "hidden" : "visible";
-
     const [du, au] = periodRange(dash.periode, dash.ref);
-    const inPeriod = db.sales.filter((s) => isCountedSale(s) && s.date >= du && s.date <= au);
-    const list = inPeriod.filter((s) => dash.cc === "ALL" || s.cc === dash.cc);
-    const r = summarize(list);
+    const [pdu, pau] = prevRange(dash.periode, dash.ref);
+    const m = metrics(du, au, bq), pm = metrics(pdu, pau, bq);
+    const scope = bq === "ALL" ? "Toutes les boutiques" : boutiqueName(bq);
+    $("#d-label").textContent = periodLabel(dash.periode, dash.ref) + " · " + scope;
+    $("#tb-live").innerHTML = (rtLive ? '<span class="live-dot"></span>En direct · ' : "") + "mis à jour à " + new Date(lastReload || Date.now()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 
-    $("#d-label").textContent = periodLabel(dash.periode, dash.ref) + " · " + (dash.cc === "ALL" ? "Tous les CC" : ccName(dash.cc));
-    $("#kpis").innerHTML = kpiHtml([
-      ["Chiffre d'affaires", money(r.ca)],
-      ["Tickets", num(r.tickets)],
-      ["Quantités vendues", num(r.qte)],
-      ["Panier moyen", money(r.tickets ? Math.round(r.ca / r.tickets) : 0)],
-      ["Marge brute estimée", money(r.marge)]
-    ]);
+    // 1. Indicateurs clés
+    $("#kpis").innerHTML =
+      heroTile("Chiffre d'affaires", money(Math.round(m.ca)), deltaHtml(m.ca, pm.ca, true)) +
+      heroTile("Coût d'achat des ventes", money(Math.round(m.cogs)), deltaHtml(m.cogs, pm.cogs, false)) +
+      heroTile("Marge brute · " + pct(m.marge, m.ca) + " %", money(Math.round(m.marge)), deltaHtml(m.marge, pm.marge, true)) +
+      heroTile("Charges" + (bq === "ALL" ? " (toutes)" : ""), money(Math.round(m.charges)), deltaHtml(m.charges, pm.charges, false)) +
+      heroTile((m.net >= 0 ? "✅ Bénéfice net" : "⛔ Perte nette") + " · " + pct(m.net, m.ca) + " %", money(Math.round(m.net)), deltaHtml(m.net, pm.net, true), m.net >= 0 ? "hero-good" : "hero-bad") +
+      heroTile("Tickets", num(m.tickets), deltaHtml(m.tickets, pm.tickets, true)) +
+      heroTile("Panier moyen", money(Math.round(m.panier)), deltaHtml(m.panier, pm.panier, true));
 
-    const totalCa = inPeriod.reduce((a, s) => a + lineTotal(s), 0);
-    const rows = db.settings.ccList
-      .map((c) => { const ls = inPeriod.filter((s) => s.cc === c.code); return { c, ls, sum: summarize(ls) }; })
-      .filter((x) => x.ls.length || x.c.actif);
-    const vendeurs = (ls, c) => {
-      const names = Array.from(new Set(ls.map(vendeurOf).filter(Boolean)));
-      return names.length ? names.join(", ") : (currentAgent(c) || "—");
-    };
-    $("#d-cc-title").textContent = "(" + periodLabel(dash.periode, dash.ref) + ")";
-    $("#d-cc-rows").innerHTML = rows.length ? rows.map(({ c, ls, sum }) =>
-      '<tr class="clickable' + (dash.cc === c.code ? " selected" : "") + '" data-cc="' + esc(c.code) + '"><td>' + ccLabel(c.code) + "</td><td>" + esc(vendeurs(ls, c)) + "</td><td>" +
-      (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
-      '</td><td class="num">' + num(sum.tickets) + '</td><td class="num">' + num(sum.qte) + '</td><td class="num">' + money(sum.ca) +
-      '</td><td class="num">' + (totalCa ? Math.round((sum.ca / totalCa) * 100) : 0) + " %</td></tr>"
-    ).join("") + '<tr class="total clickable' + (dash.cc === "ALL" ? " selected" : "") + '" data-cc="ALL"><td>Total</td><td>Tous les CC</td><td></td><td class="num">' +
-      num(new Set(inPeriod.map((s) => s.ticket)).size) + '</td><td class="num">' + num(inPeriod.reduce((a, s) => a + Number(s.qte), 0)) + '</td><td class="num">' + money(totalCa) + '</td><td class="num">100 %</td></tr>'
-      : '<tr><td colspan="7" class="empty">Aucun code commercial.</td></tr>';
+    // 2. Résultat par boutique (toutes, pour comparer)
+    const rows = db.boutiques.map((b) => ({ b, m: metrics(du, au, b.code), pm: metrics(pdu, pau, b.code), st: stockStats(b.code) }));
+    const general = db.charges.filter((c) => !c.boutique && c.date >= du && c.date <= au).reduce((a, c) => a + c.montant, 0);
+    const all = metrics(du, au, "ALL");
+    const td = (v, cls) => '<td class="num ' + (cls || "") + '">' + money(Math.round(v)) + "</td>";
+    $("#tb-bq-period").textContent = "(" + periodLabel(dash.periode, dash.ref) + ")";
+    $("#tb-bq-table").innerHTML = '<thead><tr><th>Boutique</th><th class="num">Chiffre d\'affaires</th><th class="num">Coût d\'achat</th><th class="num">Marge brute</th><th class="num">Charges</th><th class="num">Bénéfice net</th><th class="num">Marge nette</th><th class="num">Tickets</th><th>Évolution du CA</th><th class="num">Ruptures</th></tr></thead><tbody>' +
+      rows.map(({ b, m: x, pm: px, st }) => '<tr class="clickable' + (bq === b.code ? " selected" : "") + '" data-tb-bq="' + esc(b.code) + '"><td><b>' + esc(b.nom) + "</b>" + (b.actif ? "" : ' <span class="badge mute">inactive</span>') + "</td>" +
+        td(x.ca) + td(x.cogs) + td(x.marge) + td(x.charges) + td(x.net, x.net < 0 ? "neg" : "pos") + '<td class="num">' + pct(x.net, x.ca) + " %</td>" + '<td class="num">' + num(x.tickets) + "</td><td>" +
+        deltaHtml(x.ca, px.ca, true).replace('class="delta', 'class="kpi-inline delta') + '</td><td class="num ' + (st.rupt.length ? "neg" : "") + '">' + st.rupt.length + "</td></tr>").join("") +
+      '<tr><td><i>Charges générales (non affectées)</i></td><td></td><td></td><td></td>' + td(general) + td(-general, general ? "neg" : "") + "<td></td><td></td><td></td><td></td></tr>" +
+      '<tr class="total"><td>BÉNÉFICE GLOBAL</td>' + td(all.ca) + td(all.cogs) + td(all.marge) + td(all.charges) + td(all.net, all.net < 0 ? "neg" : "pos") + '<td class="num">' + pct(all.net, all.ca) + " %</td>" +
+      '<td class="num">' + num(all.tickets) + "</td><td></td><td></td></tr></tbody>";
 
-    const byProd = {};
-    list.forEach((s) => {
-      byProd[s.code] = byProd[s.code] || { nom: s.nom, qte: 0, ca: 0 };
-      byProd[s.code].qte += Number(s.qte);
-      byProd[s.code].ca += lineTotal(s);
+    // 3. Alertes de pilotage
+    const alerts = [];
+    const add = (lvl, ico, title, txt) => alerts.push({ lvl, html: '<div class="alert-item ' + lvl + '"><span class="ico">' + ico + "</span><div><b>" + title + "</b>" + txt + "</div></div>" });
+    rows.forEach(({ b, m: x, pm: px, st }) => {
+      if (!b.actif) return;
+      if (x.ca > 0 && x.net < 0) add("critical", "⛔", esc(b.nom) + " est en perte", "Perte nette de " + money(Math.round(-x.net)) + " sur la période (charges " + money(Math.round(x.charges)) + ").");
+      if (st.rupt.length) add("critical", "⛔", esc(b.nom) + " : " + st.rupt.length + " produit(s) en rupture", st.rupt.slice(0, 6).map((p) => esc(p.nom)).join(", ") + (st.rupt.length > 6 ? "…" : ""));
+      if (st.faible.length) add("warning", "⚠", esc(b.nom) + " : " + st.faible.length + " produit(s) sous le seuil", st.faible.slice(0, 6).map((p) => esc(p.nom) + " (" + num(stockActuel(p, b.code)) + ")").join(", "));
+      if (px.ca > 0 && x.ca < px.ca * 0.8) add("warning", "📉", esc(b.nom) + " : chiffre d'affaires en baisse", "−" + Math.round((1 - x.ca / px.ca) * 100) + " % par rapport à la période précédente (" + money(Math.round(px.ca)) + " → " + money(Math.round(x.ca)) + ").");
+      if (du <= today() && au >= today() && !db.sales.some((s) => isCountedSale(s) && s.date === today() && saleBoutique(s) === b.code) && db.settings.ccList.some((c) => c.actif && c.boutique === b.code))
+        add("warning", "🕒", esc(b.nom) + " : aucune vente aujourd'hui", "Vérifiez que la boutique est ouverte et que la caisse est utilisée.");
     });
-    const top = Object.values(byProd).sort((a, b) => b.ca - a.ca).slice(0, 8);
-    $("#top-products").innerHTML = top.length
-      ? top.map((t) => '<div class="list-row"><span>' + esc(t.nom) + ' <span class="muted">× ' + num(t.qte) + "</span></span><strong>" + money(t.ca) + "</strong></div>").join("")
-      : '<div class="empty">Aucune vente sur cette période.</div>';
+    const perte = {};
+    m.ls.filter((s) => Number(s.pu) < costOf(s)).forEach((s) => { perte[s.nom] = (perte[s.nom] || 0) + (costOf(s) - Number(s.pu)) * Number(s.qte); });
+    if (Object.keys(perte).length) add("critical", "⛔", "Produits vendus à perte", Object.keys(perte).map((k) => esc(k) + " (−" + money(Math.round(perte[k])) + ")").join(", ") + " : revoyez le prix de vente.");
+    const nonAff = db.settings.ccList.filter((c) => c.actif && !c.boutique);
+    if (nonAff.length) add("warning", "⚠", nonAff.length + " CC actif(s) sans boutique", nonAff.map((c) => esc(ccName(c.code))).join(", ") + " : leurs ventes ne sont rattachées à aucune boutique (RH).");
+    const aValider = db.products.filter((p) => !p.valide);
+    if (aValider.length) add("warning", "📝", aValider.length + " produit(s) à valider", aValider.map((p) => esc(p.nom)).join(", ") + " (rubrique Stock).");
+    alerts.sort((a, b) => (a.lvl === b.lvl ? 0 : a.lvl === "critical" ? -1 : 1));
+    $("#tb-alert-count").textContent = alerts.length ? "(" + alerts.length + ")" : "";
+    $("#tb-alerts").innerHTML = '<div class="alert-list">' + (alerts.length ? alerts.map((a) => a.html).join("") : '<div class="alert-item good"><span class="ico">✅</span><div><b>Rien à signaler</b>Pas de perte, de rupture ni de baisse marquée sur la période.</div></div>') + "</div>";
 
-    const ruptures = db.products.filter((p) => statutStock(p) === "RUPTURE");
-    const faibles = db.products.filter((p) => statutStock(p) === "STOCK FAIBLE");
-    const alerts = ruptures.concat(faibles);
-    $("#alerts").innerHTML = alerts.length
-      ? alerts.map((p) => '<div class="list-row"><span>' + esc(p.nom) + ' <span class="muted">' + esc(p.code) + "</span></span><span>" + num(stockActuel(p)) + " " + statutBadge(statutStock(p)) + "</span></div>").join("")
-      : '<div class="empty">Aucune alerte, tous les stocks sont OK.</div>';
-    $("#stock-kpis-dash").innerHTML = kpiHtml([
-      ["Stock total", num(db.products.reduce((a, p) => a + stockActuel(p), 0))],
-      ["Entrées validées", num(db.entries.filter((e) => e.statut === "Validée").reduce((a, e) => a + Number(e.qte), 0))],
-      ["Produits en rupture", ruptures.length, ruptures.length ? "danger" : ""],
-      ["Produits sous seuil", faibles.length, faibles.length ? "warn" : ""],
-      ["Nouveaux produits à valider", db.products.filter((p) => !p.valide).length, db.products.some((p) => !p.valide) ? "warn" : ""]
-    ]);
+    // 4. Courbe : chiffre d'affaires et marge brute
+    const buckets = trendBuckets(dash.periode, dash.ref);
+    const series = buckets.map((k) => metrics(k.du, k.au, bq));
+    const future = buckets.map((k) => k.du > today()); // pas de point pour les jours à venir
+    $("#tb-trend-title").textContent = "Évolution du chiffre d'affaires et de la marge brute" + (dash.periode === "annee" ? " (par mois)" : " (par jour)");
+    drawChart("ch-trend", {
+      type: "line",
+      data: { labels: buckets.map((k) => k.label), datasets: [
+        { label: "Chiffre d'affaires", data: series.map((x, i) => (future[i] ? null : Math.round(x.ca))), borderColor: CH.blue, backgroundColor: CH.blue, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12, cubicInterpolationMode: "monotone" },
+        { label: "Marge brute", data: series.map((x, i) => (future[i] ? null : Math.round(x.marge))), borderColor: CH.orange, backgroundColor: CH.orange, borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 12, cubicInterpolationMode: "monotone" }
+      ] },
+      options: baseOptions({ interaction: { mode: "index", intersect: false }, scales: { x: { grid: { display: false }, border: { color: CH.axis }, ticks: { color: CH.muted, maxRotation: 0, autoSkipPadding: 12 } }, y: { beginAtZero: true, grace: "10%", grid: { color: CH.grid, drawTicks: false }, border: { display: false }, ticks: { color: CH.muted, padding: 6, callback: fmtAxis } } } })
+    });
+    $("#tb-trend-table").innerHTML = '<thead><tr><th>Période</th><th class="num">Chiffre d\'affaires</th><th class="num">Marge brute</th><th class="num">Bénéfice net</th></tr></thead><tbody>' +
+      buckets.map((k, i) => "<tr><td>" + esc(k.label) + "</td>" + td(series[i].ca) + td(series[i].marge) + td(series[i].net, series[i].net < 0 ? "neg" : "") + "</tr>").join("") + "</tbody>";
+
+    // 5. Barres : bénéfice net par boutique
+    drawChart("ch-boutiques", {
+      type: "bar",
+      data: { labels: rows.map((r) => r.b.nom), datasets: [{ label: "Bénéfice net", data: rows.map((r) => Math.round(r.m.net)), backgroundColor: CH.blue, borderRadius: 4, borderSkipped: "start", maxBarThickness: 22 }] },
+      options: baseOptions({ indexAxis: "y", plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => "Bénéfice net : " + money(c.parsed.x) } } },
+        scales: { x: { grid: { color: CH.grid, drawTicks: false }, border: { display: false }, ticks: { color: CH.muted, callback: fmtAxis } }, y: { grid: { display: false }, border: { color: CH.axis }, ticks: { color: "#52514e" } } } })
+    });
+
+    // 6. Top 10 produits par marge brute
+    const byProd = {};
+    m.ls.forEach((s) => { const k = s.code; byProd[k] = byProd[k] || { nom: s.nom, qte: 0, ca: 0, marge: 0 }; byProd[k].qte += Number(s.qte); byProd[k].ca += lineTotal(s); byProd[k].marge += lineTotal(s) - costOf(s) * Number(s.qte); });
+    const top = Object.values(byProd).sort((a, b) => b.marge - a.marge).slice(0, 10);
+    drawChart("ch-produits", {
+      type: "bar",
+      data: { labels: top.map((t) => t.nom), datasets: [{ label: "Marge brute", data: top.map((t) => Math.round(t.marge)), backgroundColor: CH.blue, borderRadius: 4, borderSkipped: "start", maxBarThickness: 18 }] },
+      options: baseOptions({ indexAxis: "y", plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => "Marge brute : " + money(c.parsed.x) } } },
+        scales: { x: { grid: { color: CH.grid, drawTicks: false }, border: { display: false }, ticks: { color: CH.muted, callback: fmtAxis } }, y: { grid: { display: false }, border: { color: CH.axis }, ticks: { color: "#52514e" } } } })
+    });
+    $("#tb-prod-table").innerHTML = top.length ? '<thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Chiffre d\'affaires</th><th class="num">Marge brute</th><th class="num">Taux</th></tr></thead><tbody>' +
+      top.map((t) => "<tr><td>" + esc(t.nom) + '</td><td class="num">' + num(t.qte) + "</td>" + td(t.ca) + td(t.marge, t.marge < 0 ? "neg" : "") + '<td class="num">' + pct(t.marge, t.ca) + " %</td></tr>").join("") + "</tbody>"
+      : '<tbody><tr><td class="empty">Aucune vente sur la période.</td></tr></tbody>';
+
+    // 7. Charges de la période
+    const chg = chargesIn(du, au, bq).sort((a, b) => b.date.localeCompare(a.date));
+    const byCat = {};
+    chg.forEach((c) => { byCat[c.categorie] = (byCat[c.categorie] || 0) + c.montant; });
+    const cats = Object.keys(byCat).sort((a, b) => byCat[b] - byCat[a]);
+    drawChart("ch-charges", {
+      type: "bar",
+      data: { labels: cats, datasets: [{ label: "Charges", data: cats.map((k) => byCat[k]), backgroundColor: CH.blue, borderRadius: 4, borderSkipped: "start", maxBarThickness: 18 }] },
+      options: baseOptions({ indexAxis: "y", plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => "Charges : " + money(c.parsed.x) } } },
+        scales: { x: { grid: { color: CH.grid, drawTicks: false }, border: { display: false }, ticks: { color: CH.muted, callback: fmtAxis } }, y: { grid: { display: false }, border: { color: CH.axis }, ticks: { color: "#52514e" } } } })
+    });
+    $("#tb-charges-table").innerHTML = chg.length ? '<thead><tr><th>Date</th><th>Boutique</th><th>Catégorie</th><th>Libellé</th><th class="num">Montant</th><th></th></tr></thead><tbody>' +
+      chg.map((c) => "<tr><td>" + fmtDate(c.date) + "</td><td>" + (c.boutique ? esc(boutiqueName(c.boutique)) : "<i>Générale</i>") + "</td><td>" + esc(c.categorie) + "</td><td>" + esc(c.libelle) + "</td>" + td(c.montant) +
+        '<td><button class="btn small danger" data-chg-del="' + c.id + '">✕</button></td></tr>').join("") +
+      '<tr class="total"><td colspan="4">Total des charges</td>' + td(chg.reduce((a, c) => a + c.montant, 0)) + "<td></td></tr></tbody>"
+      : '<tbody><tr><td class="empty">Aucune charge enregistrée sur la période. Ajoutez loyer, salaires, électricité… pour obtenir le bénéfice net réel.</td></tr></tbody>';
+
+    // 8. Ventes par CC (période + boutique)
+    const ccRows = db.settings.ccList.map((c) => { const ls = m.ls.filter((s) => s.cc === c.code); return { c, ls, ca: ls.reduce((a, s) => a + lineTotal(s), 0), marge: ls.reduce((a, s) => a + lineTotal(s) - costOf(s) * Number(s.qte), 0) }; })
+      .filter((x) => x.ls.length).sort((a, b) => b.ca - a.ca);
+    $("#d-cc-rows").innerHTML = ccRows.length ? ccRows.map((x) => "<tr><td>" + esc(ccName(x.c.code)) + "</td><td>" + esc(boutiqueName(x.c.boutique)) + '</td><td class="num">' + num(new Set(x.ls.map((s) => s.ticket)).size) +
+      "</td>" + td(x.ca) + td(x.marge) + '<td class="num">' + pct(x.ca, m.ca) + " %</td></tr>").join("") : '<tr><td colspan="6" class="empty">Aucune vente sur la période.</td></tr>';
+
+    // 9. Stock par boutique (situation actuelle)
+    const stRows = db.boutiques.map((b) => ({ nom: b.nom, st: stockStats(b.code) })).concat([{ nom: "STOCK COMMUN", st: stockStats("ALL"), total: true }]);
+    $("#tb-stock-table").innerHTML = '<thead><tr><th>Boutique</th><th class="num">Unités en stock</th><th class="num">Valeur (coût d\'achat)</th><th class="num">Ruptures</th><th class="num">Sous seuil</th></tr></thead><tbody>' +
+      stRows.map((r) => '<tr class="' + (r.total ? "total" : "") + '"><td>' + esc(r.nom) + '</td><td class="num">' + num(r.st.unites) + "</td>" + td(r.st.valeur) +
+        '<td class="num ' + (r.st.rupt.length ? "neg" : "") + '">' + (r.st.rupt.length ? "⛔ " : "") + r.st.rupt.length + '</td><td class="num">' + (r.st.faible.length ? "⚠ " : "") + r.st.faible.length + "</td></tr>").join("") + "</tbody>";
   }
   $("#d-periode").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-p]");
@@ -493,13 +640,40 @@
   $("#d-next").addEventListener("click", () => shiftRef(1));
   $("#d-today").addEventListener("click", () => { dash.ref = today(); renderDashboard(); });
   $("#d-ref").addEventListener("change", () => { if ($("#d-ref").value) { dash.ref = $("#d-ref").value; renderDashboard(); } });
-  $("#d-cc").addEventListener("change", () => { dash.cc = $("#d-cc").value; renderDashboard(); });
-  $("#d-cc-rows").addEventListener("click", (e) => {
-    const tr = e.target.closest("tr[data-cc]");
+  $("#d-boutique").addEventListener("change", () => { dash.boutique = $("#d-boutique").value; renderDashboard(); });
+  $("#tb-bq-table").addEventListener("click", (e) => {
+    const tr = e.target.closest("tr[data-tb-bq]");
     if (!tr) return;
-    dash.cc = tr.dataset.cc === dash.cc ? "ALL" : tr.dataset.cc;
+    dash.boutique = dash.boutique === tr.dataset.tbBq ? "ALL" : tr.dataset.tbBq;
     renderDashboard();
   });
+  document.addEventListener("click", (e) => {
+    const l = e.target.closest("[data-view-link]");
+    if (l) show(l.dataset.viewLink);
+  });
+  // Charges
+  $("#ch-new").addEventListener("click", () => {
+    const f = $("#charge-form");
+    f.reset();
+    f.elements.date.value = today();
+    f.elements.boutique.innerHTML = '<option value="">Générale (toutes boutiques)</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    f.elements.boutique.value = dash.boutique && dash.boutique !== "ALL" ? dash.boutique : "";
+    $("#charge-dialog").showModal();
+  });
+  $("#charge-form").addEventListener("submit", (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
+    const f = e.target;
+    const row = { date: f.elements.date.value || today(), boutique: f.elements.boutique.value || null, categorie: f.elements.categorie.value, libelle: f.elements.libelle.value.trim(), montant: Number(f.elements.montant.value) };
+    if (!(row.montant > 0)) { e.preventDefault(); return toast("Indiquez un montant valide."); }
+    act(async () => chk(await sb.from("charges").insert(row)), "Charge enregistrée : " + money(row.montant));
+  });
+  $("#tb-charges-table").addEventListener("click", (e) => {
+    const d = e.target.closest("[data-chg-del]");
+    if (!d) return;
+    if (!confirm("Supprimer cette charge ?")) return;
+    act(async () => chk(await sb.from("charges").delete().eq("id", d.dataset.chgDel)), "Charge supprimée.", d);
+  });
+
 
   // ---------- Statistiques ----------
   function groupKey(group, date) {

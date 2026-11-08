@@ -684,6 +684,24 @@ create policy conges_select on public.conges for select to authenticated
 drop policy if exists conges_admin on public.conges;
 create policy conges_admin on public.conges for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
+-- =====================================================================
+-- Charges (loyer, électricité, salaires…) : par boutique ou générales (boutique vide)
+-- =====================================================================
+create table if not exists public.charges (
+  id uuid primary key default gen_random_uuid(),
+  date date not null default current_date,
+  boutique text references public.boutiques(code) on update cascade on delete cascade,
+  categorie text not null default 'Autres',
+  libelle text not null default '',
+  montant numeric not null check (montant > 0),
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists charges_date_idx on public.charges (date, boutique);
+alter table public.charges enable row level security;
+drop policy if exists charges_admin on public.charges;
+create policy charges_admin on public.charges for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
 -- Démarrage : une première boutique avec tous les CC existants et leurs ventes.
 do $$
 begin
@@ -707,7 +725,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;
