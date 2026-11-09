@@ -424,6 +424,7 @@
       <div class="card filterbar">
         <label>Boutique<select id="fd-boutique"></select></label>
         <label>Mois<input type="month" id="fd-mois"></label>
+        <div class="fd-mini admin-only" id="fd-mini"></div>
         <p class="hint" style="margin:0">Chaque lundi, le CC chargé des entrées remonte les fonds de vente de la semaine écoulée (lundi → dimanche). Ils sont comparés aux ventes déclarées dans l'application.</p>
       </div>
       <div class="kpis" id="fd-kpis"></div>
@@ -432,10 +433,8 @@
       <div class="card admin-only">
         <div class="toolbar"><h2 style="margin-right:auto">Soldes des boutiques</h2></div>
         <details class="help"><summary>Comment sont calculés les soldes ?</summary>
-          <p class="hint">Quand vous <b>validez</b> une remontée de fonds, elle est répartie automatiquement :<br>
-          • <b>Fonds de roulement</b> = le prix d'achat (coût moyen) des produits vendus dans la semaine. Il sert à racheter la marchandise : chaque <b>course</b> validée de la boutique est payée sur ce fonds.<br>
-          • <b>Solde bénéfice</b> = le reste (la marge). Les <b>dépenses</b> de la boutique (abonnements, électricité…) sont payées sur ce solde, puis vous pouvez <b>retirer</b> ce qui reste.<br>
-          Les soldes démarrent avec la première remontée validée de chaque boutique : les courses et dépenses antérieures ne sont pas comptées.</p>
+          <p class="hint">• <b>Solde de roulement</b> = la valeur d'achat de tout le stock disponible dans la boutique (stock actuel × prix d'achat moyen de chaque produit). Il monte avec les courses et baisse quand on vend.<br>
+          • <b>Solde bénéfice</b> = la marge sur les produits vendus (prix de vente − prix d'achat), moins les <b>dépenses</b> de la boutique et vos <b>retraits</b>. Exemple : RUSH acheté 200 au marché et vendu 250 → +50 de bénéfice. C'est ce solde que vous pouvez retirer.</p>
         </details>
         <div class="solde-grid" id="fd-soldes"></div>
       </div>
@@ -455,7 +454,7 @@
       <div class="card admin-only">
         <h2 id="fd-journal-title">Journal des mouvements</h2>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Date</th><th>Boutique</th><th>Opération</th><th class="num">Fonds de roulement</th><th class="num">Solde bénéfice</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Boutique</th><th>Opération</th><th class="num">Ventes</th><th class="num">Solde bénéfice</th><th></th></tr></thead>
           <tbody id="fd-journal"></tbody><tfoot id="fd-journal-foot"></tfoot>
         </table></div>
       </div>

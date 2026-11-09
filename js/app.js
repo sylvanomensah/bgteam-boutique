@@ -1982,8 +1982,7 @@
         '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.mode) + (r.note ? '<span class="sub">' + esc(r.note) + "</span>" : "") + "</td><td>" +
         new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + '<span class="sub">' + esc(r.saisiPar) + "</span></td><td>" +
         (r.statut === "Reçue"
-          ? '<span class="badge ok">Validée</span><span class="sub">par ' + esc(r.recuPar) + "</span>" +
-            (admin ? '<span class="sub">Roulement ' + money0(r.partRoulement) + " · Bénéfice " + money0(r.partBenefice) + "</span>" : "")
+          ? '<span class="badge ok">Validée</span><span class="sub">par ' + esc(r.recuPar) + "</span>"
           : '<span class="badge warn">À valider</span>') + "</td><td>" +
         (admin ? '<button class="btn small' + (r.statut === "Reçue" ? "" : " success") + '" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la validation" : "✓ Valider") + "</button> " : "") +
         (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
@@ -2017,13 +2016,16 @@
     if (admin) {
       const sol = scope.map((b) => ({ b, ...soldesOf(b.code) }));
       const T = (f) => sol.reduce((a, x) => a + x[f], 0);
-      k.unshift(["Solde bénéfice", money0(T("benefice")), T("benefice") < 0 ? "danger" : "hero-good"]);
-      k.unshift(["Fonds de roulement", money0(T("roulement")), T("roulement") < 0 ? "danger" : ""]);
+      // Deux cases à côté de Boutique / Mois : solde de roulement (bleu) et solde bénéfice (vert)
+      const lib = $("#fd-boutique").value === "ALL" ? "toutes les boutiques" : boutiqueName($("#fd-boutique").value);
+      $("#fd-mini").innerHTML =
+        '<div class="mini roul"><span>Solde de roulement</span><b>' + money0(T("roulement")) + "</b><small>valeur d'achat du stock · " + esc(lib) + "</small></div>" +
+        '<div class="mini bene' + (T("benefice") < 0 ? " neg" : "") + '"><span>Solde bénéfice</span><b>' + money0(T("benefice")) + "</b><small>marge des ventes − dépenses − retraits</small></div>";
       $("#fd-soldes").innerHTML = sol.map((x) => '<div class="solde-card">' +
-        '<div class="solde-head"><b>🏬 ' + esc(x.b.nom) + "</b>" + (x.debut ? '<small>depuis le ' + fmtDate(x.debut) + "</small>" : '<small>aucune remontée validée</small>') + "</div>" +
-        '<div class="solde-row roul"><span>Fonds de roulement<small>pour racheter la marchandise</small></span><b class="' + (x.roulement < 0 ? "neg" : "") + '">' + money0(x.roulement) + "</b></div>" +
-        '<div class="solde-row bene"><span>Solde bénéfice<small>dépenses puis retraits</small></span><b class="' + (x.benefice < 0 ? "neg" : "") + '">' + money0(x.benefice) + "</b></div>" +
-        '<div class="solde-foot"><span>Ventes non remontées : <b>' + money0(x.nonRemonte) + "</b></span>" + (x.aValider ? "<span>À valider : <b>" + money0(x.aValider) + "</b></span>" : "") + "</div>" +
+        '<div class="solde-head"><b>🏬 ' + esc(x.b.nom) + "</b><small>" + num(x.articles) + " article(s) en stock</small></div>" +
+        '<div class="solde-row roul"><span>Solde de roulement<small>valeur d\'achat du stock disponible</small></span><b>' + money0(x.roulement) + "</b></div>" +
+        '<div class="solde-row bene"><span>Solde bénéfice<small>marge ' + money0(x.marge) + " − dépenses " + money0(x.depenses) + " − retraits " + money0(x.retraits) + '</small></span><b class="' + (x.benefice < 0 ? "neg" : "") + '">' + money0(x.benefice) + "</b></div>" +
+        (x.aValider ? '<div class="solde-foot"><span>Remontées à valider : <b>' + money0(x.aValider) + "</b></span></div>" : "") +
         (x.benefice > 0 ? '<button class="btn small" data-rt-bq="' + esc(x.b.code) + '">Retirer le bénéfice</button>' : "") + "</div>").join("");
       // Formulaire de retrait
       const rcur = $("#rt-boutique").value;
@@ -2037,49 +2039,50 @@
       $("#fd-journal-title").textContent = "Journal des mouvements — " + fmtMonth(du);
       const mv = journalOf(codes).filter((m) => m.date >= du && m.date <= au).sort((a, b) => b.date.localeCompare(a.date));
       $("#fd-journal").innerHTML = mv.length ? mv.map((m) => "<tr><td>" + fmtDate(m.date) + "</td><td>" + esc(boutiqueName(m.boutique)) + "</td><td>" + m.label +
-        '</td><td class="num">' + (m.roul ? ecartHtml(m.roul) : '<span class="muted">—</span>') + '</td><td class="num">' + (m.bene ? ecartHtml(m.bene) : '<span class="muted">—</span>') + "</td><td>" +
+        '</td><td class="num">' + (m.ca ? money0(m.ca) : '<span class="muted">—</span>') + '</td><td class="num">' + (m.bene ? ecartHtml(m.bene) : '<span class="muted">—</span>') + "</td><td>" +
         (m.retraitId ? '<button class="btn small danger" data-rt-del="' + m.retraitId + '">✕</button>' : "") + "</td></tr>").join("")
         : '<tr><td colspan="6" class="empty">Aucun mouvement sur ce mois.</td></tr>';
-      $("#fd-journal-foot").innerHTML = mv.length ? '<tr><td colspan="3">TOTAL DU MOIS</td><td class="num">' + ecartHtml(mv.reduce((a, m) => a + m.roul, 0)) + '</td><td class="num">' + ecartHtml(mv.reduce((a, m) => a + m.bene, 0)) + "</td><td></td></tr>" : "";
+      $("#fd-journal-foot").innerHTML = mv.length ? '<tr><td colspan="3">TOTAL DU MOIS</td><td class="num">' + money0(mv.reduce((a, m) => a + m.ca, 0)) + '</td><td class="num">' + ecartHtml(mv.reduce((a, m) => a + m.bene, 0)) + "</td><td></td></tr>" : "";
     }
     $("#fd-kpis").innerHTML = kpiHtml(k);
   }
-  // Mouvements des deux soldes d'une boutique, depuis sa première remontée validée
-  function soldesDebut(bq) {
-    return db.remontees.filter((r) => r.boutique === bq && r.statut === "Reçue").map((r) => r.semaine).sort()[0] || "";
+  // Coût d'achat d'une ligne de vente : coût moyen enregistré sur la vente, sinon coût moyen actuel du produit
+  function coutVente(s) {
+    if (s.cout != null) return s.cout;
+    const p = productByCode(s.code);
+    return p ? Number(p.cmp) || 0 : 0;
   }
+  // Mouvements du solde bénéfice : marge des ventes (par jour), dépenses et retraits
   function journalOf(codes) {
     const out = [];
     codes.forEach((bq) => {
-      const debut = soldesDebut(bq);
-      if (!debut) return;
-      db.remontees.filter((r) => r.boutique === bq && r.statut === "Reçue").forEach((r) => out.push({
-        date: r.recuLe ? String(r.recuLe).slice(0, 10) : r.semaine, boutique: bq, roul: r.partRoulement, bene: r.partBenefice,
-        label: "💰 Remontée validée — semaine du " + fmtDate(r.semaine) + (r.cc ? " (" + esc(ccName(r.cc)) + ")" : "")
-      }));
-      db.courses.filter((c) => c.boutique === bq && c.statut === "Validée" && c.date >= debut).forEach((c) => out.push({
-        date: c.date, boutique: bq, roul: -courseTotal(c), bene: 0, label: "🛒 Course" + (c.marche ? " — " + esc(c.marche) : "") + (c.cc ? " (" + esc(ccName(c.cc)) + ")" : "")
-      }));
-      db.charges.filter((c) => c.boutique === bq && c.date >= debut).forEach((c) => out.push({
-        date: c.date, boutique: bq, roul: 0, bene: -c.montant, label: "🧾 Dépense — " + esc(c.categorie) + (c.libelle ? " : " + esc(c.libelle) : "")
+      const jours = {};
+      db.sales.filter((s) => isCountedSale(s) && saleBoutique(s) === bq).forEach((s) => {
+        const j = jours[s.date] || (jours[s.date] = { ca: 0, marge: 0 });
+        j.ca += lineTotal(s);
+        j.marge += lineTotal(s) - Number(s.qte) * coutVente(s);
+      });
+      Object.keys(jours).forEach((d) => out.push({ date: d, boutique: bq, ca: jours[d].ca, bene: Math.round(jours[d].marge), label: "🛍 Marge des ventes du jour" }));
+      db.charges.filter((c) => c.boutique === bq).forEach((c) => out.push({
+        date: c.date, boutique: bq, ca: 0, bene: -c.montant, label: "🧾 Dépense — " + esc(c.categorie) + (c.libelle ? " : " + esc(c.libelle) : "")
       }));
       db.retraits.filter((x) => x.boutique === bq).forEach((x) => out.push({
-        date: x.date, boutique: bq, roul: 0, bene: -x.montant, retraitId: x.id, label: "🏧 Retrait" + (x.note ? " — " + esc(x.note) : "")
+        date: x.date, boutique: bq, ca: 0, bene: -x.montant, retraitId: x.id, label: "🏧 Retrait" + (x.note ? " — " + esc(x.note) : "")
       }));
     });
     return out;
   }
+  // Solde de roulement = valeur d'achat du stock disponible ; solde bénéfice = marge − dépenses − retraits
   function soldesOf(bq) {
-    const mv = journalOf([bq]);
-    const debut = soldesDebut(bq);
-    const rem = db.remontees.filter((r) => r.boutique === bq);
-    const ventes = debut ? ventesDeclarees(bq, debut, today()) : 0;
+    let roulement = 0, articles = 0;
+    db.products.forEach((p) => { const st = Math.max(0, stockActuel(p, bq)); articles += st; roulement += st * (Number(p.cmp) || 0); });
+    const marge = db.sales.filter((s) => isCountedSale(s) && saleBoutique(s) === bq).reduce((a, s) => a + lineTotal(s) - Number(s.qte) * coutVente(s), 0);
+    const depenses = sumMontant(db.charges.filter((c) => c.boutique === bq));
+    const retraits = sumMontant(db.retraits.filter((x) => x.boutique === bq));
     return {
-      debut,
-      roulement: mv.reduce((a, m) => a + m.roul, 0),
-      benefice: mv.reduce((a, m) => a + m.bene, 0),
-      aValider: sumMontant(rem.filter((r) => r.statut !== "Reçue")),
-      nonRemonte: debut ? Math.max(0, ventes - sumMontant(rem.filter((r) => r.semaine >= debut))) : 0
+      roulement: Math.round(roulement), articles, marge: Math.round(marge), depenses, retraits,
+      benefice: Math.round(marge - depenses - retraits),
+      aValider: sumMontant(db.remontees.filter((r) => r.boutique === bq && r.statut !== "Reçue"))
     };
   }
   $("#fd-soldes").addEventListener("click", (e) => {
@@ -2125,7 +2128,7 @@
   });
   $("#fd-rem").addEventListener("click", (e) => {
     const r = e.target.closest("[data-rm-recu]");
-    if (r) return act(async () => chk(await sb.rpc("set_remontee_recue", { p_id: r.dataset.rmRecu, p_recue: r.dataset.v === "1" })), r.dataset.v === "1" ? "Remontée validée : répartie entre fonds de roulement et bénéfice." : "Validation annulée.", r);
+    if (r) return act(async () => chk(await sb.rpc("set_remontee_recue", { p_id: r.dataset.rmRecu, p_recue: r.dataset.v === "1" })), r.dataset.v === "1" ? "Remontée validée." : "Validation annulée.", r);
     const d = e.target.closest("[data-rm-del]");
     if (d && confirm("Supprimer cette remontée ?")) act(async () => chk(await sb.from("remontees").delete().eq("id", d.dataset.rmDel)), "Remontée supprimée.", d);
   });

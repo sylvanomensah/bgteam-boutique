@@ -459,6 +459,16 @@ input.switch:focus { box-shadow: 0 0 0 3px rgba(23, 128, 74, .2); }
 .pwd-gen { display: flex; gap: 8px; align-items: stretch; margin-top: 6px; }
 .pwd-gen input { margin-top: 0 !important; font-family: "Consolas", "Courier New", monospace; letter-spacing: .05em; }
 a.btn { text-decoration: none; }
+/* Deux cases de soldes à côté des filtres Boutique / Mois */
+.fd-mini { display: flex; gap: 12px; margin-left: auto; flex-wrap: wrap; }
+.fd-mini .mini { min-width: 200px; padding: 10px 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 2px; }
+.fd-mini .mini span { font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.fd-mini .mini b { font-size: 1.35rem; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.fd-mini .mini small { font-size: .72rem; opacity: .85; }
+.fd-mini .mini.roul { background: var(--primary-soft); color: var(--primary); border: 1px solid #c9dbf6; }
+.fd-mini .mini.bene { background: #17804a; color: #fff; box-shadow: 0 4px 12px rgba(23, 128, 74, .3); }
+.fd-mini .mini.bene.neg { background: var(--danger); }
+#view-fonds .filterbar { align-items: center; }
 /* Soldes des boutiques (fonds de roulement / bénéfice) */
 .solde-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
 .solde-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 8px; background: #fff; }
@@ -525,6 +535,8 @@ details.help .hint { margin: 8px 0 0; }
   .table th, .table td { padding: 9px 10px; font-size: .86rem; }
   .grid2, .grid3, .report-grid, .perf-bar, .alert-list, .fiche-grid, .compte-grid, .perm-grid, .cc-grid, .bq-grid { grid-template-columns: 1fr; }
   .tabs button { flex: 0 0 auto; padding: 9px 12px; }
+  .fd-mini { width: 100%; margin-left: 0; }
+  .fd-mini .mini { flex: 1 1 140px; min-width: 0; }
   .chart-box { height: 240px; }
   .chart-box.tall { height: 280px; }
   /* Fenêtres en « feuille » qui monte du bas */
