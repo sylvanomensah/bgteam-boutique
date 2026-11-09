@@ -14,7 +14,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -89,7 +89,7 @@
     return all;
   }
   async function reload() {
-    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges, remontees, bobines] = await Promise.all([
+    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges, remontees, bobines, stocksInit] = await Promise.all([
       sb.from("settings").select("*").eq("id", 1).maybeSingle(),
       fetchAll("products", "code"),
       isAdmin() ? fetchAll("product_costs", "code") : Promise.resolve([]),
@@ -104,7 +104,8 @@
       // Charges, remontées et bobines : la base ne renvoie que ce que l'utilisateur a le droit de voir.
       fetchAll("charges", "date"),
       fetchAll("remontees", "created_at"),
-      fetchAll("bobines_mvts", "created_at")
+      fetchAll("bobines_mvts", "created_at"),
+      fetchAll("stocks_initiaux", "code")
     ]);
     const st = chk(settingsRes) || {};
     const pa = {}, cmp = {};
@@ -144,6 +145,7 @@
       charges: charges.map((c) => ({ id: c.id, date: c.date, boutique: c.boutique || "", categorie: c.categorie, libelle: c.libelle || "", montant: Number(c.montant), saisiPar: c.saisi_par || "", createdBy: c.created_by, createdAt: c.created_at })),
       remontees: remontees.map((r) => ({ id: r.id, boutique: r.boutique, cc: r.cc ? String(r.cc) : "", semaine: r.semaine, montant: Number(r.montant), mode: r.mode, note: r.note || "",
         statut: r.statut, recuPar: r.recu_par || "", recuLe: r.recu_le, saisiPar: r.saisi_par || "", createdBy: r.created_by, createdAt: r.created_at })),
+      stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
       bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       boutiques: boutiques.map((b) => ({ code: b.code, nom: b.nom, actif: b.actif !== false }))
         .sort((a, b) => Number(a.code.replace(/\D/g, "")) - Number(b.code.replace(/\D/g, "")) || a.code.localeCompare(b.code))
@@ -285,6 +287,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "charges" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "remontees" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "bobines_mvts" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "stocks_initiaux" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -357,7 +360,12 @@
   function totalVentes(code, bq) {
     return db.sales.filter((s) => s.code === code && isCountedSale(s) && inBq(bq, saleBoutique(s))).reduce((a, s) => a + Number(s.qte), 0);
   }
-  function stockInitialOf(p, bq) { return !bq || bq === "ALL" || bq === INITIAL_BOUTIQUE ? Number(p.stockInitial) : 0; }
+  // Stock initial par boutique (table stocks_initiaux) ; « ALL » = somme des boutiques existantes.
+  function stockInitialOf(p, bq) {
+    if (!bq || bq === "ALL") return db.stocksInit.filter((s) => s.code === p.code && db.boutiques.some((b) => b.code === s.boutique)).reduce((a, s) => a + s.qte, 0);
+    const r = db.stocksInit.find((s) => s.code === p.code && s.boutique === bq);
+    return r ? r.qte : 0;
+  }
   function stockActuel(p, bq) { return stockInitialOf(p, bq) + totalEntrees(p.code, bq) - totalVentes(p.code, bq); }
   function statutStock(p, bq) {
     const s = stockActuel(p, bq);
@@ -1135,7 +1143,9 @@
         (p.creeLe ? " le " + fmtDate(String(p.creeLe).slice(0, 10)) : "") + "</span>") +
       "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(Math.round(p.cmp)) + '</td><td class="num admin-only">' +
       (lastPurchase(p.code) ? num(Math.round(lastPurchase(p.code).pu)) : '<span class="muted">—</span>') + '</td><td class="num admin-only">' + num(p.pv) +
-      '</td><td class="num admin-only">' + num(stockInitialOf(p, bq)) + '</td><td class="num admin-only">' + num(p.stockMin) + '</td><td class="num admin-only">' + num(totalEntrees(p.code, bq)) + '</td><td class="num admin-only">' + num(totalVentes(p.code, bq)) +
+      '</td><td class="num admin-only">' + (bq !== "ALL"
+        ? '<input type="number" min="0" class="inline-input si-input" data-si="' + esc(p.code) + '" value="' + stockInitialOf(p, bq) + '" title="Stock initial à ' + esc(boutiqueName(bq)) + ' (Entrée pour valider)">'
+        : num(stockInitialOf(p, bq))) + '</td><td class="num admin-only">' + num(p.stockMin) + '</td><td class="num admin-only">' + num(totalEntrees(p.code, bq)) + '</td><td class="num admin-only">' + num(totalVentes(p.code, bq)) +
       '</td><td class="num"><b>' + num(stockActuel(p, bq)) + '</b></td><td class="num">' + num(Math.max(0, stockActuel(p, bq)) * Number(p.pv)) +
       "</td><td>" + statutBadge(statutStock(p, bq)) + '</td><td class="admin-only">' +
       (admin && !p.valide ? '<button class="btn small success" data-pvalid="' + esc(p.code) + '">✓ Valider</button> ' : "") +
@@ -1182,11 +1192,30 @@
     const nums = db.products.map((x) => Number((x.code.match(/(\d+)$/) || [])[1]) || 0);
     const n = (nums.length ? Math.max.apply(null, nums) : 0) + 1;
     const def = p || { code: "ART-" + String(n).padStart(3, "0"), nom: "", categorie: "Boisson", pa: 0, pv: 0, stockInitial: 0, stockMin: 5 };
-    ["code", "nom", "categorie", "pa", "pv", "stockInitial", "stockMin"].forEach((k) => { f.elements[k].value = def[k]; });
+    ["code", "nom", "categorie", "pa", "pv", "stockMin"].forEach((k) => { f.elements[k].value = def[k]; });
+    // Stock initial : celui de la boutique choisie dans le filtre du Stock
+    const bq = $("#s-boutique").value;
+    const parBq = bq && bq !== "ALL";
+    $("#pd-si-wrap").style.display = parBq ? "" : "none";
+    $("#pd-si-label").textContent = parBq ? "Stock initial — " + boutiqueName(bq) : "";
+    f.elements.stockInitial.value = parBq && p ? stockInitialOf(p, bq) : 0;
+    $("#pd-si-hint").textContent = parBq ? "" : "Pour saisir le stock initial, choisissez d'abord une boutique dans le filtre du Stock.";
     $("#cat-list").innerHTML = Array.from(new Set(db.products.map((x) => x.categorie))).map((c) => '<option value="' + esc(c) + '">').join("");
     $("#product-dialog").showModal();
   }
   $("#s-new").addEventListener("click", () => openProduct(null));
+  // Saisie du stock initial d'une boutique directement dans le tableau (admin)
+  function saveStockInitial(code, bq, qte, btn) {
+    return act(async () => chk(await sb.from("stocks_initiaux").upsert({ code, boutique: bq, qte, updated_at: new Date().toISOString() })),
+      "Stock initial de " + (productByCode(code) || {}).nom + " à " + boutiqueName(bq) + " : " + num(qte) + ".", btn);
+  }
+  $("#s-rows").addEventListener("change", (e) => {
+    const inp = e.target.closest("[data-si]");
+    if (!inp) return;
+    const bq = $("#s-boutique").value, qte = Number(inp.value);
+    if (bq === "ALL" || !(qte >= 0)) { inp.value = stockInitialOf(productByCode(inp.dataset.si), bq); return toast("Indiquez un stock initial valide (0 ou plus)."); }
+    saveStockInitial(inp.dataset.si, bq, qte);
+  });
   $("#s-rows").addEventListener("click", (e) => {
     const ed = e.target.closest("[data-edit]");
     const del = e.target.closest("[data-pdel]");
@@ -1216,17 +1245,20 @@
       categorie: f.elements.categorie.value.trim(),
       pa: Number(f.elements.pa.value) || 0,
       pv: Number(f.elements.pv.value) || 0,
-      stock_initial: Number(f.elements.stockInitial.value) || 0,
       stock_min: Number(f.elements.stockMin.value) || 0
     };
     if (!p.code || !p.nom) { e.preventDefault(); return toast("Code et désignation obligatoires."); }
     if (db.products.some((x) => x.code === p.code && x.code !== editingCode)) { e.preventDefault(); return toast("Le code " + p.code + " existe déjà."); }
-    const row = { code: p.code, nom: p.nom, categorie: p.categorie, pv: p.pv, stock_initial: p.stock_initial, stock_min: p.stock_min };
+    // products.stock_initial (total) est calculé par la base : on ne l'écrit plus ici
+    const row = { code: p.code, nom: p.nom, categorie: p.categorie, pv: p.pv, stock_min: p.stock_min };
     const old = editingCode;
+    const bq = $("#s-boutique").value;
+    const si = Number(f.elements.stockInitial.value);
     act(async () => {
       if (old) chk(await sb.from("products").update(row).eq("code", old));
       else chk(await sb.from("products").insert(row));
       chk(await sb.from("product_costs").upsert({ code: p.code, pa: p.pa }));
+      if (bq && bq !== "ALL" && si >= 0) chk(await sb.from("stocks_initiaux").upsert({ code: p.code, boutique: bq, qte: si, updated_at: new Date().toISOString() }));
     }, "Produit enregistré.");
   });
 

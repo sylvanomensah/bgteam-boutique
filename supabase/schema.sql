@@ -636,7 +636,8 @@ begin
   if not exists (select 1 from public.boutiques where code = p_code) then raise exception 'Boutique introuvable'; end if;
   if not exists (select 1 from public.boutiques where code <> p_code) then raise exception 'Créez d''abord une autre boutique : il doit toujours en rester au moins une'; end if;
   -- B1 (boutique d'origine / simulation) porte le stock initial repris de l'Excel : il disparaît avec elle.
-  if p_code = 'B1' then update public.products set stock_initial = 0 where stock_initial <> 0; end if;
+  -- Le stock initial de la boutique (table stocks_initiaux) disparaît avec elle (suppression en cascade).
+  if p_code = 'B1' and not exists (select 1 from public.stocks_initiaux) then update public.products set stock_initial = 0 where stock_initial <> 0; end if;
   select coalesce(array_agg(recu_path) filter (where recu_path is not null), '{}') into photos from public.courses where boutique = p_code;
   delete from public.sales where boutique = p_code; get diagnostics nv = row_count;
   delete from public.courses where boutique = p_code; get diagnostics nc = row_count;
@@ -778,6 +779,44 @@ revoke all on function public.refuse_user(uuid) from public, anon;
 grant execute on function public.refuse_user(uuid) to authenticated;
 
 -- =====================================================================
+-- Stock initial PAR BOUTIQUE (products.stock_initial = total, tenu à jour automatiquement)
+-- =====================================================================
+create table if not exists public.stocks_initiaux (
+  code text not null references public.products(code) on update cascade on delete cascade,
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  qte numeric not null default 0,
+  updated_at timestamptz not null default now(),
+  primary key (code, boutique)
+);
+alter table public.stocks_initiaux enable row level security;
+drop policy if exists stocks_initiaux_select on public.stocks_initiaux;
+create policy stocks_initiaux_select on public.stocks_initiaux for select to authenticated using (public.is_member());
+drop policy if exists stocks_initiaux_admin on public.stocks_initiaux;
+create policy stocks_initiaux_admin on public.stocks_initiaux for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+create or replace function public.trg_stock_initial_total() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_code text := coalesce(new.code, old.code);
+begin
+  update public.products set stock_initial = coalesce((select sum(qte) from public.stocks_initiaux where code = v_code), 0)
+  where code = v_code;
+  if tg_op = 'UPDATE' and old.code is distinct from new.code then
+    update public.products set stock_initial = coalesce((select sum(qte) from public.stocks_initiaux where code = old.code), 0) where code = old.code;
+  end if;
+  return null;
+end $$;
+drop trigger if exists stocks_initiaux_total on public.stocks_initiaux;
+create trigger stocks_initiaux_total after insert or update or delete on public.stocks_initiaux
+  for each row execute function public.trg_stock_initial_total();
+
+-- Reprise : l'ancien stock initial global appartient à la boutique d'origine B1 (si elle existe encore).
+insert into public.stocks_initiaux (code, boutique, qte)
+select p.code, 'B1', p.stock_initial from public.products p
+where p.stock_initial <> 0 and exists (select 1 from public.boutiques where code = 'B1')
+  and not exists (select 1 from public.stocks_initiaux s where s.code = p.code)
+on conflict do nothing;
+
+-- =====================================================================
 -- Remontée des fonds de vente (chaque lundi, pour la semaine lundi → dimanche écoulée)
 -- =====================================================================
 create table if not exists public.remontees (
@@ -880,7 +919,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

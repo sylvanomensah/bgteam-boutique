@@ -313,7 +313,7 @@
       <h1>Stock &amp; catalogue</h1>
       <div class="card filterbar">
         <label style="min-width:280px">Boutique<select id="s-boutique"></select></label>
-        <p class="hint admin-only" style="margin:0">STOCK ACTUEL = Stock initial + Entrées validées − Ventes validées. Le stock initial (repris de l'Excel) est compté dans la boutique d'origine (B1).</p>
+        <p class="hint admin-only" style="margin:0">STOCK ACTUEL = Stock initial + Entrées validées − Ventes validées. Le stock initial se saisit par boutique : choisissez une boutique, puis modifiez la colonne « Stock initial » (Entrée pour valider).</p>
       </div>
       <div class="kpis" id="stock-kpis"></div>
       <div class="card">
@@ -656,9 +656,10 @@
         <label class="full">Désignation<input name="nom" required></label>
         <label>Prix d'achat du stock initial<input type="number" name="pa" min="0" value="0"></label>
         <label>PU vente<input type="number" name="pv" min="0" value="0"></label>
-        <label>Stock initial<input type="number" name="stockInitial" value="0"></label>
+        <label id="pd-si-wrap"><span id="pd-si-label">Stock initial</span><input type="number" name="stockInitial" min="0" value="0"></label>
         <label>Stock minimum<input type="number" name="stockMin" min="0" value="5"></label>
       </div>
+      <p class="hint" id="pd-si-hint"></p>
       <datalist id="cat-list"></datalist>
       <div class="actions">
         <button class="btn" value="cancel" formnovalidate>Annuler</button>

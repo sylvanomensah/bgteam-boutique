@@ -235,6 +235,7 @@ body:not(.no-entrees) .only-no-entrees { display: none !important; }
 .btn[disabled] { opacity: .55; cursor: not-allowed; box-shadow: none; }
 .inline-input { padding: 6px 10px; min-width: 140px; min-height: 36px; }
 .inline-select { padding: 6px 8px; width: auto; min-height: 36px; }
+.inline-input.si-input { width: 84px; min-width: 0; text-align: right; display: inline-block; }
 
 /* Filtres */
 .filterbar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; }
