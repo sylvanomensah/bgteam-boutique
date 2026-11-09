@@ -1058,21 +1058,28 @@
 
     const admin = isAdmin();
     const badge = (s) => (s.valide === "OUI" ? '<span class="badge ok">OUI</span>' : '<span class="badge mute">NON</span>');
+    // Bénéfice d'une ligne = (prix de vente − prix d'achat) × quantité ; inconnu si aucun prix d'achat
+    const beneOf = (s) => {
+      const c = s.cout != null ? s.cout : admin ? (Number((productByCode(s.code) || {}).cmp) || null) : null;
+      return c == null || c <= 0 ? null : Math.round(lineTotal(s) - Number(s.qte) * c);
+    };
+    const beneHtml = (v) => (v == null ? '<span class="muted" title="Prix d\'achat inconnu">—</span>' : '<b class="delta ' + (v < 0 ? "down" : "up") + '">' + (v > 0 ? "+" : "") + money(v) + "</b>");
     $("#v-rows").innerHTML = rows.length ? rows.map((s) =>
       '<tr class="' + (s.valide === "OUI" ? "" : "off") + '">' +
       "<td>" + fmtDate(s.date) + "</td><td>" + heureOf(s) + "</td><td>" + esc(s.nom) + pendingBadge(productByCode(s.code)) +
-      '</td><td class="num">' + num(s.qte) + '</td><td class="num"><b>' + money(lineTotal(s)) + "</b></td><td>" + ccLabel(s.cc) +
+      '</td><td class="num">' + num(s.qte) + '</td><td class="num"><b>' + money(lineTotal(s)) + '</b></td><td class="num">' + beneHtml(beneOf(s)) + "</td><td>" + ccLabel(s.cc) +
       (vendeurOf(s) ? '<span class="sub">' + esc(vendeurOf(s)) + "</span>" : "") +
       "</td><td>" + esc(boutiqueName(saleBoutique(s))) + '</td><td class="num">' + s.ticket +
       '</td><td class="keep">' + (admin ? '<button class="btn small" data-toggle="' + s.id + '">' + badge(s) + "</button>" : badge(s)) +
       "</td><td>" + (admin ? '<button class="btn small danger" data-del="' + s.id + '" title="Supprimer">✕</button>' : "") + "</td></tr>"
-    ).join("") : '<tr><td colspan="10" class="empty">Aucune vente pour cette date avec ces filtres.</td></tr>';
+    ).join("") : '<tr><td colspan="11" class="empty">Aucune vente pour cette date avec ces filtres.</td></tr>';
 
     const valides = rows.filter(isCountedSale);
     const tot = summarize(valides);
+    const totBene = valides.reduce((a, s) => a + (beneOf(s) || 0), 0);
     $("#v-foot").innerHTML = '<tr><td colspan="3">TOTAL ' + (cc === "ALL" ? (b === "ALL" ? "DES VENTES" : "— " + esc(boutiqueName(b))) : "— " + esc(ccName(cc))) +
       " · " + num(tot.tickets) + " ticket" + (tot.tickets > 1 ? "s" : "") + '</td><td class="num">' + num(tot.qte) +
-      '</td><td class="num">' + money(tot.ca) + '</td><td colspan="5">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
+      '</td><td class="num">' + money(tot.ca) + '</td><td class="num">' + beneHtml(valides.length ? totBene : null) + '</td><td colspan="5">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
     $("#v-refresh-info").innerHTML = (rtLive ? '<span class="live-dot"></span>En direct · ' : "") + "mis à jour à " +
       new Date(lastReload || Date.now()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
