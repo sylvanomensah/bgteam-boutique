@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>BGTeam Boutique</title>
   <meta name="theme-color" content="#14213d">
   <meta name="mobile-web-app-capable" content="yes">
@@ -60,7 +60,16 @@
   </div>
 
   <div id="app" class="screen hidden">
-  <header class="topbar no-print">
+  <!-- Barre du haut (téléphone / tablette) -->
+  <div class="mobilebar no-print">
+    <button class="icon-btn" id="nav-toggle" aria-label="Ouvrir le menu">
+      <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <span class="logo sm">BG</span>
+    <strong id="m-title">BGTeam</strong>
+  </div>
+  <div class="nav-overlay no-print" id="nav-overlay"></div>
+  <header class="topbar no-print" id="sidebar">
     <div class="brand">
       <span class="logo">BG</span>
       <div>
@@ -69,23 +78,25 @@
       </div>
     </div>
     <nav id="nav">
-      <button data-view="dashboard" class="admin-only">Tableau de bord</button>
-      <button data-view="caisse">Caisse</button>
-      <button data-view="ventes">Historique des ventes</button>
-      <button data-view="stock">Stock</button>
-      <button data-view="entrees">Entrées stock</button>
-      <button data-view="fonds" class="need-fonds">Fonds &amp; dépenses</button>
-      <button data-view="bobines" class="need-bobines">Bobines</button>
-      <button data-view="facture">Facturation</button>
-      <button data-view="rh" class="admin-only">RH</button>
-      <button data-view="compte">Mon compte</button>
-      <button data-view="parametres" class="admin-only">Paramètres</button>
+      <button data-view="dashboard" class="admin-only"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Tableau de bord</span></button>
+      <button data-view="caisse"><svg viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg><span>Caisse</span></button>
+      <button data-view="ventes"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg><span>Historique des ventes</span></button>
+      <button data-view="stock"><svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Stock</span></button>
+      <button data-view="entrees"><svg viewBox="0 0 24 24"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg><span>Entrées stock</span></button>
+      <button data-view="fonds" class="need-fonds"><svg viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span>Fonds &amp; dépenses</span></button>
+      <button data-view="bobines" class="need-bobines"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg><span>Bobines</span></button>
+      <button data-view="facture"><svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span>Facturation</span></button>
+      <button data-view="rh" class="admin-only"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>RH</span></button>
+      <button data-view="compte"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg><span>Mon compte</span></button>
+      <button data-view="parametres" class="admin-only"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg><span>Paramètres</span></button>
     </nav>
     <div class="user-box">
       <span id="user-name"></span>
-      <button class="link" id="btn-refresh" title="Actualiser les données">⟳</button>
-      <button class="link" id="btn-pwd">Mot de passe</button>
-      <button class="link" data-logout>Déconnexion</button>
+      <div class="user-actions">
+        <button class="link" id="btn-refresh" title="Actualiser les données">⟳ Actualiser</button>
+        <button class="link" id="btn-pwd">Mot de passe</button>
+        <button class="link" data-logout>Déconnexion</button>
+      </div>
     </div>
   </header>
 

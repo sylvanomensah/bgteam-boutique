@@ -404,6 +404,10 @@
     currentView = view;
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
     document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
+    // Titre de la barre mobile = rubrique ouverte
+    const nb = document.querySelector('#nav button[data-view="' + view + '"]');
+    $("#m-title").textContent = nb ? nb.textContent.trim() : view === "stats" ? "Statistiques" : "BGTeam";
+    document.body.classList.remove("nav-open");
     render(view);
     window.scrollTo(0, 0);
   }
@@ -411,6 +415,10 @@
     const b = e.target.closest("button[data-view]");
     if (b) show(b.dataset.view);
   });
+  // Menu en tiroir sur téléphone
+  $("#nav-toggle").addEventListener("click", () => document.body.classList.toggle("nav-open"));
+  $("#nav-overlay").addEventListener("click", () => document.body.classList.remove("nav-open"));
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.body.classList.remove("nav-open"); });
   function render(view) {
     // CC non autorisé : pas de formulaire de saisie, seulement l'historique des courses.
     document.body.classList.toggle("no-entrees", !canEntrees());
