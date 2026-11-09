@@ -2150,18 +2150,43 @@
     const typing = document.activeElement && $("#rh-fiche").contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
     if (!typing) renderFiche();
     renderPlanning();
+    // Boutiques en cartes : nom modifiable, CC affectés en pastilles, actions
     $("#bq-rows").innerHTML = db.boutiques.length ? db.boutiques.map((b) => {
-      const ccs = db.settings.ccList.filter((c) => c.boutique === b.code);
-      return "<tr><td><b>" + esc(b.code) + '</b></td><td><input class="inline-input" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '"></td><td>' +
-        (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + '</td><td class="wrap">' +
-        (ccs.length ? ccs.map((c) => esc(ccName(c.code))).join("<br>") : '<span class="muted">Aucun CC</span>') + "</td><td>" +
-        '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button> " +
-        '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button>' +
-        (b.code === INITIAL_BOUTIQUE ? '<span class="sub">Boutique d\'origine (porte le stock initial)</span>' : "") +
-        "</td></tr>";
-    }).join("") : '<tr><td colspan="6" class="empty">Aucune boutique.</td></tr>';
+      const ccs = db.settings.ccList.filter((c) => c.boutique === b.code && c.actif);
+      const enService = ccs.filter((c) => ccStatusOn(c.code, today()).k === "service").length;
+      return '<div class="bq-card' + (b.actif ? "" : " off") + '"><div class="bq-head"><span class="bq-ico">🏬</span>' +
+        '<input class="inline-input bq-name" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '" title="Tapez le nom puis Entrée">' +
+        (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + "</div>" +
+        '<div class="bq-meta"><span>' + esc(b.code) + "</span><span>" + ccs.length + " CC</span><span>" + enService + " en service aujourd'hui</span></div>" +
+        '<div class="chips">' + (ccs.length ? ccs.map((c) => '<button class="chip" data-open-fiche="' + esc(c.code) + '" title="Ouvrir la fiche">' + avatarHtml(c.code, "xs") + esc(ccName(c.code)) + "</button>").join("") : '<span class="muted">Aucun CC affecté</span>') + "</div>" +
+        '<div class="bq-actions"><button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button>" +
+        '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button></div></div>';
+    }).join("") : '<p class="empty">Aucune boutique.</p>';
     renderCcTable();
+    renderRhKpis();
   }
+  // Pastille avec initiales, couleur stable par CC
+  const AV_COLORS = ["#2a78d6", "#eb6834", "#17804a", "#8b5cf6", "#d63384", "#0f9aa8", "#b26b00", "#4f5bd5"];
+  function avatarHtml(code, size) {
+    const nom = currentAgent(ccByCode(code)) || "";
+    const ini = nom ? nom.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() : String(code).padStart(2, "0");
+    return '<span class="avatar ' + (size || "") + '" style="background:' + AV_COLORS[(Number(code) || 0) % AV_COLORS.length] + '">' + esc(ini) + "</span>";
+  }
+  // Chiffres clés RH du jour
+  function renderRhKpis() {
+    const t = today(), act = db.settings.ccList.filter((c) => c.actif);
+    const st = act.map((c) => ccStatusOn(c.code, t).k);
+    const attente = db.users.filter((u) => !u.actif).length;
+    $("#rh-kpis").innerHTML = kpiHtml([
+      ["CC actifs", act.length],
+      ["En service aujourd'hui", st.filter((k) => k === "service").length, "hero-good"],
+      ["De repos", st.filter((k) => k === "repos").length],
+      ["En congé", st.filter((k) => k === "conge").length, "warn"],
+      ["Sans boutique", act.filter((c) => !c.boutique).length, act.some((c) => !c.boutique) ? "danger" : ""],
+      ["Comptes en attente", attente, attente ? "warn" : ""]
+    ]);
+  }
+  $("#bq-rows").addEventListener("click", (e) => { const c = e.target.closest("[data-open-fiche]"); if (c) openFiche(c.dataset.openFiche); });
   // ---------- RH : repos, congés, fiche CC, planning ----------
   const JOURS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
   const JOURS_LONG = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"];
@@ -2230,7 +2255,7 @@
       '<button class="btn small danger" data-cg-del="' + g.id + '">✕</button></span></div>';
     const hist = c.agents.length ? c.agents.map((a) => esc(a.nom) + " : " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui")).join("<br>") : "Aucun vendeur affecté";
     $("#rh-fiche").innerHTML = '<div class="card">' +
-      '<div class="fiche-head"><h2>' + esc(ccName(code)) + "</h2>" + statusBadge(st) +
+      '<div class="fiche-head">' + avatarHtml(code, "lg") + "<h2>" + esc(ccName(code)) + "</h2>" + statusBadge(st) +
       "<span>🏬 " + esc(boutiqueName(c.boutique)) + "</span>" + (c.actif ? "" : '<span class="badge mute">CC inactif</span>') + "</div>" +
       '<div class="fiche-grid">' +
       // Identité & contacts (admin uniquement)
@@ -2563,7 +2588,7 @@
     $("#rp-count").textContent = list.length + " CC affiché(s). Les changements sont enregistrés immédiatement.";
     $("#rh-perms").innerHTML = list.length ? list.map((c) => {
       const user = db.users.find((u) => u.cc === c.code);
-      return '<div class="perm-card"><div class="perm-head"><div><b>' + esc(ccName(c.code)) + "</b><small>🏬 " + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") +
+      return '<div class="perm-card"><div class="perm-head">' + avatarHtml(c.code) + '<div><b>' + esc(ccName(c.code)) + "</b><small>🏬 " + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") +
         (user ? " · " + esc(user.email) : "") + "</small></div>" + (c.actif ? "" : '<span class="badge mute">Inactif</span>') +
         '<button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></div>' + permsHtml(c) + "</div>";
     }).join("") : '<p class="empty">Aucun CC ne correspond à la recherche.</p>';
@@ -2594,25 +2619,31 @@
   function renderCcTable() {
     const q = $("#cc-search").value;
     const ccs = db.settings.ccList.filter((c) => ccMatch(c, q));
-    $("#cc-rows").innerHTML = ccs.length ? ccs.map((c) => {
+    // CC en cartes : actifs d'abord
+    const sorted = ccs.slice().sort((a, b) => (a.actif === b.actif ? 0 : a.actif ? -1 : 1));
+    $("#cc-rows").innerHTML = sorted.length ? sorted.map((c) => {
       const hist = c.agents.length
-        ? c.agents.map((a) => esc(a.nom) + " : " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui")).join("<br>")
-        : "Aucun vendeur affecté";
+        ? c.agents.map((a) => "<li><b>" + esc(a.nom) + "</b> " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui") + "</li>").join("")
+        : "<li>Aucun vendeur affecté</li>";
       const hasSales = db.sales.some((s) => s.cc === c.code);
-      return "<tr><td><b>" + ccLabel(c.code) + "</b></td><td>" +
-        '<input class="inline-input" data-cc-nom="' + esc(c.code) + '" value="' + esc(currentAgent(c)) + '" placeholder="Nom du CC" title="Nom affiché à côté du CC (Entrée pour valider)">' + "</td><td>" +
-        '<select class="inline-select" data-cc-bq="' + esc(c.code) + '"><option value="">— Non affecté —</option>' +
-        db.boutiques.map((b) => '<option value="' + esc(b.code) + '"' + (b.code === c.boutique ? " selected" : "") + ">" + esc(b.nom) + "</option>").join("") +
-        "</select></td><td>" +
-        (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
-        "</td><td>" + (reposLabel(c) || '<span class="muted">—</span>') + '</td><td class="hist">' + hist + '</td><td class="wrap">' +
-        '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
+      const st = c.actif ? ccStatusOn(c.code, today()) : { k: "mute", label: "Inactif" };
+      return '<div class="cc-card' + (c.actif ? "" : " off") + '">' +
+        '<div class="cc-head">' + avatarHtml(c.code) + '<div class="cc-id"><span class="cc-code">' + ccLabel(c.code) + "</span>" +
+        '<input class="inline-input" data-cc-nom="' + esc(c.code) + '" value="' + esc(currentAgent(c)) + '" placeholder="Nom du CC" title="Nom affiché à côté du CC (Entrée pour valider)"></div>' +
+        statusBadge(st) + "</div>" +
+        '<div class="cc-row"><span>🏬 Boutique</span><select class="inline-select" data-cc-bq="' + esc(c.code) + '"><option value="">— Non affecté —</option>' +
+        db.boutiques.map((b) => '<option value="' + esc(b.code) + '"' + (b.code === c.boutique ? " selected" : "") + ">" + esc(b.nom) + "</option>").join("") + "</select></div>" +
+        '<div class="cc-row"><span>🛌 Repos</span><b>' + (reposLabel(c) || '<span class="muted">Non défini</span>') + "</b></div>" +
+        '<details class="cc-hist"><summary>Historique des vendeurs (' + c.agents.length + ")</summary><ul>" + hist + "</ul></details>" +
+        '<div class="cc-actions">' +
+        '<button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button>' +
+        '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button>" +
         (c.actif
-          ? '<button class="btn small" data-cc-depart="' + esc(c.code) + '">Départ / désactiver</button> '
-          : '<button class="btn small" data-cc-reactiver="' + esc(c.code) + '">Réactiver</button> ') +
-        (hasSales ? "" : '<button class="btn small danger" data-cc-del="' + esc(c.code) + '">✕</button>') +
-        "</td></tr>";
-    }).join("") : '<tr><td colspan="7" class="empty">' + (q ? "Aucun CC ne correspond à la recherche." : "Aucun code commercial.") + "</td></tr>";
+          ? '<button class="btn small" data-cc-depart="' + esc(c.code) + '">Départ</button>'
+          : '<button class="btn small" data-cc-reactiver="' + esc(c.code) + '">Réactiver</button>') +
+        (hasSales ? "" : '<button class="btn small danger" data-cc-del="' + esc(c.code) + '" title="Supprimer (aucune vente)">✕</button>') +
+        "</div></div>";
+    }).join("") : '<p class="empty">' + (q ? "Aucun CC ne correspond à la recherche." : "Aucun code commercial.") + "</p>";
   }
 
   let ccMode = null, ccTarget = null;
@@ -2707,7 +2738,8 @@
   $("#cc-rows").addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    if (b.dataset.ccAssign) openCc("assign", b.dataset.ccAssign);
+    if (b.dataset.openFiche) openFiche(b.dataset.openFiche);
+    else if (b.dataset.ccAssign) openCc("assign", b.dataset.ccAssign);
     else if (b.dataset.ccDepart) openCc("depart", b.dataset.ccDepart);
     else if (b.dataset.ccReactiver) {
       const code = b.dataset.ccReactiver;

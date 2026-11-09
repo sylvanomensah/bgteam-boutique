@@ -421,6 +421,44 @@ input.switch:checked::after { transform: translateX(20px); }
 input.switch:focus { box-shadow: 0 0 0 3px rgba(23, 128, 74, .2); }
 .fiche-grid .perm-list label.perm { background: #fff; }
 
+/* ---------- RH : pastilles, cartes CC et boutiques ---------- */
+.avatar { width: 40px; height: 40px; border-radius: 50%; flex: none; display: inline-grid; place-items: center; color: #fff; font-weight: 700; font-size: .85rem; letter-spacing: .02em; box-shadow: 0 2px 6px rgba(16, 24, 40, .15); }
+.avatar.xs { width: 24px; height: 24px; font-size: .62rem; box-shadow: none; }
+.avatar.lg { width: 56px; height: 56px; font-size: 1.1rem; }
+.perm-head { align-items: center; }
+#rh-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.cc-head .badge { white-space: nowrap; max-width: 46%; overflow: hidden; text-overflow: ellipsis; flex: none; }
+.cc-id .inline-input { min-width: 80px; }
+.cc-grid, .bq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.cc-card, .bq-card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px; transition: box-shadow .15s; }
+.cc-card:hover, .bq-card:hover { box-shadow: var(--shadow-lg); }
+.cc-card.off, .bq-card.off { opacity: .65; background: #fafbfc; }
+.cc-head { display: flex; align-items: center; gap: 12px; }
+.cc-id { flex: 1; min-width: 0; }
+.cc-code { display: block; font-size: .72rem; font-weight: 700; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; }
+.cc-id .inline-input { width: 100%; min-width: 0; font-weight: 650; border-color: transparent; background: transparent; padding: 2px 6px; margin-left: -6px; min-height: 30px; }
+.cc-id .inline-input:hover { border-color: var(--border); }
+.cc-id .inline-input:focus { background: #fff; }
+.cc-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 10px; background: #f7f9fc; border-radius: 10px; font-size: .88rem; }
+.cc-row > span { color: var(--muted); white-space: nowrap; }
+.cc-row select { max-width: 60%; }
+.cc-hist summary { cursor: pointer; color: var(--primary); font-size: .85rem; font-weight: 600; }
+.cc-hist ul { margin: 6px 0 0; padding-left: 18px; font-size: .84rem; color: var(--muted); line-height: 1.6; }
+.cc-actions, .bq-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; padding-top: 4px; border-top: 1px solid #eef1f6; padding-top: 10px; }
+.bq-head { display: flex; align-items: center; gap: 10px; }
+.bq-ico { width: 40px; height: 40px; border-radius: 12px; background: var(--primary-soft); display: grid; place-items: center; font-size: 1.2rem; flex: none; }
+.bq-name { flex: 1; min-width: 0; font-weight: 700; font-size: 1rem; border-color: transparent; background: transparent; }
+.bq-name:hover { border-color: var(--border); }
+.bq-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: .78rem; color: var(--muted); }
+.bq-meta span { background: #f1f4f9; padding: 3px 9px; border-radius: 99px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 3px; border-radius: 99px; border: 1px solid var(--border); background: #fff; font: inherit; font-size: .82rem; cursor: pointer; color: var(--text); transition: background .15s; }
+.chip:hover { background: var(--primary-soft); border-color: #c9dbf6; }
+details.help { margin-bottom: 14px; }
+details.help summary { cursor: pointer; color: var(--primary); font-size: .88rem; font-weight: 600; }
+details.help .hint { margin: 8px 0 0; }
+.fiche-head .avatar { margin-right: 2px; }
+
 /* ---------- Tablette et téléphone ---------- */
 @media (max-width: 1023px) {
   .mobilebar {
@@ -464,7 +502,7 @@ input.switch:focus { box-shadow: 0 0 0 3px rgba(23, 128, 74, .2); }
   .title-filter label { min-width: 0; width: 100%; }
   .title-filter select { min-width: 0; flex: 1; }
   .table th, .table td { padding: 9px 10px; font-size: .86rem; }
-  .grid2, .grid3, .report-grid, .perf-bar, .alert-list, .fiche-grid, .compte-grid, .perm-grid { grid-template-columns: 1fr; }
+  .grid2, .grid3, .report-grid, .perf-bar, .alert-list, .fiche-grid, .compte-grid, .perm-grid, .cc-grid, .bq-grid { grid-template-columns: 1fr; }
   .tabs button { flex: 0 0 auto; padding: 9px 12px; }
   .chart-box { height: 240px; }
   .chart-box.tall { height: 280px; }

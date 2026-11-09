@@ -568,6 +568,7 @@
     <!-- RH -->
     <section id="view-rh" class="view">
       <h1>RH</h1>
+      <div class="kpis" id="rh-kpis"></div>
       <div class="tabs" id="rh-tabs">
         <button data-rh-tab="perms" class="active">🔐 Autorisations</button>
         <button data-rh-tab="fiche">👤 Fiche CC</button>
@@ -624,12 +625,7 @@
           <button class="btn primary" id="bq-new">+ Nouvelle boutique</button>
         </div>
         <p class="hint">Jusqu'à 10 boutiques. Tapez le nom puis Entrée pour le modifier. Chaque vente est rattachée à la boutique de son CC au moment de la vente.</p>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>Code</th><th>Nom de la boutique</th><th>Statut</th><th>CC affectés</th><th></th></tr></thead>
-            <tbody id="bq-rows"></tbody>
-          </table>
-        </div>
+        <div class="bq-grid" id="bq-rows"></div>
       </div>
       </div>
 
@@ -641,14 +637,10 @@
           <input id="cc-search" type="search" placeholder="Rechercher un CC…">
           <button class="btn primary" id="cc-new">+ Nouveau CC</button>
         </div>
-        <p class="hint"><b>Nom du CC</b> : tapez un nom puis Entrée, il s'affichera partout à côté du code (« CC 01 — Nom »). Lier un vendeur à un CC sans nom lui donne automatiquement le nom du vendeur. Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant.</p>
-        <div class="table-wrap">
-          <table class="table">
-            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Boutique</th><th>Statut</th><th>Jours de repos</th><th>Historique des vendeurs</th><th></th></tr></thead>
-            <tbody id="cc-rows"></tbody>
-          </table>
-        </div>
-        <p class="hint" style="margin-top:12px">Les autorisations (entrées de stock, toutes boutiques, bobines) se règlent dans l'onglet <b>🔐 Autorisations</b>.</p>
+        <details class="help"><summary>Comment ça marche ?</summary>
+          <p class="hint"><b>Nom du CC</b> : tapez un nom puis Entrée, il s'affichera partout à côté du code (« CC 01 — Nom »). Lier un vendeur à un CC sans nom lui donne automatiquement le nom du vendeur. Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant. Les autorisations se règlent dans l'onglet <b>🔐 Autorisations</b>.</p>
+        </details>
+        <div class="cc-grid" id="cc-rows"></div>
       </div>
       </div>
     </section>
