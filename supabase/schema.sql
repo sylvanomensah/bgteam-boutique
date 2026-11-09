@@ -817,6 +817,70 @@ where p.stock_initial <> 0 and exists (select 1 from public.boutiques where code
 on conflict do nothing;
 
 -- =====================================================================
+-- Mots de passe temporaires (création de compte et réinitialisation par l'admin)
+-- =====================================================================
+alter table public.profiles add column if not exists must_change_pwd boolean not null default false;
+
+-- L'utilisateur indique qu'il a choisi son nouveau mot de passe
+create or replace function public.password_changed() returns void
+language sql security definer set search_path = public as $$
+  update public.profiles set must_change_pwd = false where id = auth.uid();
+$$;
+revoke all on function public.password_changed() from public, anon;
+grant execute on function public.password_changed() to authenticated;
+
+-- Réinitialisation par l'admin : mot de passe temporaire + déconnexion de ses appareils
+create or replace function public.admin_reset_password(p_id uuid, p_password text) returns text
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_email text;
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if p_id = auth.uid() then raise exception 'Pour votre propre compte, utilisez « Mot de passe » dans le menu'; end if;
+  if length(coalesce(p_password, '')) < 8 then raise exception 'Le mot de passe temporaire doit faire au moins 8 caractères'; end if;
+  update auth.users set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')), updated_at = now()
+  where id = p_id returning email into v_email;
+  if v_email is null then raise exception 'Utilisateur introuvable'; end if;
+  update public.profiles set must_change_pwd = true where id = p_id;
+  begin
+    delete from auth.refresh_tokens where user_id::text = p_id::text;
+    delete from auth.sessions where user_id = p_id;
+  exception when others then null;
+  end;
+  return v_email;
+end $$;
+revoke all on function public.admin_reset_password(uuid, text) from public, anon;
+grant execute on function public.admin_reset_password(uuid, text) to authenticated;
+
+-- Création d'un compte par l'admin (actif tout de suite, mot de passe temporaire à changer)
+create or replace function public.admin_create_user(p_email text, p_nom text, p_password text, p_role text, p_cc text) returns uuid
+language plpgsql security definer set search_path = public, extensions as $$
+declare v_id uuid := gen_random_uuid(); v_email text := lower(trim(coalesce(p_email, '')));
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if v_email !~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' then raise exception 'Adresse e-mail invalide'; end if;
+  if length(coalesce(p_password, '')) < 8 then raise exception 'Le mot de passe temporaire doit faire au moins 8 caractères'; end if;
+  if coalesce(p_role, 'vendeur') not in ('vendeur', 'admin') then raise exception 'Rôle invalide'; end if;
+  if exists (select 1 from auth.users where lower(email) = v_email) then raise exception 'Un compte existe déjà avec cet e-mail'; end if;
+  if nullif(p_cc, '') is not null and not exists (select 1 from public.ccs where code = p_cc) then raise exception 'CC inconnu'; end if;
+  insert into auth.users (instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
+    raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+    confirmation_token, recovery_token, email_change_token_new, email_change, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token)
+  values ('00000000-0000-0000-0000-000000000000', v_id, 'authenticated', 'authenticated', v_email,
+    extensions.crypt(p_password, extensions.gen_salt('bf')), now(),
+    '{"provider":"email","providers":["email"]}'::jsonb, jsonb_build_object('nom', trim(coalesce(p_nom, ''))), now(), now(),
+    '', '', '', '', '', '', '', '');
+  insert into auth.identities (id, user_id, provider_id, identity_data, provider, last_sign_in_at, created_at, updated_at)
+  values (gen_random_uuid(), v_id, v_id::text, jsonb_build_object('sub', v_id::text, 'email', v_email, 'email_verified', true), 'email', now(), now(), now());
+  -- Le profil est créé par le déclencheur handle_new_user ; on l'active directement.
+  update public.profiles set actif = true, nom = trim(coalesce(p_nom, '')), role = coalesce(p_role, 'vendeur'),
+    cc = nullif(p_cc, ''), must_change_pwd = true where id = v_id;
+  return v_id;
+end $$;
+revoke all on function public.admin_create_user(text, text, text, text, text) from public, anon;
+grant execute on function public.admin_create_user(text, text, text, text, text) to authenticated;
+
+-- =====================================================================
 -- Remontée des fonds de vente (chaque lundi, pour la semaine lundi → dimanche écoulée)
 -- =====================================================================
 create table if not exists public.remontees (

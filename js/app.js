@@ -172,7 +172,7 @@
 
   // ---------- Écrans & authentification ----------
   function screen(name) {
-    ["loading", "auth", "pending", "app"].forEach((n) => {
+    ["loading", "auth", "pending", "mustpwd", "app"].forEach((n) => {
       const el = document.getElementById(n === "app" ? "app" : n + "-screen");
       el.classList.toggle("hidden", n !== name);
     });
@@ -242,6 +242,11 @@
         $("#pending-email").textContent = user.email;
         return screen("pending");
       }
+      // Mot de passe temporaire : il faut d'abord en choisir un
+      if (prof.must_change_pwd) {
+        $("#mustpwd-form").reset(); $("#mustpwd-msg").textContent = "";
+        return screen("mustpwd");
+      }
       me = prof;
       document.body.classList.toggle("role-admin", isAdmin());
       document.body.classList.toggle("role-vendeur", !isAdmin());
@@ -297,6 +302,23 @@
   setInterval(() => { if (document.visibilityState === "visible") softRefresh(); }, 120000);
   $("#btn-refresh").addEventListener("click", async () => {
     try { await reload(); render(currentView); toast("Données actualisées."); } catch (e) { toast(errMsg(e)); }
+  });
+
+  // Changement obligatoire après un mot de passe temporaire
+  $("#mustpwd-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target, btn = f.querySelector("button"), msg = $("#mustpwd-msg");
+    msg.classList.remove("ok");
+    if (f.p1.value.length < 8) return (msg.textContent = "8 caractères minimum.");
+    if (f.p1.value !== f.p2.value) return (msg.textContent = "Les deux mots de passe sont différents.");
+    btn.disabled = true;
+    const { error } = await sb.auth.updateUser({ password: f.p1.value });
+    if (error) { btn.disabled = false; return (msg.textContent = /different from the old|same/i.test(error.message) ? "Choisissez un mot de passe différent du mot de passe temporaire." : errMsg(error)); }
+    const r = await sb.rpc("password_changed");
+    btn.disabled = false;
+    if (r.error) return (msg.textContent = errMsg(r.error));
+    toast("Mot de passe enregistré. Bienvenue !");
+    enter();
   });
 
   // Mot de passe
@@ -2550,13 +2572,61 @@
       return '<tr data-uid="' + u.id + '"><td><input class="inline-input" data-uf="nom" value="' + esc(u.nom) + '"></td><td>' + esc(u.email) + "</td>" +
         '<td><select class="inline-select" data-uf="role"' + (self ? " disabled" : "") + '><option value="vendeur"' + (u.role === "vendeur" ? " selected" : "") + '>Vendeur</option><option value="admin"' + (u.role === "admin" ? " selected" : "") + ">Admin</option></select></td>" +
         '<td><select class="inline-select" data-uf="cc">' + ccOpts(u.cc || "") + "</select></td><td>" +
-        (u.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge warn">En attente</span>') + '</td><td class="wrap">' +
-        (self ? '<span class="muted">(vous)</span>' : (u.actif
+        (u.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge warn">En attente</span>') +
+        (u.must_change_pwd ? '<span class="sub">🔑 Mot de passe temporaire</span>' : "") + '</td><td class="wrap">' +
+        (self ? '<span class="muted">(vous)</span>' : '<button class="btn small" data-ureset="1" title="Donner un mot de passe temporaire">🔑 Réinitialiser</button> ' + (u.actif
           ? '<button class="btn small" data-uactif="0">Suspendre</button>'
           : '<button class="btn small success" data-uactif="1">Valider</button>' + (u.role === "admin" ? "" : ' <button class="btn small danger" data-urefuse="1">Refuser</button>'))) +
         "</td></tr>";
     }).join("") : '<tr><td colspan="6" class="empty">Aucun utilisateur.</td></tr>';
   }
+  // Mot de passe temporaire : 4 chiffres + 4 lettres majuscules, ex. « 4827KQMP »
+  // (sans les lettres I et O, pour ne pas les confondre avec 1 et 0)
+  function tempPassword() {
+    const L = "ABCDEFGHJKLMNPQRSTUVWXYZ", r = new Uint32Array(8);
+    crypto.getRandomValues(r);
+    const chiffres = Array.from(r.slice(0, 4), (x) => String(x % 10)).join("");
+    const lettres = Array.from(r.slice(4), (x) => L[x % L.length]).join("");
+    return chiffres + lettres;
+  }
+  // Affiche le mot de passe temporaire à transmettre (copie, WhatsApp)
+  function showTempPwd(titre, nom, email, pwd) {
+    const url = location.origin + location.pathname;
+    const msg = "Bonjour " + (nom || "") + ",\nVoici vos accès à l'application " + (db.settings.nom || "BGTeam") + " :\n" + url +
+      "\nIdentifiant : " + email + "\nMot de passe temporaire : " + pwd + "\nÀ la première connexion, vous choisirez votre propre mot de passe.";
+    $("#tp-title").textContent = titre;
+    $("#tp-text").textContent = "Communiquez ce mot de passe temporaire à " + (nom || email) + " (" + email + "). Il ne sera plus affiché ensuite.";
+    $("#tp-pwd").textContent = pwd;
+    $("#tp-wa").href = "https://wa.me/?text=" + encodeURIComponent(msg);
+    $("#tp-copy").onclick = () => {
+      (navigator.clipboard ? navigator.clipboard.writeText(msg) : Promise.reject()).then(() => toast("Message copié."), () => prompt("Copiez ce message :", msg));
+    };
+    $("#temppwd-dialog").showModal();
+  }
+  // Création d'un utilisateur par l'admin
+  $("#u-new").addEventListener("click", () => {
+    const f = $("#newuser-form");
+    f.reset();
+    f.elements.cc.innerHTML = '<option value="">— Aucun —</option>' + db.settings.ccList.filter((c) => c.actif).map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("");
+    f.elements.pwd.value = tempPassword();
+    $("#newuser-dialog").showModal();
+  });
+  $("#nu-gen").addEventListener("click", () => { $("#newuser-form").elements.pwd.value = tempPassword(); });
+  $("#newuser-form").addEventListener("submit", async (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
+    e.preventDefault();
+    const f = e.target, btn = e.submitter;
+    const v = { nom: f.elements.nom.value.trim(), email: f.elements.email.value.trim().toLowerCase(), role: f.elements.role.value, cc: f.elements.cc.value, pwd: f.elements.pwd.value.trim() };
+    if (!v.nom || !v.email) return toast("Nom et e-mail obligatoires.");
+    if (v.pwd.length < 8) return toast("Le mot de passe temporaire doit faire au moins 8 caractères.");
+    const r = await act(async () => chk(await sb.rpc("admin_create_user", { p_email: v.email, p_nom: v.nom, p_password: v.pwd, p_role: v.role, p_cc: v.cc })), "Compte créé : " + v.email, btn);
+    if (!r.ok) return;
+    $("#newuser-dialog").close();
+    // Un CC sans nom prend le nom de la personne
+    const cc = v.cc && ccByCode(v.cc);
+    if (cc && !currentAgent(cc)) setCcName(cc.code, v.nom, ccLabel(cc.code) + " lié à " + v.nom + ".");
+    showTempPwd("Compte créé", v.nom, v.email, v.pwd);
+  });
   function updateUser(id, patch, msg, btn) {
     return act(async () => chk(await sb.from("profiles").update(patch).eq("id", id)), msg, btn);
   }
@@ -2576,6 +2646,14 @@
     });
   });
   $("#u-rows").addEventListener("click", (e) => {
+    const rs = e.target.closest("[data-ureset]");
+    if (rs) {
+      const u = db.users.find((x) => x.id === rs.closest("tr").dataset.uid);
+      if (!u || !confirm("Réinitialiser le mot de passe de " + (u.nom || u.email) + " (" + u.email + ") ?\n\nUn mot de passe temporaire va être créé. La personne sera déconnectée et devra choisir un nouveau mot de passe à sa prochaine connexion.")) return;
+      const pwd = tempPassword();
+      return act(async () => chk(await sb.rpc("admin_reset_password", { p_id: u.id, p_password: pwd })), "Mot de passe réinitialisé : " + u.email, rs)
+        .then((r) => { if (r.ok) showTempPwd("Mot de passe réinitialisé", u.nom, u.email, pwd); });
+    }
     const rf = e.target.closest("[data-urefuse]");
     if (rf) {
       const u = db.users.find((x) => x.id === rf.closest("tr").dataset.uid);

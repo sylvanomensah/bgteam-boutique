@@ -59,6 +59,22 @@
     </div>
   </div>
 
+  <!-- Changement obligatoire du mot de passe temporaire -->
+  <div id="mustpwd-screen" class="screen center-screen hidden">
+    <div class="auth-card">
+      <span class="logo">BG</span>
+      <h2 style="margin:0">Choisissez votre mot de passe</h2>
+      <p class="hint" style="margin:0">Vous êtes connecté avec un <b>mot de passe temporaire</b> donné par l'administrateur. Choisissez maintenant votre mot de passe personnel (8 caractères minimum). Ne le communiquez à personne.</p>
+      <form id="mustpwd-form" class="auth-form">
+        <label>Nouveau mot de passe<input type="password" name="p1" minlength="8" required autocomplete="new-password"></label>
+        <label>Confirmer le mot de passe<input type="password" name="p2" minlength="8" required autocomplete="new-password"></label>
+        <button class="btn primary">Enregistrer et continuer</button>
+      </form>
+      <p id="mustpwd-msg" class="auth-msg"></p>
+      <button class="btn" data-logout>Se déconnecter</button>
+    </div>
+  </div>
+
   <div id="app" class="screen hidden">
   <!-- Barre du haut (téléphone / tablette) -->
   <div class="mobilebar no-print">
@@ -548,8 +564,11 @@
         </div>
       </div>
       <div class="card">
-        <h2>Utilisateurs</h2>
-        <p class="hint">Les nouveaux utilisateurs créent leur compte depuis l'écran de connexion (« Créer un compte »), puis vous les <b>validez</b> ici. Un <b>vendeur</b> fait la caisse, consulte les ventes, le stock et les tickets, et ajoute des entrées de stock. Il ne voit pas l'accueil, les statistiques, les prix d'achat ni les paramètres, ne modifie pas les prix et ne peut ni annuler ni supprimer. Liez un vendeur à son CC pour que la caisse utilise automatiquement son code.</p>
+        <div class="toolbar">
+          <h2>Utilisateurs</h2>
+          <button class="btn primary" id="u-new">+ Créer un utilisateur</button>
+        </div>
+        <p class="hint">Vous pouvez <b>créer un compte</b> vous-même avec un mot de passe temporaire, ou laisser la personne s'inscrire (« Créer un compte ») puis la <b>valider</b> ici. <b>🔑 Réinitialiser</b> donne un nouveau mot de passe temporaire à quelqu'un qui a oublié le sien : à sa prochaine connexion, il devra choisir son propre mot de passe. Un <b>vendeur</b> fait la caisse, consulte les ventes, le stock et les tickets, et ajoute des entrées de stock. Il ne voit pas l'accueil, les statistiques, les prix d'achat ni les paramètres, ne modifie pas les prix et ne peut ni annuler ni supprimer. Liez un vendeur à son CC pour que la caisse utilise automatiquement son code.</p>
         <div class="table-wrap">
           <table class="table">
             <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>CC lié</th><th>Statut</th><th></th></tr></thead>
@@ -794,6 +813,39 @@
       <div class="actions">
         <button class="btn" value="cancel" formnovalidate>Annuler</button>
         <button class="btn primary" value="ok">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Création d'un utilisateur par l'admin -->
+  <dialog id="newuser-dialog">
+    <form method="dialog" id="newuser-form">
+      <h2>Créer un utilisateur</h2>
+      <div class="form">
+        <label class="full">Nom complet<input name="nom" required></label>
+        <label class="full">E-mail (identifiant de connexion)<input type="email" name="email" required autocomplete="off"></label>
+        <label>Rôle<select name="role"><option value="vendeur">Vendeur</option><option value="admin">Admin</option></select></label>
+        <label>CC lié<select name="cc"></select></label>
+        <label class="full">Mot de passe temporaire<span class="pwd-gen"><input name="pwd" minlength="8" required autocomplete="off"><button type="button" class="btn small" id="nu-gen">↻ Générer</button></span></label>
+      </div>
+      <p class="hint">Le compte est actif tout de suite. À sa première connexion, la personne devra remplacer ce mot de passe temporaire par le sien.</p>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Créer le compte</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Mot de passe temporaire à communiquer -->
+  <dialog id="temppwd-dialog">
+    <form method="dialog">
+      <h2 id="tp-title">Mot de passe temporaire</h2>
+      <p id="tp-text" class="hint"></p>
+      <div class="temp-pwd" id="tp-pwd"></div>
+      <div class="actions">
+        <button type="button" class="btn" id="tp-copy">📋 Copier le message</button>
+        <a class="btn success" id="tp-wa" target="_blank" rel="noopener">WhatsApp</a>
+        <button class="btn primary" value="ok">Terminé</button>
       </div>
     </form>
   </dialog>
