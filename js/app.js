@@ -592,6 +592,10 @@
     const nonAff = db.settings.ccList.filter((c) => c.actif && !c.boutique);
     if (nonAff.length) add("warning", "⚠", nonAff.length + " CC actif(s) sans boutique", nonAff.map((c) => esc(ccName(c.code))).join(", ") + " : leurs ventes ne sont rattachées à aucune boutique (RH).");
     const aValider = db.products.filter((p) => !p.valide);
+    // Rappel de sauvegarde (au moins une fois par semaine, depuis cet appareil)
+    let lastBk = ""; try { lastBk = localStorage.getItem("lastBackup") || ""; } catch (e) {}
+    const joursBk = lastBk ? Math.round((parse(today()) - parse(lastBk)) / 86400000) : null;
+    if (joursBk === null || joursBk >= 7) add("warning", "💾", "Pensez à sauvegarder vos données", (joursBk === null ? "Aucune sauvegarde téléchargée depuis cet appareil." : "Dernière sauvegarde il y a " + joursBk + " jours.") + " Paramètres → Télécharger une sauvegarde.");
     // Bobines et remontées de fonds
     const bbRupt = db.boutiques.filter((b) => b.actif && bobinesOf(b.code).reste <= 0 && db.bobines.some((x) => x.boutique === b.code));
     if (bbRupt.length) add("critical", "🧻", "Bobines en rupture", bbRupt.map((b) => esc(b.nom)).join(", ") + " (rubrique Bobines).");
@@ -2788,8 +2792,14 @@
 
   // Sauvegarde / import
   $("#p-export").addEventListener("click", () => {
-    const data = { version: 3, exportedAt: new Date().toISOString(), settings: db.settings, products: db.products, entries: db.entries, sales: db.sales, courses: db.courses };
+    // Sauvegarde complète : toutes les données visibles par l'admin
+    const data = {
+      version: 4, exportedAt: new Date().toISOString(), settings: db.settings, products: db.products, entries: db.entries, sales: db.sales, courses: db.courses,
+      boutiques: db.boutiques, charges: db.charges, remontees: db.remontees, bobines: db.bobines, conges: db.conges, fiches: db.fiches,
+      utilisateurs: db.users.map((u) => ({ nom: u.nom, email: u.email, role: u.role, cc: u.cc, actif: u.actif }))
+    };
     download("sauvegarde-" + (db.settings.nom || "boutique") + "-" + today() + ".json", JSON.stringify(data, null, 2), "application/json");
+    try { localStorage.setItem("lastBackup", today()); } catch (e) {}
   });
   $("#p-import").addEventListener("change", (e) => {
     const file = e.target.files[0];
