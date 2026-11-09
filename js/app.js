@@ -2154,8 +2154,7 @@
       const ccs = db.settings.ccList.filter((c) => c.boutique === b.code);
       return "<tr><td><b>" + esc(b.code) + '</b></td><td><input class="inline-input" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '"></td><td>' +
         (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + '</td><td class="wrap">' +
-        (ccs.length ? ccs.map((c) => esc(ccName(c.code)) + (c.entrees ? ' <span class="badge ok" title="Autorisé aux entrées de stock">📦 Entrées</span>' : "")).join("<br>") : '<span class="muted">Aucun CC</span>') +
-        (ccs.length && !ccs.some((c) => c.entrees) ? '<br><span class="sub">Aucun CC autorisé aux entrées de stock</span>' : "") + "</td><td>" +
+        (ccs.length ? ccs.map((c) => esc(ccName(c.code))).join("<br>") : '<span class="muted">Aucun CC</span>') + "</td><td>" +
         '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button> " +
         '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button>' +
         (b.code === INITIAL_BOUTIQUE ? '<span class="sub">Boutique d\'origine (porte le stock initial)</span>' : "") +
