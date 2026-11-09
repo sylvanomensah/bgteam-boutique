@@ -474,6 +474,7 @@
     document.body.classList.toggle("no-fonds", !canFonds());
     document.body.classList.toggle("no-bobines", bobinesDroit() === "non");
     if (!canView(view)) return show(view); // droit retiré en direct : on quitte la page
+    try { renderAppAlert(); } catch (e) { /* jamais bloquant */ }
     $("#brand-name").textContent = db.settings.nom;
     document.title = db.settings.nom + " — Boutique";
     ({
@@ -2029,6 +2030,9 @@
     const vMois = scope.reduce((a, b) => a + ventesDeclarees(b.code, du, au), 0);
     const rMois = sumMontant(rems);
     const k = [["Ventes déclarées (mois)", money0(vMois)], ["Fonds remontés (mois)", money0(rMois)]];
+    // Reste à remonter (toutes les semaines terminées) pour les boutiques affichées
+    const reste = scope.reduce((a, b) => a + resteARemonter(b.code).total, 0);
+    k.push(["Reste à remonter", money0(reste), reste > 0 ? "danger" : "hero-good"]);
     const enAttente = rems.filter((r) => r.statut !== "Reçue").length;
     if (enAttente) k.push(["Remontées à valider", enAttente, "warn"]);
     const nonRem = rows.filter((x) => weekEnd(x.w) < t && !x.r).length;
@@ -2116,6 +2120,30 @@
       aValider: sumMontant(db.remontees.filter((r) => r.boutique === bq && r.statut !== "Reçue"))
     };
   }
+  // Fonds restant à remonter : pour chaque semaine terminée, ventes déclarées − fonds remontés (si positif)
+  function resteARemonter(bq) {
+    const ventes = db.sales.filter((s) => isCountedSale(s) && saleBoutique(s) === bq);
+    if (!ventes.length) return { total: 0, semaines: [] };
+    const t = today(), lundiCourant = mondayOf(t);
+    const debut = mondayOf(ventes.map((s) => s.date).sort()[0]);
+    const semaines = [];
+    for (let w = debut; w < lundiCourant; w = addDays(w, 7)) {
+      const manque = ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w));
+      if (manque > 0.5) semaines.push({ w, manque: Math.round(manque) });
+    }
+    return { total: semaines.reduce((a, x) => a + x.manque, 0), semaines };
+  }
+  // Notification permanente en haut de l'application pour le CC qui doit remonter des fonds
+  function renderAppAlert() {
+    const el = $("#app-alert");
+    const bq = !isAdmin() && canEntrees() ? myBoutiqueCode() : "";
+    const r = bq ? resteARemonter(bq) : { total: 0 };
+    if (!r.total) { el.classList.add("hidden"); return; }
+    el.innerHTML = "⚠ <b>Fonds à remonter : " + money0(r.total) + "</b> — " +
+      r.semaines.map((x) => "semaine du " + fmtDate(x.w) + " : " + money0(x.manque)).join(" · ") +
+      ' <button class="btn small" data-view-link="fonds">Remonter les fonds</button>';
+    el.classList.remove("hidden");
+  }
   $("#rt-boutique").addEventListener("change", () => { $("#rt-info").textContent = "Solde bénéfice disponible : " + money0(soldesOf($("#rt-boutique").value).benefice) + "."; });
   $("#rt-save").addEventListener("click", (e) => {
     const bq = $("#rt-boutique").value, montant = Number($("#rt-montant").value);
@@ -2143,11 +2171,16 @@
     if (!bq || bq === "ALL") return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant remis.");
     const w = $("#rm-semaine").value;
+    // Contrôle : le montant remonté doit couvrir les ventes déclarées de la semaine
+    const du = Math.round(ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w)));
+    const manque = du - montant;
+    if (manque > 0 && !confirm("⚠ Montant inférieur aux ventes déclarées\n\nVentes déclarées de la semaine du " + fmtDate(w) + " (reste dû) : " + money0(du) +
+      "\nMontant que vous remontez : " + money0(montant) + "\nIl manquera : " + money0(manque) + "\n\nLe reste devra être remonté. Confirmer quand même ?")) return;
     const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: $("#rm-note").value.trim(), saisi_par: me.nom || me.email || "" };
     act(async () => {
       chk(await sb.from("remontees").insert(row));
       $("#rm-montant").value = ""; $("#rm-note").value = "";
-    }, "Remontée déclarée : " + money(montant) + " pour la semaine du " + fmtDate(w) + ".", e.target);
+    }, manque > 0 ? "Remontée enregistrée. ⚠ Il reste " + money0(manque) + " à remonter pour cette semaine." : "Remontée déclarée : " + money(montant) + " pour la semaine du " + fmtDate(w) + ".", e.target);
   });
   $("#fd-rem").addEventListener("click", (e) => {
     const r = e.target.closest("[data-rm-recu]");
