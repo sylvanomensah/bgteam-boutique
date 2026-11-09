@@ -2021,12 +2021,6 @@
       $("#fd-mini").innerHTML =
         '<div class="mini roul"><span>Solde de roulement</span><b>' + money0(T("roulement")) + "</b><small>valeur d'achat du stock · " + esc(lib) + "</small></div>" +
         '<div class="mini bene' + (T("benefice") < 0 ? " neg" : "") + '"><span>Solde bénéfice</span><b>' + money0(T("benefice")) + "</b><small>marge des ventes − dépenses − retraits</small></div>";
-      $("#fd-soldes").innerHTML = sol.map((x) => '<div class="solde-card">' +
-        '<div class="solde-head"><b>🏬 ' + esc(x.b.nom) + "</b><small>" + num(x.articles) + " article(s) en stock</small></div>" +
-        '<div class="solde-row roul"><span>Solde de roulement<small>valeur d\'achat du stock disponible</small></span><b>' + money0(x.roulement) + "</b></div>" +
-        '<div class="solde-row bene"><span>Solde bénéfice<small>marge ' + money0(x.marge) + " − dépenses " + money0(x.depenses) + " − retraits " + money0(x.retraits) + '</small></span><b class="' + (x.benefice < 0 ? "neg" : "") + '">' + money0(x.benefice) + "</b></div>" +
-        (x.aValider ? '<div class="solde-foot"><span>Remontées à valider : <b>' + money0(x.aValider) + "</b></span></div>" : "") +
-        (x.benefice > 0 ? '<button class="btn small" data-rt-bq="' + esc(x.b.code) + '">Retirer le bénéfice</button>' : "") + "</div>").join("");
       // Formulaire de retrait
       const rcur = $("#rt-boutique").value;
       $("#rt-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
@@ -2085,14 +2079,6 @@
       aValider: sumMontant(db.remontees.filter((r) => r.boutique === bq && r.statut !== "Reçue"))
     };
   }
-  $("#fd-soldes").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-rt-bq]");
-    if (!b) return;
-    $("#rt-boutique").value = b.dataset.rtBq;
-    $("#rt-montant").value = Math.floor(soldesOf(b.dataset.rtBq).benefice);
-    $("#rt-info").textContent = "Solde bénéfice disponible : " + money0(soldesOf(b.dataset.rtBq).benefice) + ".";
-    $("#fd-retrait-card").scrollIntoView({ behavior: "smooth", block: "center" });
-  });
   $("#rt-boutique").addEventListener("change", () => { $("#rt-info").textContent = "Solde bénéfice disponible : " + money0(soldesOf($("#rt-boutique").value).benefice) + "."; });
   $("#rt-save").addEventListener("click", (e) => {
     const bq = $("#rt-boutique").value, montant = Number($("#rt-montant").value);
