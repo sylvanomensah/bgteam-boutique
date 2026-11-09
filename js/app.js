@@ -3,6 +3,21 @@
 
   const $ = (sel) => document.querySelector(sel);
   const cfg = window.APP_CONFIG || {};
+
+  // Garde-fou de version : la page et le programme doivent venir de la même mise en ligne.
+  // Sinon (ancien programme ressorti du cache hors ligne), on vide le cache et on recharge une fois.
+  const APP_VERSION = "__APP_VERSION__";
+  (function checkVersion() {
+    const meta = document.querySelector('meta[name="app-version"]');
+    const pageV = meta ? meta.content : APP_VERSION;
+    if (pageV === APP_VERSION || pageV.indexOf("__") === 0) return;
+    let tried = false;
+    try { tried = sessionStorage.getItem("vfix") === pageV; sessionStorage.setItem("vfix", pageV); } catch (e) {}
+    if (tried) return;
+    const purge = window.caches ? caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))) : Promise.resolve();
+    purge.catch(() => {}).then(() => location.reload());
+    throw new Error("Mise à jour de l'application…");
+  })();
   const ADMIN_VIEWS = ["dashboard", "stats", "parametres", "rh"];
 
   let sb = null;

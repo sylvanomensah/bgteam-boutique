@@ -15,8 +15,11 @@ $v = Get-Date -Format "yyyyMMddHHmmss"
 $utf8 = New-Object System.Text.UTF8Encoding $false
 $idx = Join-Path $site "index.html"
 $html = [IO.File]::ReadAllText($idx)
-$html = $html.Replace('href="css/style.css"', "href=`"css/style.css?v=$v`"").Replace('src="js/config.js"', "src=`"js/config.js?v=$v`"").Replace('src="js/app.js"', "src=`"js/app.js?v=$v`"")
+$html = $html.Replace('href="css/style.css"', "href=`"css/style.css?v=$v`"").Replace('src="js/config.js"', "src=`"js/config.js?v=$v`"").Replace('src="js/app.js"', "src=`"js/app.js?v=$v`"").Replace("__APP_VERSION__", $v)
 [IO.File]::WriteAllText($idx, $html, $utf8)
+# Même numéro dans le programme : il vérifie qu'il correspond à la page (garde-fou anti-cache)
+$appf = Join-Path $site "js\app.js"
+[IO.File]::WriteAllText($appf, [IO.File]::ReadAllText($appf, [Text.Encoding]::UTF8).Replace('"__APP_VERSION__"', "`"$v`""), $utf8)
 $swf = Join-Path $site "sw.js"
 [IO.File]::WriteAllText($swf, [IO.File]::ReadAllText($swf).Replace('const CACHE = "bgteam-v1";', "const CACHE = `"bgteam-$v`";"), $utf8)
 Write-Host "Version : $v"
