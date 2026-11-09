@@ -1126,7 +1126,7 @@
       $("#s-boutique").innerHTML = '<option value="">Aucune boutique</option>';
       $("#s-title").textContent = "Stock";
       $("#stock-kpis").innerHTML = "";
-      $("#s-rows").innerHTML = '<tr><td colspan="14" class="empty">Vous n\'êtes affecté à aucune boutique. Demandez à l\'administrateur.</td></tr>';
+      $("#s-rows").innerHTML = '<tr><td colspan="15" class="empty">Vous n\'êtes affecté à aucune boutique. Demandez à l\'administrateur.</td></tr>';
       $("#s-foot").innerHTML = "";
       return;
     }
@@ -1169,6 +1169,10 @@
         (p.creeLe ? " le " + fmtDate(String(p.creeLe).slice(0, 10)) : "") + "</span>") +
       "</td><td>" + esc(p.categorie) + '</td><td class="num admin-only">' + num(Math.round(p.cmp)) + '</td><td class="num admin-only">' +
       (lastPurchase(p.code) ? num(Math.round(lastPurchase(p.code).pu)) : '<span class="muted">—</span>') + '</td><td class="num admin-only">' + num(p.pv) +
+      // Bénéfice sur 1 unité = prix de vente − coût moyen d'achat
+      '</td><td class="num admin-only">' + (Number(p.cmp) > 0
+        ? '<b class="delta ' + (p.pv - p.cmp < 0 ? "down" : "up") + '">' + (p.pv - p.cmp > 0 ? "+" : "") + num(Math.round(p.pv - p.cmp)) + "</b>"
+        : '<span class="muted" title="Prix d\'achat inconnu">—</span>') +
       '</td><td class="num admin-only">' + (bq !== "ALL"
         ? '<input type="number" min="0" class="inline-input si-input" data-si="' + esc(p.code) + '" value="' + stockInitialOf(p, bq) + '" title="Stock initial à ' + esc(boutiqueName(bq)) + ' (Entrée pour valider)">'
         : num(stockInitialOf(p, bq))) + '</td><td class="num admin-only">' + num(p.stockMin) + '</td><td class="num admin-only">' + num(totalEntrees(p.code, bq)) + '</td><td class="num admin-only">' + num(totalVentes(p.code, bq)) +
@@ -1177,12 +1181,12 @@
       (admin && !p.valide ? '<button class="btn small success" data-pvalid="' + esc(p.code) + '">✓ Valider</button> ' : "") +
       (admin ? '<button class="btn small" data-prices="' + esc(p.code) + '">Prix</button> <button class="btn small" data-edit="' + esc(p.code) + '">Modifier</button> <button class="btn small danger" data-pdel="' + esc(p.code) + '">✕</button>' : "") +
       "</td></tr>"
-    ).join("") : '<tr><td colspan="14" class="empty">Aucun produit dans cette vue (' + vueLib[stockVue] + ").</td></tr>";
+    ).join("") : '<tr><td colspan="15" class="empty">Aucun produit dans cette vue (' + vueLib[stockVue] + ").</td></tr>";
     // Totaux des produits affichés (tient compte de la recherche)
     const totStock = sorted.reduce((a, p) => a + stockActuel(p, bq), 0);
     const totVente = sorted.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv), 0);
     $("#s-foot").innerHTML = sorted.length ? '<tr class="total-row"><td colspan="3"><b>TOTAL' + (q ? " (recherche)" : "") + "</b></td>" +
-      '<td class="admin-only" colspan="7"></td><td class="num"><b>' + num(totStock) + '</b></td><td class="num"><b>' + money(totVente) +
+      '<td class="admin-only" colspan="8"></td><td class="num"><b>' + num(totStock) + '</b></td><td class="num"><b>' + money(totVente) +
       '</b></td><td></td><td class="admin-only"></td></tr>' : "";
   }
   $("#s-search").addEventListener("input", renderStock);
