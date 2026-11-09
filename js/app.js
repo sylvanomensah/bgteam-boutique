@@ -1160,8 +1160,11 @@
     const valeur = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.cmp), 0);
     const tile = (v) => 'data-sv="' + v + '" title="Cliquer pour afficher les ' + vueLib[v] + '" style="cursor:pointer' + (stockVue === v ? ";outline:2px solid var(--primary)" : "") + '"';
     const k = [["Produits", db.products.length, "", tile("tous")], ["En stock", db.products.filter(enVue.stock).length, "", tile("stock")], ["Stock total", num(stockTotal)]];
-    if (admin) k.push(["Valeur du stock (achat)", money(valeur)]);
-    k.push(["Valeur du stock (vente)", money(db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv), 0))]);
+    const valeurVente = db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv), 0);
+    if (admin) k.push(["Coût du stock (achat)", money(Math.round(valeur))]);
+    k.push(["Coût du stock (vente)", money(valeurVente)]);
+    // Bénéfice contenu dans le stock = coût de vente − coût d'achat
+    if (admin) k.push(["Bénéfice du stock", money(Math.round(valeurVente - valeur)), valeurVente - valeur < 0 ? "danger" : "hero-good"]);
     k.push(["En rupture", db.products.filter(enVue.rupture).length, "danger", tile("rupture")]);
     k.push(["Sous seuil", db.products.filter(enVue.seuil).length, "warn", tile("seuil")]);
     const nPending = db.products.filter((p) => !p.valide).length;
