@@ -502,7 +502,7 @@ drop policy if exists recus_select on storage.objects;
 create policy recus_select on storage.objects for select to authenticated using (bucket_id = 'recus' and public.is_member());
 drop policy if exists recus_insert on storage.objects;
 create policy recus_insert on storage.objects for insert to authenticated
-  with check (bucket_id = 'recus' and public.can_entrees() and name like 'courses/%');
+  with check (bucket_id = 'recus' and public.can_entrees() and (name like 'courses/%' or name like 'remontees/%'));
 drop policy if exists recus_delete on storage.objects;
 create policy recus_delete on storage.objects for delete to authenticated using (bucket_id = 'recus' and public.is_admin());
 
@@ -900,6 +900,15 @@ create table if not exists public.remontees (
   check (extract(isodow from semaine) = 1)
 );
 create index if not exists remontees_idx on public.remontees (boutique, semaine);
+-- Photo du reçu de dépôt (mobile money / virement) envoyée par le CC depuis son téléphone
+alter table public.remontees add column if not exists recu_path text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'remontees_recu_obligatoire') then
+    -- NOT VALID : s'applique aux nouvelles remontées, pas aux anciennes
+    alter table public.remontees add constraint remontees_recu_obligatoire
+      check (mode = 'Espèces' or coalesce(recu_path, '') <> '') not valid;
+  end if;
+end $$;
 alter table public.remontees enable row level security;
 drop policy if exists remontees_select on public.remontees;
 create policy remontees_select on public.remontees for select to authenticated

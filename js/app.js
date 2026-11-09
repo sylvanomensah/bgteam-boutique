@@ -161,7 +161,7 @@
       charges: charges.map((c) => ({ id: c.id, date: c.date, boutique: c.boutique || "", categorie: c.categorie, libelle: c.libelle || "", montant: Number(c.montant), saisiPar: c.saisi_par || "", createdBy: c.created_by, createdAt: c.created_at })),
       remontees: remontees.map((r) => ({ id: r.id, boutique: r.boutique, cc: r.cc ? String(r.cc) : "", semaine: r.semaine, montant: Number(r.montant), mode: r.mode, note: r.note || "",
         statut: r.statut, recuPar: r.recu_par || "", recuLe: r.recu_le, saisiPar: r.saisi_par || "", createdBy: r.created_by, createdAt: r.created_at,
-        partRoulement: Number(r.part_roulement) || 0, partBenefice: Number(r.part_benefice) || 0 })),
+        partRoulement: Number(r.part_roulement) || 0, partBenefice: Number(r.part_benefice) || 0, recuPath: r.recu_path || "" })),
       retraits: retraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "" })),
       stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
       bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
@@ -2020,7 +2020,8 @@
     $("#fd-rem").innerHTML = rems.length ? rems.map((r) => {
       const canDel = admin || (r.createdBy === me.id && r.statut === "Déclarée" && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
       return "<tr><td>" + fmtDate(r.semaine) + " → " + fmtDate(weekEnd(r.semaine)) + "</td><td>" + esc(boutiqueName(r.boutique)) + "</td><td>" + (r.cc ? esc(ccName(r.cc)) : "Admin") +
-        '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.mode) + (r.note ? '<span class="sub">' + esc(r.note) + "</span>" : "") + "</td><td>" +
+        '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.mode) + (r.note ? '<span class="sub">' + esc(r.note) + "</span>" : "") +
+        (r.recuPath ? '<button class="btn small" data-rm-photo="' + esc(r.recuPath) + '" style="margin-top:4px">📷 Voir le reçu</button>' : r.mode !== "Espèces" ? '<span class="sub">Sans reçu</span>' : "") + "</td><td>" +
         new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + '<span class="sub">' + esc(r.saisiPar) + "</span></td><td>" +
         (r.statut === "Reçue"
           ? '<span class="badge ok">✓ Vérifiée et validée</span><span class="sub">par ' + esc(r.recuPar) + (r.recuLe ? " le " + new Date(r.recuLe).toLocaleDateString("fr-FR") : "") + "</span>"
@@ -2171,24 +2172,47 @@
   $("#fd-boutique").addEventListener("change", renderFonds);
   $("#fd-mois").addEventListener("change", renderFonds);
   $("#rm-semaine").addEventListener("change", renderFonds);
-  // Mobile money / virement : on demande la référence de la transaction
+  // Mobile money / virement : photo du reçu de dépôt obligatoire (+ référence facultative)
+  let rmPhotoBlob = null;
+  // N° de transaction déjà utilisé par une autre remontée ? (chiffres comparés, 6 au minimum)
+  function refDejaUtilisee(note, exceptId) {
+    const n = String(note || "").replace(/\D/g, "");
+    if (n.length < 6) return null;
+    return db.remontees.find((r) => r.id !== exceptId && String(r.note || "").replace(/\D/g, "") === n) || null;
+  }
   function syncRmNote() {
     const ref = $("#rm-mode").value !== "Espèces";
-    $("#rm-note-label").innerHTML = ref ? 'Référence de la transaction <span class="req">*</span>' : "Note";
-    $("#rm-note").placeholder = ref ? "Ex. : ID de transaction ou n° qui a envoyé" : "Facultatif";
+    $("#rm-note-label").textContent = ref ? "N° de transaction (sur le reçu)" : "Note";
+    $("#rm-note").placeholder = ref ? "Ex. : 20510713985" : "Facultatif";
+    $("#rm-photo-zone").classList.toggle("hidden", !ref);
+    $("#rm-photo-preview").innerHTML = rmPhotoBlob
+      ? '<img src="' + URL.createObjectURL(rmPhotoBlob) + '" alt="Reçu du dépôt"><span>Reçu prêt (' + Math.round(rmPhotoBlob.size / 1024) + ' Ko)</span><button type="button" class="btn small danger" id="rm-photo-rm">Retirer</button>'
+      : "<span>Ajoutez la photo ou la capture d'écran du reçu de dépôt (message de confirmation mobile money). <b>Obligatoire.</b></span>";
   }
   $("#rm-mode").addEventListener("change", syncRmNote);
+  $("#rm-photo").addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    try { rmPhotoBlob = await compressImage(file); } catch (err) { rmPhotoBlob = null; toast("Photo illisible, réessayez."); }
+    e.target.value = "";
+    syncRmNote();
+  });
+  $("#rm-photo-preview").addEventListener("click", (e) => {
+    if (e.target.closest("#rm-photo-rm")) { rmPhotoBlob = null; syncRmNote(); }
+  });
+  syncRmNote();
   $("#rm-save").addEventListener("click", (e) => {
     const admin = isAdmin();
     const bq = admin ? $("#fd-boutique").value : myBoutiqueCode();
     const montant = Number($("#rm-montant").value);
     if (!bq || bq === "ALL") return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant remis.");
-    // Mobile money / virement : la référence de la transaction est obligatoire (vérification par l'admin)
-    if ($("#rm-mode").value !== "Espèces" && $("#rm-note").value.trim().length < 4) {
-      $("#rm-note").focus();
-      return toast("Indiquez la référence de la transaction (ou le numéro qui a envoyé) pour que l'admin puisse vérifier.");
-    }
+    // Mobile money / virement : la photo du reçu de dépôt est obligatoire (vérification par l'admin)
+    const avecRecu = $("#rm-mode").value !== "Espèces";
+    if (avecRecu && !rmPhotoBlob) return toast("Ajoutez la photo du reçu de dépôt pour que l'admin puisse vérifier.");
+    // Un même reçu (n° de transaction) ne peut servir qu'une fois
+    const dup = avecRecu && refDejaUtilisee($("#rm-note").value);
+    if (dup) return toast("Ce n° de transaction a déjà été utilisé pour une remontée du " + fmtDate(dup.semaine) + " (" + money0(dup.montant) + "). Vérifiez le reçu.");
     const w = $("#rm-semaine").value;
     // Contrôle : le montant remonté doit couvrir les ventes déclarées de la semaine
     const du = Math.round(ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w)));
@@ -2196,18 +2220,29 @@
     if (manque > 0 && !confirm("⚠ Montant inférieur aux ventes déclarées\n\nVentes déclarées de la semaine du " + fmtDate(w) + " (reste dû) : " + money0(du) +
       "\nMontant que vous remontez : " + money0(montant) + "\nIl manquera : " + money0(manque) + "\n\nLe reste devra être remonté. Confirmer quand même ?")) return;
     const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: $("#rm-note").value.trim(), saisi_par: me.nom || me.email || "" };
+    const btn = e.target;
     act(async () => {
+      if (avecRecu) {
+        btn.textContent = "Envoi du reçu…";
+        const path = "remontees/" + w.slice(0, 7) + "/" + uuid() + ".jpg";
+        chk(await sb.storage.from("recus").upload(path, rmPhotoBlob, { contentType: "image/jpeg", upsert: false }));
+        row.recu_path = path;
+      }
       chk(await sb.from("remontees").insert(row));
-      $("#rm-montant").value = ""; $("#rm-note").value = "";
+      $("#rm-montant").value = ""; $("#rm-note").value = ""; rmPhotoBlob = null; syncRmNote();
     }, (manque > 0 ? "Remontée enregistrée. ⚠ Il reste " + money0(manque) + " à remonter pour cette semaine." : "Remontée déclarée : " + money(montant) + ".") +
-      " L'admin la validera après avoir vérifié la réception de l'argent.", e.target);
+      " L'admin la validera après avoir vérifié la réception de l'argent.", btn).then(() => { btn.textContent = "Déclarer la remontée"; });
   });
   $("#fd-rem").addEventListener("click", (e) => {
+    const ph = e.target.closest("[data-rm-photo]");
+    if (ph) return signedPhotoUrl(ph.dataset.rmPhoto).then((u) => showPhoto(u, "Reçu du dépôt"), () => toast("Photo indisponible."));
     const r = e.target.closest("[data-rm-recu]");
     // Avant de valider : l'admin confirme avoir vérifié que l'argent est bien arrivé sur son compte
     if (r && r.dataset.v === "1") {
       const rm = db.remontees.find((x) => x.id === r.dataset.rmRecu);
       if (rm && !confirm("Vérification avant validation\n\nMontant : " + money0(rm.montant) + "\nMode : " + rm.mode + (rm.note ? "\nRéférence / note : " + rm.note : "") +
+        (rm.mode !== "Espèces" ? "\nReçu du dépôt : " + (rm.recuPath ? "joint (bouton 📷 Voir le reçu)" : "AUCUN") : "") +
+        (refDejaUtilisee(rm.note, rm.id) ? "\n\n⚠ ATTENTION : ce n° de transaction est déjà utilisé par une autre remontée !" : "") +
         "\nBoutique : " + boutiqueName(rm.boutique) + (rm.cc ? " — " + ccName(rm.cc) : "") +
         "\n\nAvez-vous vérifié que ce montant est bien arrivé sur votre compte (ou reçu en espèces) ?")) return;
     }

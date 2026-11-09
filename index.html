@@ -460,6 +460,11 @@
           <label>Mode<select id="rm-mode"><option>Espèces</option><option>Mobile money</option><option>Virement</option><option>Autre</option></select></label>
           <label><span id="rm-note-label">Note</span><input id="rm-note" placeholder="Facultatif"></label>
         </div>
+        <div class="photo-zone" id="rm-photo-zone">
+          <label class="btn" for="rm-photo">📷 Reçu du dépôt <span class="req">*</span></label>
+          <input type="file" id="rm-photo" accept="image/*" class="hidden">
+          <div id="rm-photo-preview" class="photo-preview"></div>
+        </div>
         <div id="rm-info" class="course-summary"></div>
         <div class="actions"><button class="btn success" id="rm-save">Déclarer la remontée</button></div>
       </div>
