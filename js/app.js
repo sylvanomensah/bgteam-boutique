@@ -2007,9 +2007,11 @@
     $("#fd-match").innerHTML = rows.length ? rows.map((x) => "<tr><td>Du " + fmtDate(x.w) + " au " + fmtDate(weekEnd(x.w)) + "</td><td>" + esc(x.b.nom) +
       '</td><td class="num">' + money0(x.v) + '</td><td class="num">' + money0(x.r) + '</td><td class="num">' + (weekEnd(x.w) >= t && !x.r ? "—" : ecartHtml(x.r - x.v)) + "</td><td>" + x.st + "</td></tr>").join("")
       : '<tr><td colspan="6" class="empty">Aucune vente ni remontée sur ce mois.</td></tr>';
-    const closed = rows.filter((x) => weekEnd(x.w) < t);
-    $("#fd-match-foot").innerHTML = rows.length ? "<tr><td colspan=2>TOTAL (semaines terminées)</td><td class=\"num\">" + money0(sumMontant(closed.map((x) => ({ montant: x.v })))) + '</td><td class="num">' +
-      money0(sumMontant(closed.map((x) => ({ montant: x.r })))) + '</td><td class="num">' + ecartHtml(sumMontant(closed.map((x) => ({ montant: x.r - x.v })))) + "</td><td></td></tr>" : "";
+    // Total du mois, semaine en cours comprise : un montant remonté sur une autre semaine est quand même compensé
+    const totV = rows.reduce((a, x) => a + x.v, 0), totR = rows.reduce((a, x) => a + x.r, 0), totE = totR - totV;
+    $("#fd-match-foot").innerHTML = rows.length ? "<tr><td colspan=2>TOTAL DU MOIS</td><td class=\"num\">" + money0(totV) + '</td><td class="num">' + money0(totR) +
+      '</td><td class="num">' + ecartHtml(totE) + "</td><td>" +
+      (totE < -0.5 ? '<span class="badge danger">⚠ Manque ' + money0(-totE) + "</span>" : totE > 0.5 ? '<span class="badge warn">Excédent ' + money0(totE) + "</span>" : '<span class="badge ok">✅ Conforme</span>') + "</td></tr>" : "";
 
     // Remontées du mois
     const rems = db.remontees.filter((r) => codes.includes(r.boutique) && r.semaine >= mondayOf(du) && r.semaine <= au)
