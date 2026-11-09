@@ -14,7 +14,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -89,7 +89,7 @@
     return all;
   }
   async function reload() {
-    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges, remontees, bobines, stocksInit] = await Promise.all([
+    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges, remontees, bobines, stocksInit, retraits] = await Promise.all([
       sb.from("settings").select("*").eq("id", 1).maybeSingle(),
       fetchAll("products", "code"),
       isAdmin() ? fetchAll("product_costs", "code") : Promise.resolve([]),
@@ -105,7 +105,8 @@
       fetchAll("charges", "date"),
       fetchAll("remontees", "created_at"),
       fetchAll("bobines_mvts", "created_at"),
-      fetchAll("stocks_initiaux", "code")
+      fetchAll("stocks_initiaux", "code"),
+      isAdmin() ? fetchAll("retraits", "date") : Promise.resolve([])
     ]);
     const st = chk(settingsRes) || {};
     const pa = {}, cmp = {};
@@ -144,7 +145,9 @@
       fiches,
       charges: charges.map((c) => ({ id: c.id, date: c.date, boutique: c.boutique || "", categorie: c.categorie, libelle: c.libelle || "", montant: Number(c.montant), saisiPar: c.saisi_par || "", createdBy: c.created_by, createdAt: c.created_at })),
       remontees: remontees.map((r) => ({ id: r.id, boutique: r.boutique, cc: r.cc ? String(r.cc) : "", semaine: r.semaine, montant: Number(r.montant), mode: r.mode, note: r.note || "",
-        statut: r.statut, recuPar: r.recu_par || "", recuLe: r.recu_le, saisiPar: r.saisi_par || "", createdBy: r.created_by, createdAt: r.created_at })),
+        statut: r.statut, recuPar: r.recu_par || "", recuLe: r.recu_le, saisiPar: r.saisi_par || "", createdBy: r.created_by, createdAt: r.created_at,
+        partRoulement: Number(r.part_roulement) || 0, partBenefice: Number(r.part_benefice) || 0 })),
+      retraits: retraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "" })),
       stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
       bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       boutiques: boutiques.map((b) => ({ code: b.code, nom: b.nom, actif: b.actif !== false }))
@@ -293,6 +296,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "remontees" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "bobines_mvts" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "stocks_initiaux" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "retraits" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -635,7 +639,7 @@
     const nonRem = db.boutiques.filter((b) => b.actif && ventesDeclarees(b.code, semPrec, weekEnd(semPrec)) > 0 && !remonteesOf(b.code, semPrec).length);
     if (nonRem.length) add("warning", "💰", "Fonds de la semaine du " + fmtDate(semPrec) + " non remontés", nonRem.map((b) => esc(b.nom) + " (" + money0(ventesDeclarees(b.code, semPrec, weekEnd(semPrec))) + ")").join(", ") + ".");
     const aConf = db.remontees.filter((r) => r.statut !== "Reçue");
-    if (aConf.length) add("warning", "💰", aConf.length + " remontée(s) de fonds à confirmer", "Total " + money0(sumMontant(aConf)) + " (rubrique Fonds & dépenses).");
+    if (aConf.length) add("warning", "💰", aConf.length + " remontée(s) de fonds à valider", "Total " + money0(sumMontant(aConf)) + " (rubrique Fonds & dépenses).");
     if (aValider.length) add("warning", "📝", aValider.length + " produit(s) à valider", aValider.map((p) => esc(p.nom)).join(", ") + " (rubrique Stock).");
     alerts.sort((a, b) => (a.lvl === b.lvl ? 0 : a.lvl === "critical" ? -1 : 1));
     $("#tb-alert-count").textContent = alerts.length ? "(" + alerts.length + ")" : "";
@@ -1977,8 +1981,11 @@
       return "<tr><td>" + fmtDate(r.semaine) + " → " + fmtDate(weekEnd(r.semaine)) + "</td><td>" + esc(boutiqueName(r.boutique)) + "</td><td>" + (r.cc ? esc(ccName(r.cc)) : "Admin") +
         '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.mode) + (r.note ? '<span class="sub">' + esc(r.note) + "</span>" : "") + "</td><td>" +
         new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + '<span class="sub">' + esc(r.saisiPar) + "</span></td><td>" +
-        (r.statut === "Reçue" ? '<span class="badge ok">Reçue</span><span class="sub">par ' + esc(r.recuPar) + "</span>" : '<span class="badge warn">En attente</span>') + "</td><td>" +
-        (global ? '<button class="btn small" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la réception" : "✓ Confirmer la réception") + "</button> " : "") +
+        (r.statut === "Reçue"
+          ? '<span class="badge ok">Validée</span><span class="sub">par ' + esc(r.recuPar) + "</span>" +
+            (admin ? '<span class="sub">Roulement ' + money0(r.partRoulement) + " · Bénéfice " + money0(r.partBenefice) + "</span>" : "")
+          : '<span class="badge warn">À valider</span>') + "</td><td>" +
+        (admin ? '<button class="btn small' + (r.statut === "Reçue" ? "" : " success") + '" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la validation" : "✓ Valider") + "</button> " : "") +
         (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="empty">Aucune remontée sur ce mois.</td></tr>';
 
@@ -1987,7 +1994,7 @@
     const rMois = sumMontant(rems);
     const k = [["Ventes déclarées (mois)", money0(vMois)], ["Fonds remontés (mois)", money0(rMois)]];
     const enAttente = rems.filter((r) => r.statut !== "Reçue").length;
-    if (enAttente) k.push(["Remontées à confirmer", enAttente, "warn"]);
+    if (enAttente) k.push(["Remontées à valider", enAttente, "warn"]);
     const nonRem = rows.filter((x) => weekEnd(x.w) < t && !x.r).length;
     if (nonRem) k.push(["Semaines non remontées", nonRem, "danger"]);
 
@@ -2004,25 +2011,102 @@
       $("#dp-boutique").value = db.boutiques.some((b) => b.code === dcur) ? dcur : fBq !== "ALL" ? fBq : (db.boutiques[0] || {}).code || "";
       if (!$("#dp-date").value) $("#dp-date").value = t;
 
-      // Bilan du mois par boutique
-      $("#fd-bilan-title").textContent = "Bilan par boutique — " + fmtMonth(du);
-      const bil = scope.map((b) => {
-        const v = ventesDeclarees(b.code, du, au), r = sumMontant(rems.filter((x) => x.boutique === b.code));
-        const d = sumMontant(deps.filter((c) => c.boutique === b.code));
-        return { b, v, r, d, net: r - d };
-      });
-      const gen = fBq === "ALL" ? sumMontant(deps.filter((c) => !c.boutique)) : 0;
-      $("#fd-bilan").innerHTML = bil.map((x) => "<tr><td><b>" + esc(x.b.nom) + '</b></td><td class="num">' + money0(x.v) + '</td><td class="num">' + money0(x.r) + '</td><td class="num">' + ecartHtml(x.r - x.v) +
-        '</td><td class="num">' + money0(x.d) + '</td><td class="num"><b>' + ecartHtml(x.net) + "</b></td></tr>").join("") +
-        (gen ? '<tr><td colspan="4" class="muted">Dépenses générales (sans boutique)</td><td class="num">' + money0(gen) + '</td><td class="num">' + ecartHtml(-gen) + "</td></tr>" : "");
-      const T = (f) => bil.reduce((a, x) => a + x[f], 0);
-      $("#fd-bilan-foot").innerHTML = "<tr><td>BÉNÉFICE GLOBAL</td><td class=\"num\">" + money0(T("v")) + '</td><td class="num">' + money0(T("r")) + '</td><td class="num">' + ecartHtml(T("r") - T("v")) +
-        '</td><td class="num">' + money0(T("d") + gen) + '</td><td class="num">' + ecartHtml(T("net") - gen) + "</td></tr>";
-      k.push(["Dépenses (mois)", money0(T("d") + gen)]);
-      k.push(["Bénéfice restant", money0(T("net") - gen), T("net") - gen < 0 ? "danger" : ""]);
+      k.push(["Dépenses (mois)", money0(sumMontant(deps))]);
+    }
+    // Soldes, retraits et journal : administrateur
+    if (admin) {
+      const sol = scope.map((b) => ({ b, ...soldesOf(b.code) }));
+      const T = (f) => sol.reduce((a, x) => a + x[f], 0);
+      k.unshift(["Solde bénéfice", money0(T("benefice")), T("benefice") < 0 ? "danger" : "hero-good"]);
+      k.unshift(["Fonds de roulement", money0(T("roulement")), T("roulement") < 0 ? "danger" : ""]);
+      $("#fd-soldes").innerHTML = sol.map((x) => '<div class="solde-card">' +
+        '<div class="solde-head"><b>🏬 ' + esc(x.b.nom) + "</b>" + (x.debut ? '<small>depuis le ' + fmtDate(x.debut) + "</small>" : '<small>aucune remontée validée</small>') + "</div>" +
+        '<div class="solde-row roul"><span>Fonds de roulement<small>pour racheter la marchandise</small></span><b class="' + (x.roulement < 0 ? "neg" : "") + '">' + money0(x.roulement) + "</b></div>" +
+        '<div class="solde-row bene"><span>Solde bénéfice<small>dépenses puis retraits</small></span><b class="' + (x.benefice < 0 ? "neg" : "") + '">' + money0(x.benefice) + "</b></div>" +
+        '<div class="solde-foot"><span>Ventes non remontées : <b>' + money0(x.nonRemonte) + "</b></span>" + (x.aValider ? "<span>À valider : <b>" + money0(x.aValider) + "</b></span>" : "") + "</div>" +
+        (x.benefice > 0 ? '<button class="btn small" data-rt-bq="' + esc(x.b.code) + '">Retirer le bénéfice</button>' : "") + "</div>").join("");
+      // Formulaire de retrait
+      const rcur = $("#rt-boutique").value;
+      $("#rt-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+      // Le retrait suit la boutique choisie dans le filtre
+      $("#rt-boutique").value = $("#fd-boutique").value !== "ALL" ? $("#fd-boutique").value : db.boutiques.some((b) => b.code === rcur) ? rcur : (db.boutiques[0] || {}).code || "";
+      if (!$("#rt-date").value) $("#rt-date").value = t;
+      const sb0 = soldesOf($("#rt-boutique").value);
+      $("#rt-info").textContent = "Solde bénéfice disponible : " + money0(sb0.benefice) + ".";
+      // Journal du mois
+      $("#fd-journal-title").textContent = "Journal des mouvements — " + fmtMonth(du);
+      const mv = journalOf(codes).filter((m) => m.date >= du && m.date <= au).sort((a, b) => b.date.localeCompare(a.date));
+      $("#fd-journal").innerHTML = mv.length ? mv.map((m) => "<tr><td>" + fmtDate(m.date) + "</td><td>" + esc(boutiqueName(m.boutique)) + "</td><td>" + m.label +
+        '</td><td class="num">' + (m.roul ? ecartHtml(m.roul) : '<span class="muted">—</span>') + '</td><td class="num">' + (m.bene ? ecartHtml(m.bene) : '<span class="muted">—</span>') + "</td><td>" +
+        (m.retraitId ? '<button class="btn small danger" data-rt-del="' + m.retraitId + '">✕</button>' : "") + "</td></tr>").join("")
+        : '<tr><td colspan="6" class="empty">Aucun mouvement sur ce mois.</td></tr>';
+      $("#fd-journal-foot").innerHTML = mv.length ? '<tr><td colspan="3">TOTAL DU MOIS</td><td class="num">' + ecartHtml(mv.reduce((a, m) => a + m.roul, 0)) + '</td><td class="num">' + ecartHtml(mv.reduce((a, m) => a + m.bene, 0)) + "</td><td></td></tr>" : "";
     }
     $("#fd-kpis").innerHTML = kpiHtml(k);
   }
+  // Mouvements des deux soldes d'une boutique, depuis sa première remontée validée
+  function soldesDebut(bq) {
+    return db.remontees.filter((r) => r.boutique === bq && r.statut === "Reçue").map((r) => r.semaine).sort()[0] || "";
+  }
+  function journalOf(codes) {
+    const out = [];
+    codes.forEach((bq) => {
+      const debut = soldesDebut(bq);
+      if (!debut) return;
+      db.remontees.filter((r) => r.boutique === bq && r.statut === "Reçue").forEach((r) => out.push({
+        date: r.recuLe ? String(r.recuLe).slice(0, 10) : r.semaine, boutique: bq, roul: r.partRoulement, bene: r.partBenefice,
+        label: "💰 Remontée validée — semaine du " + fmtDate(r.semaine) + (r.cc ? " (" + esc(ccName(r.cc)) + ")" : "")
+      }));
+      db.courses.filter((c) => c.boutique === bq && c.statut === "Validée" && c.date >= debut).forEach((c) => out.push({
+        date: c.date, boutique: bq, roul: -courseTotal(c), bene: 0, label: "🛒 Course" + (c.marche ? " — " + esc(c.marche) : "") + (c.cc ? " (" + esc(ccName(c.cc)) + ")" : "")
+      }));
+      db.charges.filter((c) => c.boutique === bq && c.date >= debut).forEach((c) => out.push({
+        date: c.date, boutique: bq, roul: 0, bene: -c.montant, label: "🧾 Dépense — " + esc(c.categorie) + (c.libelle ? " : " + esc(c.libelle) : "")
+      }));
+      db.retraits.filter((x) => x.boutique === bq).forEach((x) => out.push({
+        date: x.date, boutique: bq, roul: 0, bene: -x.montant, retraitId: x.id, label: "🏧 Retrait" + (x.note ? " — " + esc(x.note) : "")
+      }));
+    });
+    return out;
+  }
+  function soldesOf(bq) {
+    const mv = journalOf([bq]);
+    const debut = soldesDebut(bq);
+    const rem = db.remontees.filter((r) => r.boutique === bq);
+    const ventes = debut ? ventesDeclarees(bq, debut, today()) : 0;
+    return {
+      debut,
+      roulement: mv.reduce((a, m) => a + m.roul, 0),
+      benefice: mv.reduce((a, m) => a + m.bene, 0),
+      aValider: sumMontant(rem.filter((r) => r.statut !== "Reçue")),
+      nonRemonte: debut ? Math.max(0, ventes - sumMontant(rem.filter((r) => r.semaine >= debut))) : 0
+    };
+  }
+  $("#fd-soldes").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-rt-bq]");
+    if (!b) return;
+    $("#rt-boutique").value = b.dataset.rtBq;
+    $("#rt-montant").value = Math.floor(soldesOf(b.dataset.rtBq).benefice);
+    $("#rt-info").textContent = "Solde bénéfice disponible : " + money0(soldesOf(b.dataset.rtBq).benefice) + ".";
+    $("#fd-retrait-card").scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+  $("#rt-boutique").addEventListener("change", () => { $("#rt-info").textContent = "Solde bénéfice disponible : " + money0(soldesOf($("#rt-boutique").value).benefice) + "."; });
+  $("#rt-save").addEventListener("click", (e) => {
+    const bq = $("#rt-boutique").value, montant = Number($("#rt-montant").value);
+    if (!bq) return toast("Choisissez la boutique.");
+    if (!(montant > 0)) return toast("Indiquez le montant du retrait.");
+    const dispo = soldesOf(bq).benefice;
+    if (montant > dispo && !confirm("Le solde bénéfice de " + boutiqueName(bq) + " n'est que de " + money0(dispo) + ". Retirer quand même " + money0(montant) + " ?")) return;
+    const row = { boutique: bq, date: $("#rt-date").value || today(), montant, note: $("#rt-note").value.trim(), saisi_par: me.nom || me.email || "" };
+    act(async () => {
+      chk(await sb.from("retraits").insert(row));
+      $("#rt-montant").value = ""; $("#rt-note").value = "";
+    }, "Retrait enregistré : " + money(montant) + " (" + boutiqueName(bq) + ").", e.target);
+  });
+  $("#fd-journal").addEventListener("click", (e) => {
+    const d = e.target.closest("[data-rt-del]");
+    if (d && confirm("Supprimer ce retrait ?")) act(async () => chk(await sb.from("retraits").delete().eq("id", d.dataset.rtDel)), "Retrait supprimé.", d);
+  });
   $("#fd-boutique").addEventListener("change", renderFonds);
   $("#fd-mois").addEventListener("change", renderFonds);
   $("#rm-semaine").addEventListener("change", renderFonds);
@@ -2041,7 +2125,7 @@
   });
   $("#fd-rem").addEventListener("click", (e) => {
     const r = e.target.closest("[data-rm-recu]");
-    if (r) return act(async () => chk(await sb.rpc("set_remontee_recue", { p_id: r.dataset.rmRecu, p_recue: r.dataset.v === "1" })), r.dataset.v === "1" ? "Réception des fonds confirmée." : "Réception annulée.", r);
+    if (r) return act(async () => chk(await sb.rpc("set_remontee_recue", { p_id: r.dataset.rmRecu, p_recue: r.dataset.v === "1" })), r.dataset.v === "1" ? "Remontée validée : répartie entre fonds de roulement et bénéfice." : "Validation annulée.", r);
     const d = e.target.closest("[data-rm-del]");
     if (d && confirm("Supprimer cette remontée ?")) act(async () => chk(await sb.from("remontees").delete().eq("id", d.dataset.rmDel)), "Remontée supprimée.", d);
   });

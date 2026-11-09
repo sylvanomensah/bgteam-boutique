@@ -915,11 +915,38 @@ drop policy if exists remontees_admin_update on public.remontees;
 create policy remontees_admin_update on public.remontees for update to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- Confirmation de réception des fonds : admin ou CC « toutes boutiques »
+-- Répartition d'une remontée validée entre les deux soldes de la boutique :
+--   fonds de roulement = prix d'achat (coût moyen) des produits vendus dans la semaine,
+--   solde bénéfice     = le reste (la marge).
+-- Plusieurs remontées pour une même semaine se partagent le coût d'achat de la semaine.
+alter table public.remontees add column if not exists part_roulement numeric not null default 0;
+alter table public.remontees add column if not exists part_benefice numeric not null default 0;
+create or replace function public.remontee_split(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare r public.remontees%rowtype; v_cout numeric; v_deja numeric; v_roul numeric;
+begin
+  select * into r from public.remontees where id = p_id;
+  if not found then return; end if;
+  if r.statut <> 'Reçue' then
+    update public.remontees set part_roulement = 0, part_benefice = 0 where id = p_id;
+    return;
+  end if;
+  select coalesce(sum(s.qte * coalesce(s.cout_unitaire, 0)), 0) into v_cout
+  from public.sales s left join public.ccs c on c.code = s.cc
+  where s.valide = 'OUI' and coalesce(s.boutique, c.boutique) = r.boutique and s.date between r.semaine and r.semaine + 6;
+  select coalesce(sum(part_roulement), 0) into v_deja from public.remontees
+  where boutique = r.boutique and semaine = r.semaine and statut = 'Reçue' and id <> p_id;
+  v_roul := least(r.montant, greatest(v_cout - v_deja, 0));
+  update public.remontees set part_roulement = round(v_roul), part_benefice = r.montant - round(v_roul) where id = p_id;
+end $$;
+revoke all on function public.remontee_split(uuid) from public, anon, authenticated;
+
+-- Validation de la remontée : administrateur uniquement
 create or replace function public.set_remontee_recue(p_id uuid, p_recue boolean) returns void
 language plpgsql security definer set search_path = public as $$
 declare prof public.profiles%rowtype;
 begin
-  if not public.is_global() then raise exception 'Réservé à l''administrateur et aux CC « toutes boutiques »'; end if;
+  if not public.is_admin() then raise exception 'Seul l''administrateur valide les remontées de fonds'; end if;
   select * into prof from public.profiles where id = auth.uid();
   update public.remontees set
     statut = case when p_recue then 'Reçue' else 'Déclarée' end,
@@ -927,7 +954,29 @@ begin
     recu_le = case when p_recue then now() else null end
   where id = p_id;
   if not found then raise exception 'Remontée introuvable'; end if;
+  perform public.remontee_split(p_id);
 end $$;
+-- Reprise : répartition des remontées déjà validées
+do $$ declare x record; begin
+  for x in select id from public.remontees where statut = 'Reçue' and part_roulement = 0 and part_benefice = 0 loop
+    perform public.remontee_split(x.id);
+  end loop;
+end $$;
+
+-- Retraits de l'administrateur sur le solde bénéfice d'une boutique
+create table if not exists public.retraits (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  montant numeric not null check (montant > 0),
+  note text not null default '',
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table public.retraits enable row level security;
+drop policy if exists retraits_admin on public.retraits;
+create policy retraits_admin on public.retraits for all to authenticated using (public.is_admin()) with check (public.is_admin());
 revoke all on function public.set_remontee_recue(uuid, boolean) from public, anon;
 grant execute on function public.set_remontee_recue(uuid, boolean) to authenticated;
 
@@ -983,7 +1032,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

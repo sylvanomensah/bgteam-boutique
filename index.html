@@ -428,6 +428,38 @@
       </div>
       <div class="kpis" id="fd-kpis"></div>
 
+      <!-- Soldes des boutiques (admin) -->
+      <div class="card admin-only">
+        <div class="toolbar"><h2 style="margin-right:auto">Soldes des boutiques</h2></div>
+        <details class="help"><summary>Comment sont calculés les soldes ?</summary>
+          <p class="hint">Quand vous <b>validez</b> une remontée de fonds, elle est répartie automatiquement :<br>
+          • <b>Fonds de roulement</b> = le prix d'achat (coût moyen) des produits vendus dans la semaine. Il sert à racheter la marchandise : chaque <b>course</b> validée de la boutique est payée sur ce fonds.<br>
+          • <b>Solde bénéfice</b> = le reste (la marge). Les <b>dépenses</b> de la boutique (abonnements, électricité…) sont payées sur ce solde, puis vous pouvez <b>retirer</b> ce qui reste.<br>
+          Les soldes démarrent avec la première remontée validée de chaque boutique : les courses et dépenses antérieures ne sont pas comptées.</p>
+        </details>
+        <div class="solde-grid" id="fd-soldes"></div>
+      </div>
+
+      <div class="card admin-only" id="fd-retrait-card">
+        <h2>Retirer du solde bénéfice</h2>
+        <div class="form form-inline">
+          <label>Boutique<select id="rt-boutique"></select></label>
+          <label>Date<input type="date" id="rt-date"></label>
+          <label>Montant<input type="number" id="rt-montant" min="1"></label>
+          <label>Note<input id="rt-note" placeholder="Facultatif"></label>
+        </div>
+        <div id="rt-info" class="hint"></div>
+        <div class="actions"><button class="btn primary" id="rt-save">Enregistrer le retrait</button></div>
+      </div>
+
+      <div class="card admin-only">
+        <h2 id="fd-journal-title">Journal des mouvements</h2>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Date</th><th>Boutique</th><th>Opération</th><th class="num">Fonds de roulement</th><th class="num">Solde bénéfice</th><th></th></tr></thead>
+          <tbody id="fd-journal"></tbody><tfoot id="fd-journal-foot"></tfoot>
+        </table></div>
+      </div>
+
       <div class="card" id="fd-remonter">
         <h2>Remonter les fonds</h2>
         <div class="form form-inline">
@@ -452,7 +484,7 @@
       <div class="card">
         <h2>Remontées enregistrées</h2>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Semaine</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Déclarée le</th><th>Réception</th><th></th></tr></thead>
+          <thead><tr><th>Semaine</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Déclarée le</th><th>Validation</th><th></th></tr></thead>
           <tbody id="fd-rem"></tbody>
         </table></div>
       </div>
@@ -477,14 +509,6 @@
         </table></div>
       </div>
 
-      <div class="card need-global">
-        <h2 id="fd-bilan-title">Bilan par boutique</h2>
-        <p class="hint">Bénéfice restant = fonds remontés − dépenses de la boutique sur le mois.</p>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Boutique</th><th class="num">Ventes déclarées</th><th class="num">Fonds remontés</th><th class="num">Écart</th><th class="num">Dépenses</th><th class="num">Bénéfice restant</th></tr></thead>
-          <tbody id="fd-bilan"></tbody><tfoot id="fd-bilan-foot"></tfoot>
-        </table></div>
-      </div>
     </section>
 
     <!-- BOBINES -->
