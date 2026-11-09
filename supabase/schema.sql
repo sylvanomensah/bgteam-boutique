@@ -972,6 +972,45 @@ do $$ declare x record; begin
   end loop;
 end $$;
 
+-- =====================================================================
+-- Sécurité des remontées mobile money
+--   Le reçu est lu automatiquement chez le CC (n° de transaction, montant, expéditeur, destinataire) ;
+--   le serveur refuse un reçu déjà utilisé, un montant différent ou un dépôt sur un autre numéro.
+-- =====================================================================
+alter table public.settings add column if not exists numero_depot text not null default '';
+alter table public.remontees add column if not exists tx_id text;
+alter table public.remontees add column if not exists recu_infos jsonb not null default '{}'::jsonb;
+alter table public.remontees add column if not exists alerte text not null default '';
+create unique index if not exists remontees_tx_unique on public.remontees (tx_id) where tx_id is not null and tx_id <> '';
+
+-- Contrôles à l'enregistrement d'une remontée (CC) : n° de transaction, montant et destinataire du reçu
+create or replace function public.remontees_before_insert() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_num text; v_dest text; v_mt numeric; v_tel text; v_exp text;
+begin
+  new.tx_id := nullif(regexp_replace(coalesce(new.tx_id, ''), '\D', '', 'g'), '');
+  if new.mode = 'Espèces' or public.is_admin() then return new; end if;
+  v_mt := nullif(new.recu_infos ->> 'montant', '')::numeric;
+  if v_mt is not null and v_mt <> new.montant then
+    raise exception 'Le montant du reçu (% F) ne correspond pas au montant déclaré (% F)', v_mt, new.montant;
+  end if;
+  select regexp_replace(numero_depot, '\D', '', 'g') into v_num from public.settings where id = 1;
+  v_dest := regexp_replace(coalesce(new.recu_infos ->> 'destinataire', ''), '\D', '', 'g');
+  if coalesce(v_num, '') <> '' and v_dest <> '' and right(v_num, 4) <> right(v_dest, 4) then
+    raise exception 'Ce reçu n''est pas un dépôt sur le numéro de la boutique (****%)', right(v_num, 4);
+  end if;
+  -- Expéditeur du reçu ≠ numéro enregistré du CC (fiche RH) : on accepte mais on signale à l'admin
+  select regexp_replace(coalesce(telephone, ''), '\D', '', 'g') into v_tel from public.rh_fiches where cc = new.cc;
+  v_exp := regexp_replace(coalesce(new.recu_infos ->> 'expediteur', ''), '\D', '', 'g');
+  if coalesce(v_tel, '') <> '' and v_exp <> '' and right(v_tel, 4) <> right(v_exp, 4) then
+    new.alerte := trim(new.alerte || ' Expéditeur du reçu (****' || right(v_exp, 4) || ') différent du numéro du CC (****' || right(v_tel, 4) || ').');
+  end if;
+  if new.tx_id is null then new.alerte := trim(new.alerte || ' Reçu non lu automatiquement.'); end if;
+  return new;
+end $$;
+drop trigger if exists remontees_before_insert on public.remontees;
+create trigger remontees_before_insert before insert on public.remontees for each row execute function public.remontees_before_insert();
+
 -- Retraits de l'administrateur sur le solde bénéfice d'une boutique
 create table if not exists public.retraits (
   id uuid primary key default gen_random_uuid(),

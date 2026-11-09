@@ -81,6 +81,7 @@
     if (/already registered|already exists/i.test(m)) return "Un compte existe déjà avec cet e-mail.";
     if (/row-level security|permission denied|42501/i.test(m) || (e && e.code === "42501")) return "Action non autorisée pour votre compte.";
     if (/Failed to fetch|NetworkError/i.test(m)) return "Pas de connexion Internet. Réessayez.";
+    if (/remontees_tx_unique/i.test(m)) return "Ce reçu (n° de transaction) a déjà été utilisé pour une autre remontée.";
     if (/duplicate key/i.test(m)) return "Ce code existe déjà.";
     if (/violates foreign key/i.test(m)) return "Impossible : cet élément est utilisé ailleurs (ventes, entrées…).";
     if (/Password should be/i.test(m)) return "Mot de passe trop court (8 caractères minimum).";
@@ -129,7 +130,7 @@
     db = {
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
-        email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA",
+        email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA", numero_depot: st.numero_depot || "",
         ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
@@ -161,7 +162,8 @@
       charges: charges.map((c) => ({ id: c.id, date: c.date, boutique: c.boutique || "", categorie: c.categorie, libelle: c.libelle || "", montant: Number(c.montant), saisiPar: c.saisi_par || "", createdBy: c.created_by, createdAt: c.created_at })),
       remontees: remontees.map((r) => ({ id: r.id, boutique: r.boutique, cc: r.cc ? String(r.cc) : "", semaine: r.semaine, montant: Number(r.montant), mode: r.mode, note: r.note || "",
         statut: r.statut, recuPar: r.recu_par || "", recuLe: r.recu_le, saisiPar: r.saisi_par || "", createdBy: r.created_by, createdAt: r.created_at,
-        partRoulement: Number(r.part_roulement) || 0, partBenefice: Number(r.part_benefice) || 0, recuPath: r.recu_path || "" })),
+        partRoulement: Number(r.part_roulement) || 0, partBenefice: Number(r.part_benefice) || 0, recuPath: r.recu_path || "",
+        txId: r.tx_id || "", recuInfos: r.recu_infos || {}, alerte: r.alerte || "" })),
       retraits: retraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "" })),
       stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
       bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
@@ -286,7 +288,7 @@
   }
   // Temps réel : une vente, une entrée ou une course enregistrée ailleurs met à jour cet écran.
   let rtChannel = null, rtTimer = null, rtLive = false;
-  const RT_VIEWS = ["ventes", "dashboard", "stock", "stats", "facture", "rh", "compte"];
+  const RT_VIEWS = ["ventes", "dashboard", "stock", "stats", "facture", "rh", "compte", "fonds"];
   function startRealtime() {
     if (rtChannel || !sb) return;
     const onChange = () => {
@@ -311,8 +313,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "remontees" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "bobines_mvts" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "stocks_initiaux" }, onChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "retraits" }, onChange)
-      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
+      .on("postgres_changes", { event: "*", schema: "public", table: "retraits" }, onChange)      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
     if (rtChannel) { sb.removeChannel(rtChannel); rtChannel = null; rtLive = false; }
@@ -2021,6 +2022,8 @@
       const canDel = admin || (r.createdBy === me.id && r.statut === "Déclarée" && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
       return "<tr><td>" + fmtDate(r.semaine) + " → " + fmtDate(weekEnd(r.semaine)) + "</td><td>" + esc(boutiqueName(r.boutique)) + "</td><td>" + (r.cc ? esc(ccName(r.cc)) : "Admin") +
         '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.mode) + (r.note ? '<span class="sub">' + esc(r.note) + "</span>" : "") +
+        (r.txId ? '<span class="sub">N° ' + esc(r.txId) + (r.recuInfos && r.recuInfos.expediteur ? " · de ****" + esc(r.recuInfos.expediteur) : "") + "</span>" : "") +
+        (r.alerte && admin ? '<span class="sub neg">⚠ ' + esc(r.alerte) + "</span>" : "") +
         (r.recuPath ? '<button class="btn small" data-rm-photo="' + esc(r.recuPath) + '" style="margin-top:4px">📷 Voir le reçu</button>' : r.mode !== "Espèces" ? '<span class="sub">Sans reçu</span>' : "") + "</td><td>" +
         new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + '<span class="sub">' + esc(r.saisiPar) + "</span></td><td>" +
         (r.statut === "Reçue"
@@ -2173,32 +2176,132 @@
   $("#fd-mois").addEventListener("change", renderFonds);
   $("#rm-semaine").addEventListener("change", renderFonds);
   // Mobile money / virement : photo du reçu de dépôt obligatoire (+ référence facultative)
-  let rmPhotoBlob = null;
+  let rmPhotoBlob = null, rmOcr = null, rmOcrEnCours = false;
+  // ---- Lecture automatique du reçu (OCR, Tesseract.js chargé seulement quand on en a besoin) ----
+  let tesseractPromise = null;
+  function loadTesseract() {
+    if (window.Tesseract) return Promise.resolve(window.Tesseract);
+    if (!tesseractPromise) tesseractPromise = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      s.onload = () => resolve(window.Tesseract);
+      s.onerror = () => { tesseractPromise = null; reject(new Error("Lecture automatique indisponible (connexion)")); };
+      document.head.appendChild(s);
+    });
+    return tesseractPromise;
+  }
+  // Extrait du texte d'un reçu Mixx : n° de transaction, montant, expéditeur, destinataire
+  // Formats acceptés : reçu Mixx (« Transfert d'argent ») et SMS d'envoi (« Envoi de 6 300 FCFA au 72117777(BLESSING)… Ref: 19464910566 »)
+  function lireRecu(texte) {
+    const t = String(texte || "").replace(/[|]/g, " ");
+    // Référence : « Ref: 19464910566 » en priorité, sinon une suite de 10 à 14 chiffres
+    const tx = (t.match(/R[ée]f\.?\s*[:\-]?\s*(\d{8,14})/i) || t.match(/\b(\d{10,14})\b/) || [])[1] || "";
+    // Montant envoyé : on ignore les montants de « Frais » et de « solde »
+    const cands = Array.from(t.matchAll(/(\d[\d .,]{0,12}\d|\d)\s*F\s?cfa/gi)).map((m) => {
+      const avant = t.slice(Math.max(0, m.index - 30), m.index).toLowerCase();
+      return { n: Number(m[1].replace(/[^\d]/g, "")), avant };
+    }).filter((c) => c.n > 0 && !/solde|frais/.test(c.avant));
+    const prio = cands.filter((c) => /envoi|montant|transfert|re[çc]u/.test(c.avant));
+    const pool = prio.length ? prio : cands;
+    const montant = pool.length ? Math.max.apply(null, pool.map((c) => c.n)) : null;
+    // Numéros masqués lus par zones (les étoiles sont souvent mal reconnues) :
+    // expéditeur entre « Envoyé par » et « Reçu par », destinataire entre « Reçu par » et « Compte/Montant »
+    const zone = (debut, fin) => { const m = t.match(new RegExp(debut + "([\\s\\S]*?)(?:" + fin + "|$)", "i")); return m ? m[1] : ""; };
+    const quatre = (z) => { const m = z.match(/(\d{4})(?!\d)/g); return m ? m[m.length - 1] : ""; };
+    const expediteur = quatre(zone("Envoy[ée]\\s*par", "Re[cçg]u\\s*par"));
+    // Destinataire : zone « Reçu par » du reçu, ou « au 72117777 » du SMS
+    const destinataire = quatre(zone("Re[cçg]u\\s*par", "Compte|Montant")) || ((t.match(/\bau\s*(\d{8})/i) || [])[1] || "").slice(-4);
+    return { tx, montant, expediteur, destinataire, lu: !!(tx && montant) };
+  }
+  async function analyserRecu(blob) {
+    rmOcr = null; rmOcrEnCours = true; syncRmNote();
+    try {
+      const T = await loadTesseract();
+      const res = await Promise.race([
+        T.recognize(blob, "eng"),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("délai dépassé")), 60000))
+      ]);
+      rmOcr = lireRecu(res && res.data ? res.data.text : "");
+      if (rmOcr.montant && !$("#rm-montant").value) $("#rm-montant").value = rmOcr.montant;
+    } catch (err) {
+      rmOcr = { lu: false, erreur: errMsg(err) };
+    }
+    rmOcrEnCours = false; syncRmNote();
+  }
   // N° de transaction déjà utilisé par une autre remontée ? (chiffres comparés, 6 au minimum)
-  function refDejaUtilisee(note, exceptId) {
-    const n = String(note || "").replace(/\D/g, "");
+  function refDejaUtilisee(tx, exceptId) {
+    const n = String(tx || "").replace(/\D/g, "");
     if (n.length < 6) return null;
-    return db.remontees.find((r) => r.id !== exceptId && String(r.note || "").replace(/\D/g, "") === n) || null;
+    return db.remontees.find((r) => r.id !== exceptId && (r.txId === n || String(r.note || "").replace(/\D/g, "") === n)) || null;
   }
   function syncRmNote() {
     const ref = $("#rm-mode").value !== "Espèces";
-    $("#rm-note-label").textContent = ref ? "N° de transaction (sur le reçu)" : "Note";
-    $("#rm-note").placeholder = ref ? "Ex. : 20510713985" : "Facultatif";
+    $("#rm-note-label").textContent = "Note";
+    $("#rm-note").placeholder = "Facultatif";
     $("#rm-photo-zone").classList.toggle("hidden", !ref);
+    let lecture = "";
+    if (rmPhotoBlob && rmOcrEnCours) lecture = '<span class="ocr-info">🔎 Lecture automatique du reçu…</span>';
+    else if (rmPhotoBlob && rmOcr && rmOcr.lu) {
+      const num = (db.settings.numero_depot || "").replace(/\D/g, "");
+      const destOk = !num || !rmOcr.destinataire || num.slice(-4) === rmOcr.destinataire;
+      lecture = '<span class="ocr-info ok">✅ Lu sur le reçu : ' + (rmOcr.tx ? "n° <b>" + esc(rmOcr.tx) + "</b> · " : "") + (rmOcr.montant ? "<b>" + money0(rmOcr.montant) + "</b>" : "montant non lu") +
+        (rmOcr.expediteur ? " · de ****" + esc(rmOcr.expediteur) : "") + (rmOcr.destinataire ? " · vers ****" + esc(rmOcr.destinataire) : "") + "</span>" +
+        (destOk ? "" : '<span class="ocr-info bad">⛔ Ce dépôt n\'a pas été fait sur le numéro de la boutique (****' + esc(num.slice(-4)) + ").</span>");
+    } else if (rmPhotoBlob && rmOcr && rmOcr.erreur) lecture = '<span class="ocr-info warn">⚠ Lecture automatique indisponible (' + esc(rmOcr.erreur) + "). Vous pouvez envoyer : l'admin vérifiera le reçu.</span>";
+    else if (rmPhotoBlob && rmOcr) lecture = '<span class="ocr-info bad">⛔ ' + (rmOcr.tx ? "" : "Référence (Ref) illisible. ") + (rmOcr.montant ? "" : "Montant illisible. ") +
+      "Touchez « 📷 Reçu du dépôt » pour reprendre la photo et recadrer sur le message.</span>";
     $("#rm-photo-preview").innerHTML = rmPhotoBlob
-      ? '<img src="' + URL.createObjectURL(rmPhotoBlob) + '" alt="Reçu du dépôt"><span>Reçu prêt (' + Math.round(rmPhotoBlob.size / 1024) + ' Ko)</span><button type="button" class="btn small danger" id="rm-photo-rm">Retirer</button>'
-      : "<span>Ajoutez la photo ou la capture d'écran du reçu de dépôt (message de confirmation mobile money). <b>Obligatoire.</b></span>";
+      ? '<img src="' + URL.createObjectURL(rmPhotoBlob) + '" alt="Reçu du dépôt"><div class="ocr-col">' + lecture + '<button type="button" class="btn small danger" id="rm-photo-rm">Retirer</button></div>'
+      : "<span>Ajoutez la <b>capture d'écran du reçu</b> de dépôt mobile money. L'application la lit automatiquement. <b>Obligatoire.</b></span>";
   }
   $("#rm-mode").addEventListener("change", syncRmNote);
+  // ---- Recadrage (Cropper.js chargé à la demande) ----
+  let cropperLib = null, cropper = null, cropFile = null;
+  function loadCropper() {
+    if (window.Cropper) return Promise.resolve(window.Cropper);
+    if (!cropperLib) cropperLib = new Promise((resolve, reject) => {
+      const css = document.createElement("link");
+      css.rel = "stylesheet"; css.href = "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css";
+      document.head.appendChild(css);
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js";
+      s.onload = () => resolve(window.Cropper);
+      s.onerror = () => { cropperLib = null; reject(new Error("Recadrage indisponible")); };
+      document.head.appendChild(s);
+    });
+    return cropperLib;
+  }
+  async function utiliserImage(blob) {
+    try { rmPhotoBlob = await compressImage(blob); } catch (err) { rmPhotoBlob = null; toast("Photo illisible, réessayez."); }
+    syncRmNote();
+    if (rmPhotoBlob) analyserRecu(rmPhotoBlob);
+  }
   $("#rm-photo").addEventListener("change", async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    try { rmPhotoBlob = await compressImage(file); } catch (err) { rmPhotoBlob = null; toast("Photo illisible, réessayez."); }
     e.target.value = "";
-    syncRmNote();
+    if (!file) return;
+    cropFile = file;
+    try {
+      const C = await loadCropper();
+      const img = $("#crop-img");
+      if (cropper) { cropper.destroy(); cropper = null; }
+      img.onload = () => { cropper = new C(img, { viewMode: 1, autoCropArea: 1, background: false, zoomable: false, movable: false, rotatable: false }); };
+      $("#crop-dialog").showModal();
+      img.src = URL.createObjectURL(file);
+    } catch (err) {
+      utiliserImage(file); // pas de recadrage possible (connexion) : on garde l'image entière
+    }
   });
+  $("#crop-full").addEventListener("click", () => { $("#crop-dialog").close(); if (cropFile) utiliserImage(cropFile); });
+  $("#crop-ok").addEventListener("click", () => {
+    if (!cropper) return;
+    const canvas = cropper.getCroppedCanvas({ maxWidth: 2000, maxHeight: 2000, fillColor: "#fff" });
+    $("#crop-dialog").close();
+    canvas.toBlob((b) => utiliserImage(b || cropFile), "image/jpeg", 0.9);
+  });
+  $("#crop-dialog").addEventListener("close", () => { if (cropper) { cropper.destroy(); cropper = null; } });
   $("#rm-photo-preview").addEventListener("click", (e) => {
-    if (e.target.closest("#rm-photo-rm")) { rmPhotoBlob = null; syncRmNote(); }
+    if (e.target.closest("#rm-photo-rm")) { rmPhotoBlob = null; rmOcr = null; syncRmNote(); }
   });
   syncRmNote();
   $("#rm-save").addEventListener("click", (e) => {
@@ -2209,10 +2312,20 @@
     if (!(montant > 0)) return toast("Indiquez le montant remis.");
     // Mobile money / virement : la photo du reçu de dépôt est obligatoire (vérification par l'admin)
     const avecRecu = $("#rm-mode").value !== "Espèces";
-    if (avecRecu && !rmPhotoBlob) return toast("Ajoutez la photo du reçu de dépôt pour que l'admin puisse vérifier.");
-    // Un même reçu (n° de transaction) ne peut servir qu'une fois
-    const dup = avecRecu && refDejaUtilisee($("#rm-note").value);
-    if (dup) return toast("Ce n° de transaction a déjà été utilisé pour une remontée du " + fmtDate(dup.semaine) + " (" + money0(dup.montant) + "). Vérifiez le reçu.");
+    if (avecRecu && !rmPhotoBlob) return toast("Ajoutez la capture d'écran du reçu de dépôt.");
+    if (avecRecu && rmOcrEnCours) return toast("Lecture du reçu en cours, patientez quelques secondes…");
+    // Deux vérifications obligatoires : la référence ET le montant doivent être lus sur la photo
+    // (sauf si la lecture automatique n'a pas pu se charger : l'admin vérifiera, avec une alerte)
+    if (avecRecu && rmOcr && !rmOcr.lu && !rmOcr.erreur) return toast("Référence ou montant illisible : recadrez la photo sur le message (montant envoyé et Ref).");
+    // Contrôles automatiques à partir du reçu lu
+    const ocr = avecRecu && rmOcr && rmOcr.lu ? rmOcr : null;
+    if (ocr) {
+      if (ocr.montant && ocr.montant !== montant) return toast("Le reçu indique " + money0(ocr.montant) + " mais vous déclarez " + money0(montant) + ". Corrigez le montant.");
+      const num = (db.settings.numero_depot || "").replace(/\D/g, "");
+      if (num && ocr.destinataire && num.slice(-4) !== ocr.destinataire) return toast("Ce reçu n'est pas un dépôt sur le numéro de la boutique (****" + num.slice(-4) + ").");
+      const dup = refDejaUtilisee(ocr.tx);
+      if (dup) return toast("Ce reçu (n° " + ocr.tx + ") a déjà servi pour une remontée du " + fmtDate(dup.semaine) + " (" + money0(dup.montant) + ").");
+    }
     const w = $("#rm-semaine").value;
     // Contrôle : le montant remonté doit couvrir les ventes déclarées de la semaine
     const du = Math.round(ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w)));
@@ -2220,6 +2333,10 @@
     if (manque > 0 && !confirm("⚠ Montant inférieur aux ventes déclarées\n\nVentes déclarées de la semaine du " + fmtDate(w) + " (reste dû) : " + money0(du) +
       "\nMontant que vous remontez : " + money0(montant) + "\nIl manquera : " + money0(manque) + "\n\nLe reste devra être remonté. Confirmer quand même ?")) return;
     const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: $("#rm-note").value.trim(), saisi_par: me.nom || me.email || "" };
+    if (ocr) {
+      row.tx_id = ocr.tx || null;
+      row.recu_infos = { montant: ocr.montant, expediteur: ocr.expediteur, destinataire: ocr.destinataire, tx: ocr.tx };
+    }
     const btn = e.target;
     act(async () => {
       if (avecRecu) {
@@ -2229,7 +2346,7 @@
         row.recu_path = path;
       }
       chk(await sb.from("remontees").insert(row));
-      $("#rm-montant").value = ""; $("#rm-note").value = ""; rmPhotoBlob = null; syncRmNote();
+      $("#rm-montant").value = ""; $("#rm-note").value = ""; rmPhotoBlob = null; rmOcr = null; syncRmNote();
     }, (manque > 0 ? "Remontée enregistrée. ⚠ Il reste " + money0(manque) + " à remonter pour cette semaine." : "Remontée déclarée : " + money(montant) + ".") +
       " L'admin la validera après avoir vérifié la réception de l'argent.", btn).then(() => { btn.textContent = "Déclarer la remontée"; });
   });
@@ -2242,7 +2359,10 @@
       const rm = db.remontees.find((x) => x.id === r.dataset.rmRecu);
       if (rm && !confirm("Vérification avant validation\n\nMontant : " + money0(rm.montant) + "\nMode : " + rm.mode + (rm.note ? "\nRéférence / note : " + rm.note : "") +
         (rm.mode !== "Espèces" ? "\nReçu du dépôt : " + (rm.recuPath ? "joint (bouton 📷 Voir le reçu)" : "AUCUN") : "") +
-        (refDejaUtilisee(rm.note, rm.id) ? "\n\n⚠ ATTENTION : ce n° de transaction est déjà utilisé par une autre remontée !" : "") +
+        (rm.txId ? "\nN° de transaction lu sur le reçu : " + rm.txId : "") +
+        (rm.alerte ? "\n\n⚠ " + rm.alerte : "") +
+        (refDejaUtilisee(rm.txId || rm.note, rm.id) ? "\n\n⚠ ATTENTION : ce n° de transaction est déjà utilisé par une autre remontée !" : "") +
+        (rm.mode !== "Espèces" ? "\n\nVérifiez dans votre historique Mixx que ce n° de transaction et ce montant sont bien arrivés." : "") +
         "\nBoutique : " + boutiqueName(rm.boutique) + (rm.cc ? " — " + ccName(rm.cc) : "") +
         "\n\nAvez-vous vérifié que ce montant est bien arrivé sur votre compte (ou reçu en espèces) ?")) return;
     }

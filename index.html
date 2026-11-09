@@ -572,6 +572,7 @@
             <label class="full">Adresse<input data-k="adresse"></label>
             <label>RCCM/NIF<input data-k="rccm"></label>
             <label>Devise<input data-k="devise"></label>
+            <label class="full">Numéro Mixx qui reçoit les remontées de fonds<input data-k="numero_depot" placeholder="Ex. : 72117777"></label>
           </div>
           <button class="btn primary" id="p-save">Enregistrer</button>
         </div>
@@ -853,6 +854,19 @@
       <div class="actions">
         <button class="btn" value="cancel" formnovalidate>Annuler</button>
         <button class="btn primary" value="ok">Créer le compte</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Recadrage du reçu de dépôt avant lecture automatique -->
+  <dialog id="crop-dialog">
+    <form method="dialog">
+      <h2>Recadrer le reçu</h2>
+      <p class="hint" style="margin-top:0">Gardez seulement le message ou le reçu : il doit contenir le <b>montant envoyé</b> et la <b>référence (Ref)</b>.</p>
+      <div class="crop-zone"><img id="crop-img" alt="Reçu à recadrer"></div>
+      <div class="actions">
+        <button type="button" class="btn" id="crop-full">Utiliser l'image entière</button>
+        <button type="button" class="btn primary" id="crop-ok">✂ Valider le recadrage</button>
       </div>
     </form>
   </dialog>
