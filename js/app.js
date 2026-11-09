@@ -2001,7 +2001,8 @@
       else if (Math.abs(r - v) < 1) st = '<span class="badge ok">✅ Conforme</span>';
       else if (r < v) st = '<span class="badge danger">⚠ Manque ' + money0(v - r) + "</span>";
       else st = '<span class="badge warn">Excédent ' + money0(r - v) + "</span>";
-      if (rl.length && rl.every((x) => x.statut === "Reçue")) st += ' <span class="badge ok">Reçue</span>';
+      if (rl.length && rl.every((x) => x.statut === "Reçue")) st += ' <span class="badge ok">✓ Vérifiée</span>';
+      else if (rl.some((x) => x.statut !== "Reçue")) st += ' <span class="badge warn">⏳ À vérifier par l\'admin</span>';
       rows.push({ w, b, v, r, st });
     }));
     $("#fd-match").innerHTML = rows.length ? rows.map((x) => "<tr><td>Du " + fmtDate(x.w) + " au " + fmtDate(weekEnd(x.w)) + "</td><td>" + esc(x.b.nom) +
@@ -2022,9 +2023,9 @@
         '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.mode) + (r.note ? '<span class="sub">' + esc(r.note) + "</span>" : "") + "</td><td>" +
         new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + '<span class="sub">' + esc(r.saisiPar) + "</span></td><td>" +
         (r.statut === "Reçue"
-          ? '<span class="badge ok">Validée</span><span class="sub">par ' + esc(r.recuPar) + "</span>"
-          : '<span class="badge warn">À valider</span>') + "</td><td>" +
-        (admin ? '<button class="btn small' + (r.statut === "Reçue" ? "" : " success") + '" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la validation" : "✓ Valider") + "</button> " : "") +
+          ? '<span class="badge ok">✓ Vérifiée et validée</span><span class="sub">par ' + esc(r.recuPar) + (r.recuLe ? " le " + new Date(r.recuLe).toLocaleDateString("fr-FR") : "") + "</span>"
+          : '<span class="badge warn">⏳ En attente de vérification</span>') + "</td><td>" +
+        (admin ? '<button class="btn small' + (r.statut === "Reçue" ? "" : " success") + '" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la validation" : "✓ Argent reçu : valider") + "</button> " : "") +
         (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="empty">Aucune remontée sur ce mois.</td></tr>';
 
@@ -2035,8 +2036,10 @@
     // Reste à remonter (toutes les ventes − tous les fonds remontés) pour les boutiques affichées
     const reste = scope.reduce((a, b) => a + resteARemonter(b.code).total, 0);
     k.push(["Reste à remonter", money0(reste), reste > 0 ? "danger" : "hero-good"]);
-    const enAttente = rems.filter((r) => r.statut !== "Reçue").length;
-    if (enAttente) k.push(["Remontées à valider", enAttente, "warn"]);
+    // Fonds déclarés par le CC mais pas encore vérifiés sur le compte par l'admin
+    const attente = db.remontees.filter((r) => codes.includes(r.boutique) && r.statut !== "Reçue");
+    k.push(["En attente de vérification", money0(sumMontant(attente)) + (attente.length ? '<span class="sub">' + attente.length + " remontée(s) à vérifier</span>" : ""), attente.length ? "warn" : ""]);
+    k.push(["Fonds vérifiés (mois)", money0(sumMontant(rems.filter((r) => r.statut === "Reçue")))]);
     const nonRem = rows.filter((x) => weekEnd(x.w) < t && !x.r).length;
     if (nonRem) k.push(["Semaines non remontées", nonRem, "danger"]);
 
@@ -2168,12 +2171,24 @@
   $("#fd-boutique").addEventListener("change", renderFonds);
   $("#fd-mois").addEventListener("change", renderFonds);
   $("#rm-semaine").addEventListener("change", renderFonds);
+  // Mobile money / virement : on demande la référence de la transaction
+  function syncRmNote() {
+    const ref = $("#rm-mode").value !== "Espèces";
+    $("#rm-note-label").innerHTML = ref ? 'Référence de la transaction <span class="req">*</span>' : "Note";
+    $("#rm-note").placeholder = ref ? "Ex. : ID de transaction ou n° qui a envoyé" : "Facultatif";
+  }
+  $("#rm-mode").addEventListener("change", syncRmNote);
   $("#rm-save").addEventListener("click", (e) => {
     const admin = isAdmin();
     const bq = admin ? $("#fd-boutique").value : myBoutiqueCode();
     const montant = Number($("#rm-montant").value);
     if (!bq || bq === "ALL") return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant remis.");
+    // Mobile money / virement : la référence de la transaction est obligatoire (vérification par l'admin)
+    if ($("#rm-mode").value !== "Espèces" && $("#rm-note").value.trim().length < 4) {
+      $("#rm-note").focus();
+      return toast("Indiquez la référence de la transaction (ou le numéro qui a envoyé) pour que l'admin puisse vérifier.");
+    }
     const w = $("#rm-semaine").value;
     // Contrôle : le montant remonté doit couvrir les ventes déclarées de la semaine
     const du = Math.round(ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w)));
@@ -2184,10 +2199,18 @@
     act(async () => {
       chk(await sb.from("remontees").insert(row));
       $("#rm-montant").value = ""; $("#rm-note").value = "";
-    }, manque > 0 ? "Remontée enregistrée. ⚠ Il reste " + money0(manque) + " à remonter pour cette semaine." : "Remontée déclarée : " + money(montant) + " pour la semaine du " + fmtDate(w) + ".", e.target);
+    }, (manque > 0 ? "Remontée enregistrée. ⚠ Il reste " + money0(manque) + " à remonter pour cette semaine." : "Remontée déclarée : " + money(montant) + ".") +
+      " L'admin la validera après avoir vérifié la réception de l'argent.", e.target);
   });
   $("#fd-rem").addEventListener("click", (e) => {
     const r = e.target.closest("[data-rm-recu]");
+    // Avant de valider : l'admin confirme avoir vérifié que l'argent est bien arrivé sur son compte
+    if (r && r.dataset.v === "1") {
+      const rm = db.remontees.find((x) => x.id === r.dataset.rmRecu);
+      if (rm && !confirm("Vérification avant validation\n\nMontant : " + money0(rm.montant) + "\nMode : " + rm.mode + (rm.note ? "\nRéférence / note : " + rm.note : "") +
+        "\nBoutique : " + boutiqueName(rm.boutique) + (rm.cc ? " — " + ccName(rm.cc) : "") +
+        "\n\nAvez-vous vérifié que ce montant est bien arrivé sur votre compte (ou reçu en espèces) ?")) return;
+    }
     if (r) return act(async () => chk(await sb.rpc("set_remontee_recue", { p_id: r.dataset.rmRecu, p_recue: r.dataset.v === "1" })), r.dataset.v === "1" ? "Remontée validée." : "Validation annulée.", r);
     const d = e.target.closest("[data-rm-del]");
     if (d && confirm("Supprimer cette remontée ?")) act(async () => chk(await sb.from("remontees").delete().eq("id", d.dataset.rmDel)), "Remontée supprimée.", d);
