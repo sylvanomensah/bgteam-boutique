@@ -2030,7 +2030,7 @@
     const vMois = scope.reduce((a, b) => a + ventesDeclarees(b.code, du, au), 0);
     const rMois = sumMontant(rems);
     const k = [["Ventes déclarées (mois)", money0(vMois)], ["Fonds remontés (mois)", money0(rMois)]];
-    // Reste à remonter (toutes les semaines terminées) pour les boutiques affichées
+    // Reste à remonter (toutes les ventes − tous les fonds remontés) pour les boutiques affichées
     const reste = scope.reduce((a, b) => a + resteARemonter(b.code).total, 0);
     k.push(["Reste à remonter", money0(reste), reste > 0 ? "danger" : "hero-good"]);
     const enAttente = rems.filter((r) => r.statut !== "Reçue").length;
@@ -2120,18 +2120,20 @@
       aValider: sumMontant(db.remontees.filter((r) => r.boutique === bq && r.statut !== "Reçue"))
     };
   }
-  // Fonds restant à remonter : pour chaque semaine terminée, ventes déclarées − fonds remontés (si positif)
+  // Fonds restant à remonter = toutes les ventes déclarées − tous les fonds remontés (semaine en cours comprise)
   function resteARemonter(bq) {
     const ventes = db.sales.filter((s) => isCountedSale(s) && saleBoutique(s) === bq);
     if (!ventes.length) return { total: 0, semaines: [] };
-    const t = today(), lundiCourant = mondayOf(t);
-    const debut = mondayOf(ventes.map((s) => s.date).sort()[0]);
-    const semaines = [];
-    for (let w = debut; w < lundiCourant; w = addDays(w, 7)) {
+    const totalVentes = ventes.reduce((a, s) => a + lineTotal(s), 0);
+    const totalRemonte = sumMontant(db.remontees.filter((r) => r.boutique === bq));
+    const total = Math.max(0, Math.round(totalVentes - totalRemonte));
+    // Détail par semaine (pour la notification) : semaines où il manque de l'argent
+    const lundiCourant = mondayOf(today()), semaines = [];
+    for (let w = mondayOf(ventes.map((s) => s.date).sort()[0]); w <= lundiCourant; w = addDays(w, 7)) {
       const manque = ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w));
       if (manque > 0.5) semaines.push({ w, manque: Math.round(manque) });
     }
-    return { total: semaines.reduce((a, x) => a + x.manque, 0), semaines };
+    return { total, semaines: total ? semaines : [] };
   }
   // Notification permanente en haut de l'application pour le CC qui doit remonter des fonds
   function renderAppAlert() {
