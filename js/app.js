@@ -2143,6 +2143,8 @@
 
   // ---------- RH : boutiques et affectation des CC ----------
   function renderRh() {
+    setRhTab(rhTab);
+    renderPerms();
     renderRhFilters();
     // Ne pas effacer une saisie en cours dans la fiche (mise à jour temps réel)
     const typing = document.activeElement && $("#rh-fiche").contains(document.activeElement) && /INPUT|TEXTAREA/.test(document.activeElement.tagName);
@@ -2255,6 +2257,8 @@
       (aVenir.length ? "<b>À venir</b>" + aVenir.map(congeRow).join("") : "") +
       (passes.length ? '<details><summary class="muted">Congés passés (' + passes.length + ")</summary>" + passes.map(congeRow).join("") + "</details>" : "") +
       (!conges.length ? '<p class="muted">Aucun congé enregistré.</p>' : "") + "</div>" +
+      // Autorisations
+      "<div><h3>Autorisations</h3>" + permsHtml(c) + "</div>" +
       // Historique
       '<div><h3>Historique des vendeurs du CC</h3><p class="hist" style="margin:0">' + hist + "</p></div>" +
       "</div></div>";
@@ -2346,12 +2350,7 @@
   $("#rh-planning").addEventListener("click", (e) => {
     const tr = e.target.closest("[data-plan-cc]");
     if (!tr) return;
-    const cc = tr.dataset.planCc;
-    if (ccBoutique(cc) && $("#rh-boutique").value === "ALL") $("#rh-boutique").value = ccBoutique(cc);
-    renderRhFilters();
-    $("#rh-cc").value = cc;
-    renderFiche();
-    $("#rh-fiche").scrollIntoView({ behavior: "smooth" });
+    openFiche(tr.dataset.planCc);
   });
 
   // ---------- Mon compte (chaque utilisateur) ----------
@@ -2532,8 +2531,71 @@
   });
 
   // Codes commerciaux
+  // Recherche d'un CC : code (« 2 », « 02 », « CC 02 »), nom du CC, vendeurs passés, boutique
+  function ccMatch(c, q) {
+    if (!q) return true;
+    q = q.toLowerCase().trim();
+    const num = q.replace(/^cc\s*/, "").replace(/^0+/, "");
+    if (num && /^\d+$/.test(num) && String(Number(c.code)) === num) return true;
+    return (ccLabel(c.code) + " " + ccName(c.code) + " " + c.agents.map((a) => a.nom).join(" ") + " " + boutiqueName(c.boutique)).toLowerCase().includes(q);
+  }
+  // Bloc d'autorisations d'un CC (utilisé dans l'onglet Autorisations et dans la fiche)
+  function permsHtml(c) {
+    return '<div class="perm-list">' +
+      '<label class="perm"><span><b>📦 Entrées de stock</b><small>Saisit les courses et remonte les fonds de sa boutique</small></span>' +
+      '<input type="checkbox" class="switch" data-cc-entrees="' + esc(c.code) + '"' + (c.entrees ? " checked" : "") + "></label>" +
+      '<label class="perm"><span><b>🌍 Toutes boutiques</b><small>Voit le stock, les fonds et les dépenses de toutes les boutiques</small></span>' +
+      '<input type="checkbox" class="switch" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "></label>" +
+      '<label class="perm col"><span><b>🧻 Bobines</b><small>Accès au menu Bobines</small></span>' +
+      '<select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
+      [["boutique", "Consultation (sa boutique)"], ["saisie", "Saisie utilisation (sa boutique)"], ["gestion", "Toutes + approvisionnement (sans saisie)"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
+      "</select></label></div>";
+  }
+  function renderPerms() {
+    const bcur = $("#rp-boutique").value || "ALL";
+    $("#rp-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("") + '<option value="NONE">CC non affectés</option>';
+    $("#rp-boutique").value = Array.from($("#rp-boutique").options).some((o) => o.value === bcur) ? bcur : "ALL";
+    const b = $("#rp-boutique").value, q = $("#rp-search").value, f = $("#rp-filtre").value;
+    const list = db.settings.ccList.filter((c) =>
+      (f === "inactifs" ? !c.actif : c.actif) &&
+      (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)) &&
+      (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === c.bobines)) &&
+      ccMatch(c, q));
+    $("#rp-count").textContent = list.length + " CC affiché(s). Les changements sont enregistrés immédiatement.";
+    $("#rh-perms").innerHTML = list.length ? list.map((c) => {
+      const user = db.users.find((u) => u.cc === c.code);
+      return '<div class="perm-card"><div class="perm-head"><div><b>' + esc(ccName(c.code)) + "</b><small>🏬 " + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") +
+        (user ? " · " + esc(user.email) : "") + "</small></div>" + (c.actif ? "" : '<span class="badge mute">Inactif</span>') +
+        '<button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></div>' + permsHtml(c) + "</div>";
+    }).join("") : '<p class="empty">Aucun CC ne correspond à la recherche.</p>';
+  }
+  ["#rp-search", "#rp-boutique", "#rp-filtre"].forEach((id) => $(id).addEventListener(id === "#rp-search" ? "input" : "change", renderPerms));
+  $("#cc-search").addEventListener("input", renderCcTable);
+
+  // Onglets de la rubrique RH (le dernier onglet ouvert est mémorisé)
+  let rhTab = "perms";
+  try { rhTab = localStorage.getItem("rhTab") || "perms"; } catch (e) {}
+  function setRhTab(t) {
+    rhTab = t;
+    try { localStorage.setItem("rhTab", t); } catch (e) {}
+    document.querySelectorAll("#rh-tabs [data-rh-tab]").forEach((b) => b.classList.toggle("active", b.dataset.rhTab === t));
+    document.querySelectorAll("#view-rh .rh-pane").forEach((p) => p.classList.toggle("active", p.dataset.pane === t));
+  }
+  $("#rh-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-rh-tab]"); if (b) setRhTab(b.dataset.rhTab); });
+  function openFiche(cc) {
+    if (ccBoutique(cc)) $("#rh-boutique").value = ccBoutique(cc);
+    renderRhFilters();
+    $("#rh-cc").value = cc;
+    renderFiche(); renderPlanning();
+    setRhTab("fiche");
+    window.scrollTo(0, 0);
+  }
+  $("#rh-perms").addEventListener("click", (e) => { const b = e.target.closest("[data-open-fiche]"); if (b) openFiche(b.dataset.openFiche); });
+
   function renderCcTable() {
-    $("#cc-rows").innerHTML = db.settings.ccList.length ? db.settings.ccList.map((c) => {
+    const q = $("#cc-search").value;
+    const ccs = db.settings.ccList.filter((c) => ccMatch(c, q));
+    $("#cc-rows").innerHTML = ccs.length ? ccs.map((c) => {
       const hist = c.agents.length
         ? c.agents.map((a) => esc(a.nom) + " : " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui")).join("<br>")
         : "Aucun vendeur affecté";
@@ -2543,13 +2605,6 @@
         '<select class="inline-select" data-cc-bq="' + esc(c.code) + '"><option value="">— Non affecté —</option>' +
         db.boutiques.map((b) => '<option value="' + esc(b.code) + '"' + (b.code === c.boutique ? " selected" : "") + ">" + esc(b.nom) + "</option>").join("") +
         "</select></td><td>" +
-        '<label class="switch-cell" title="Autoriser ce CC à faire les entrées de stock de sa boutique"><input type="checkbox" data-cc-entrees="' + esc(c.code) + '"' + (c.entrees ? " checked" : "") + "> " +
-        (c.entrees ? "Autorisé" : '<span class="muted">Non</span>') + "</label></td><td>" +
-        '<label class="switch-cell" title="Autoriser ce CC à voir le stock de toutes les boutiques (sinon seulement la sienne)"><input type="checkbox" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "> " +
-        (c.voirStock ? "Toutes" : '<span class="muted">Sa boutique</span>') + "</label></td><td>" +
-        '<select class="inline-select" data-cc-bobines="' + esc(c.code) + '" title="Accès au menu Bobines">' +
-        [["boutique", "Consultation (sa boutique)"], ["saisie", "Saisie utilisation (sa boutique)"], ["gestion", "Toutes + approvisionnement (sans saisie)"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
-        "</select></td><td>" +
         (c.actif ? '<span class="badge ok">Actif</span>' : '<span class="badge mute">Inactif</span>') +
         "</td><td>" + (reposLabel(c) || '<span class="muted">—</span>') + '</td><td class="hist">' + hist + '</td><td class="wrap">' +
         '<button class="btn small" data-cc-assign="' + esc(c.code) + '">' + (currentAgent(c) ? "Changer de vendeur" : "Affecter un vendeur") + "</button> " +
@@ -2558,7 +2613,7 @@
           : '<button class="btn small" data-cc-reactiver="' + esc(c.code) + '">Réactiver</button> ') +
         (hasSales ? "" : '<button class="btn small danger" data-cc-del="' + esc(c.code) + '">✕</button>') +
         "</td></tr>";
-    }).join("") : '<tr><td colspan="10" class="empty">Aucun code commercial.</td></tr>';
+    }).join("") : '<tr><td colspan="7" class="empty">' + (q ? "Aucun CC ne correspond à la recherche." : "Aucun code commercial.") + "</td></tr>";
   }
 
   let ccMode = null, ccTarget = null;
@@ -2611,7 +2666,8 @@
       chk(await sb.from("ccs").update({ agents: after }).eq("code", cc.code));
     }, msg || ccLabel(cc.code) + " — " + nom);
   }
-  $("#cc-rows").addEventListener("change", (e) => {
+  // Changement d'une autorisation (onglet Autorisations, fiche CC)
+  function onPermChange(e) {
     const bbs = e.target.closest("[data-cc-bobines]");
     if (bbs) {
       const code = bbs.dataset.ccBobines, v = bbs.value;
@@ -2630,6 +2686,11 @@
       return act(async () => chk(await sb.from("ccs").update({ entrees: on }).eq("code", code)),
         ccName(code) + (on ? " peut maintenant faire les entrées de stock (" + boutiqueName(ccBoutique(code)) + ")." : " ne peut plus faire d'entrées de stock."));
     }
+    return false;
+  }
+  $("#rh-perms").addEventListener("change", onPermChange);
+  $("#rh-fiche").addEventListener("change", onPermChange);
+  $("#cc-rows").addEventListener("change", (e) => {
     const sel = e.target.closest("[data-cc-bq]");
     if (sel) {
       const code = sel.dataset.ccBq, bq = sel.value;

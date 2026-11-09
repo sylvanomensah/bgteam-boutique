@@ -567,18 +567,57 @@
 
     <!-- RH -->
     <section id="view-rh" class="view">
-      <h1>RH — personnel, boutiques &amp; affectation des CC</h1>
-      <div class="card filterbar">
-        <label>Boutique<select id="rh-boutique"></select></label>
-        <label class="cc-filter">Code commercial<select id="rh-cc"></select></label>
-        <label>Planning : semaine du<input type="date" id="rh-week"></label>
+      <h1>RH</h1>
+      <div class="tabs" id="rh-tabs">
+        <button data-rh-tab="perms" class="active">🔐 Autorisations</button>
+        <button data-rh-tab="fiche">👤 Fiche CC</button>
+        <button data-rh-tab="planning">📅 Planning</button>
+        <button data-rh-tab="ccs">🧾 CC &amp; vendeurs</button>
+        <button data-rh-tab="boutiques">🏬 Boutiques</button>
       </div>
-      <div id="rh-fiche"></div>
-      <div class="card">
-        <h2 id="rh-planning-title">Planning de la semaine</h2>
-        <div class="table-wrap"><table class="table planning" id="rh-planning"></table></div>
-        <p class="hint">✓ = en service · <b>R</b> = jour de repos · <b>C</b> = congé. Cliquez sur un CC pour ouvrir sa fiche.</p>
+
+      <!-- Onglet : autorisations par CC (recherche) -->
+      <div class="rh-pane" data-pane="perms">
+        <div class="card filterbar">
+          <label style="flex:2 1 260px">Rechercher un CC<input id="rp-search" type="search" placeholder="Code, nom du CC ou du vendeur… ex. 02, Edwige"></label>
+          <label>Boutique<select id="rp-boutique"></select></label>
+          <label>Afficher<select id="rp-filtre">
+            <option value="">Tous les CC actifs</option>
+            <option value="entrees">Autorisés aux entrées de stock</option>
+            <option value="global">Toutes boutiques</option>
+            <option value="saisie">Saisie des bobines</option>
+            <option value="gestion">Approvisionnement bobines</option>
+            <option value="inactifs">CC inactifs</option>
+          </select></label>
+        </div>
+        <p class="hint" id="rp-count"></p>
+        <div class="perm-grid" id="rh-perms"></div>
       </div>
+
+      <!-- Onglet : fiche d'un CC -->
+      <div class="rh-pane" data-pane="fiche">
+        <div class="card filterbar">
+          <label>Boutique<select id="rh-boutique"></select></label>
+          <label class="cc-filter">Code commercial<select id="rh-cc"></select></label>
+        </div>
+        <div id="rh-fiche"></div>
+      </div>
+
+      <!-- Onglet : planning -->
+      <div class="rh-pane" data-pane="planning">
+        <div class="card filterbar">
+          <label>Semaine du<input type="date" id="rh-week"></label>
+          <p class="hint" style="margin:0">Le filtre Boutique de l'onglet « Fiche CC » s'applique aussi au planning.</p>
+        </div>
+        <div class="card">
+          <h2 id="rh-planning-title">Planning de la semaine</h2>
+          <div class="table-wrap"><table class="table planning" id="rh-planning"></table></div>
+          <p class="hint">✓ = en service · <b>R</b> = jour de repos · <b>C</b> = congé. Cliquez sur un CC pour ouvrir sa fiche.</p>
+        </div>
+      </div>
+
+      <!-- Onglet : boutiques -->
+      <div class="rh-pane" data-pane="boutiques">
       <div class="card">
         <div class="toolbar">
           <h2>Boutiques</h2>
@@ -592,18 +631,25 @@
           </table>
         </div>
       </div>
+      </div>
+
+      <!-- Onglet : CC & vendeurs -->
+      <div class="rh-pane" data-pane="ccs">
       <div class="card">
         <div class="toolbar">
           <h2>Codes commerciaux (CC) &amp; vendeurs</h2>
+          <input id="cc-search" type="search" placeholder="Rechercher un CC…">
           <button class="btn primary" id="cc-new">+ Nouveau CC</button>
         </div>
         <p class="hint"><b>Nom du CC</b> : tapez un nom puis Entrée, il s'affichera partout à côté du code (« CC 01 — Nom »). Lier un vendeur à un CC sans nom lui donne automatiquement le nom du vendeur. Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant.</p>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Boutique</th><th>Entrées de stock</th><th title="Stock, fonds remontés et dépenses">Toutes boutiques</th><th>Bobines</th><th>Statut</th><th>Jours de repos</th><th>Historique des vendeurs</th><th></th></tr></thead>
+            <thead><tr><th>CC</th><th>Nom du CC (vendeur actuel)</th><th>Boutique</th><th>Statut</th><th>Jours de repos</th><th>Historique des vendeurs</th><th></th></tr></thead>
             <tbody id="cc-rows"></tbody>
           </table>
         </div>
+        <p class="hint" style="margin-top:12px">Les autorisations (entrées de stock, toutes boutiques, bobines) se règlent dans l'onglet <b>🔐 Autorisations</b>.</p>
+      </div>
       </div>
     </section>
   </main>
