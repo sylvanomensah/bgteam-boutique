@@ -1996,6 +1996,7 @@
 
   // ---------- Bobines ----------
   const BOBINE_SEUIL = 2;
+  const BOBINE_DELAI_MS = 30 * 60 * 1000;
   function bobinesOf(bq) {
     const m = db.bobines.filter((x) => x.boutique === bq);
     const recues = m.filter((x) => x.type === "Approvisionnement").reduce((a, x) => a + x.qte, 0);
@@ -2081,11 +2082,14 @@
     const hist = db.bobines.filter((x) => scope.some((b) => b.code === x.boutique) && (!f || x.boutique === f))
       .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
     $("#bb-hist").innerHTML = hist.length ? hist.map((x) => {
-      const canDel = isAdmin() || (x.createdBy === me.id && Date.now() - new Date(x.createdAt).getTime() < EDIT_WINDOW_MS);
+      // Bobines : le CC peut annuler sa saisie pendant 30 minutes ; ensuite seul l'admin le peut.
+      const resteMs = BOBINE_DELAI_MS - (Date.now() - new Date(x.createdAt).getTime());
+      const canDel = isAdmin() || (x.createdBy === me.id && resteMs > 0);
+      const delBtn = canDel ? '<button class="btn small danger" data-bb-del="' + x.id + '">✕</button>' + (isAdmin() ? "" : '<span class="sub">encore ' + Math.ceil(resteMs / 60000) + " min</span>") : "";
       return "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" +
         (x.type === "Approvisionnement" ? '<span class="badge ok">+ Approvisionnement</span>' : '<span class="badge mute">− Bobine utilisée</span>') +
         '</td><td class="num">' + (x.type === "Approvisionnement" ? "+" : "−") + num(x.qte) + "</td><td>" + esc(x.note) + "</td><td>" + esc(x.saisiPar || "—") + (x.cc ? '<span class="sub">' + esc(ccName(x.cc)) + "</span>" : "") +
-        "</td><td>" + (canDel ? '<button class="btn small danger" data-bb-del="' + x.id + '">✕</button>' : "") + "</td></tr>";
+        "</td><td>" + delBtn + "</td></tr>";
     }).join("") : '<tr><td colspan="7" class="empty">Aucun mouvement de bobines.</td></tr>';
   }
   $("#bb-filtre").addEventListener("change", renderBobines);

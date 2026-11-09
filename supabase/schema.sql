@@ -855,7 +855,7 @@ create policy bobines_insert on public.bobines_mvts for insert to authenticated
     or (public.bobines_droit() = 'saisie' and boutique = public.my_boutique() and type = 'Utilisation')));
 drop policy if exists bobines_delete on public.bobines_mvts;
 create policy bobines_delete on public.bobines_mvts for delete to authenticated
-  using (public.is_admin() or (created_by = auth.uid() and created_at > now() - interval '2 hours'));
+  using (public.is_admin() or (created_by = auth.uid() and created_at > now() - interval '30 minutes'));
 
 -- Démarrage : une première boutique avec tous les CC existants et leurs ventes.
 do $$
