@@ -2601,9 +2601,8 @@
       ["En service aujourd'hui", st.filter((k) => k === "service").length, "hero-good"],
       ["De repos", st.filter((k) => k === "repos").length],
       ["En congé", st.filter((k) => k === "conge").length, "warn"],
-      ["Sans boutique", act.filter((c) => !c.boutique).length, act.some((c) => !c.boutique) ? "danger" : ""],
-      ["Comptes en attente", attente, attente ? "warn" : ""]
-    ]);
+      ["Sans boutique", act.filter((c) => !c.boutique).length, act.some((c) => !c.boutique) ? "danger" : ""]
+    ].concat(isAdmin() ? [["Comptes en attente", attente, attente ? "warn" : ""]] : [])); // les comptes : admin uniquement
   }
   $("#bq-rows").addEventListener("click", (e) => { const c = e.target.closest("[data-open-fiche]"); if (c) openFiche(c.dataset.openFiche); });
   // ---------- RH : repos, congés, fiche CC, planning ----------
