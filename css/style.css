@@ -208,6 +208,9 @@ body.role-vendeur .admin-only { display: none !important; }
 body.no-entrees .only-entrees { display: none !important; }
 body.no-rh .need-rh, body.rh-limite #rh-kpis,
 body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-tab="planning"]) { display: none !important; }
+/* RH : navigation par jour (hier / demain) */
+.jour-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+.jour-nav input[type=date] { width: auto; min-height: 36px; padding: 6px 10px; }
 /* RH : qui travaille aujourd'hui */
 .today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 .today-col { border-radius: 12px; padding: 12px 14px; border: 1px solid var(--border); background: #fff; }

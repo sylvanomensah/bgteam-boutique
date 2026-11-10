@@ -2770,21 +2770,36 @@
     act(async () => chk(id ? await sb.from("conges").update(row).eq("id", id) : await sb.from("conges").insert(row)), "Congé enregistré.");
   });
 
-  // Qui travaille aujourd'hui (boutique choisie)
+  // Présences d'un jour choisi (hier, aujourd'hui, demain…) selon la boutique et le CC filtrés
+  let rhJour = "";
   function renderPlanning() {
-    const b = $("#rh-boutique").value;
-    const list = db.settings.ccList.filter((c) => c.actif && (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)));
-    // Aujourd'hui : qui travaille, qui est de repos, qui est en congé (boutique filtrée)
-    const auj = today(), groupes = { service: [], repos: [], conge: [] };
+    const b = $("#rh-boutique").value, ccF = $("#rh-cc").value;
+    const list = db.settings.ccList.filter((c) => c.actif && (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)) && (!ccF || ccF === "ALL" || c.code === ccF));
+    if (!rhJour) rhJour = today();
+    const auj = rhJour, groupes = { service: [], repos: [], conge: [] };
+    const ecart = Math.round((parse(auj) - parse(today())) / 86400000);
+    const quand = ecart === 0 ? "Aujourd'hui" : ecart === -1 ? "Hier" : ecart === 1 ? "Demain" : "";
     list.forEach((c) => { const st = ccStatusOn(c.code, auj); groupes[st.k].push({ c, st }); });
     const col = (k, titre) => '<div class="today-col ' + k + '"><h3>' + titre + ' <span class="badge ' + k + '">' + groupes[k].length + "</span></h3>" +
       '<div class="chips">' + (groupes[k].length ? groupes[k].map((x) => '<button class="chip" data-plan-cc="' + esc(x.c.code) + '" title="' + esc(x.st.label) + '">' + avatarHtml(x.c.code, "xs") + esc(ccName(x.c.code)) +
         (b === "ALL" ? ' <small class="muted">· ' + esc(boutiqueName(x.c.boutique)) + "</small>" : "") + "</button>").join("") : '<span class="muted">Personne</span>') + "</div></div>";
-    $("#rh-today").innerHTML = '<div class="card"><h2>Aujourd\'hui, ' + esc(fmtLong(auj)) + " — " + esc(b === "ALL" ? "toutes les boutiques" : b === "NONE" ? "CC non affectés" : boutiqueName(b)) + "</h2>" +
+    $("#rh-today").innerHTML = '<div class="card">' +
+      '<div class="jour-nav"><button class="btn small" data-jour="-1">◀ Hier</button><input type="date" id="rh-jour" value="' + auj + '">' +
+      '<button class="btn small" data-jour="1">Demain ▶</button>' + (ecart !== 0 ? '<button class="btn small primary" data-jour="0">Aujourd\'hui</button>' : "") + "</div>" +
+      "<h2>" + (quand ? quand + ", " : "") + esc(fmtLong(auj)) + " — " + esc(b === "ALL" ? "toutes les boutiques" : b === "NONE" ? "CC non affectés" : boutiqueName(b)) +
+      (ccF && ccF !== "ALL" ? " — " + esc(ccName(ccF)) : "") + "</h2>" +
       '<div class="today-grid">' + col("service", "✓ Au travail") + col("repos", "🛌 De repos") + col("conge", "🏖 En congé") + "</div>" +
       '<p class="hint" style="margin:12px 0 0">Cliquez sur un CC pour ouvrir sa fiche (repos, congés).</p></div>';
   }
-  $("#rh-today").addEventListener("click", (e) => { const c = e.target.closest("[data-plan-cc]"); if (c) openFiche(c.dataset.planCc); });
+  $("#rh-today").addEventListener("click", (e) => {
+    const j = e.target.closest("[data-jour]");
+    if (j) { rhJour = j.dataset.jour === "0" ? today() : addDays(rhJour || today(), Number(j.dataset.jour)); return renderPlanning(); }
+    const c = e.target.closest("[data-plan-cc]");
+    if (c) openFiche(c.dataset.planCc);
+  });
+  $("#rh-today").addEventListener("change", (e) => {
+    if (e.target.id === "rh-jour" && e.target.value) { rhJour = e.target.value; renderPlanning(); }
+  });
 
   // ---------- Mon compte (chaque utilisateur) ----------
   function renderCompte() {
