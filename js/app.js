@@ -2164,8 +2164,8 @@
       // Deux cases à côté de Boutique / Mois : solde de roulement (bleu) et solde bénéfice (vert)
       const lib = $("#fd-boutique").value === "ALL" ? "toutes les boutiques" : boutiqueName($("#fd-boutique").value);
       $("#fd-mini").innerHTML =
-        '<div class="mini roul"><span>Solde de roulement</span><b>' + money0(T("roulement")) + "</b><small>valeur d'achat du stock · " + esc(lib) + "</small></div>" +
-        '<div class="mini bene' + (T("benefice") < 0 ? " neg" : "") + '"><span>Solde bénéfice</span><b>' + money0(T("benefice")) + "</b><small>marge des ventes − dépenses − retraits</small></div>";
+        '<div class="mini roul"><span>Solde de roulement</span><b>' + money2(T("roulement")) + "</b><small>" + (sol.length === 1 && sol[0].frigo ? "crédit de course restant (Frigo)" : "valeur d'achat du stock") + " · " + esc(lib) + "</small></div>" +
+        '<div class="mini bene' + (T("benefice") < 0 ? " neg" : "") + '"><span>Solde bénéfice</span><b>' + money2(T("benefice")) + "</b><small>" + (sol.length === 1 && sol[0].frigo ? "bénéfice des ventes retirable (Frigo)" : "marge des ventes − dépenses − retraits") + "</small></div>";
       // Formulaire de retrait
       const rcur = $("#rt-boutique").value;
       $("#rt-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
@@ -2213,6 +2213,12 @@
   }
   // Solde de roulement = valeur d'achat du stock disponible ; solde bénéfice = marge − dépenses − retraits
   function soldesOf(bq) {
+    // Boutique avec frigo : roulement = crédit de course restant, bénéfice = bénéfice des ventes retirable (menu Frigo)
+    if (db.fgCourses.some((c) => c.boutique === bq)) {
+      const f = frigoInfo(bq, today().slice(0, 7)), r2 = (n) => Math.round(n * 100) / 100;
+      return { frigo: true, roulement: r2(Math.max(0, f.restant)), articles: 0, marge: r2(f.benefVentes), depenses: 0, retraits: r2(f.retire), benefice: r2(f.aRetirer),
+        aValider: sumMontant(db.remontees.filter((r) => r.boutique === bq && r.statut !== "Reçue")) };
+    }
     let roulement = 0, articles = 0;
     db.products.forEach((p) => { const st = Math.max(0, stockActuel(p, bq)); articles += st; roulement += st * (Number(p.cmp) || 0); });
     const marge = db.sales.filter((s) => isCountedSale(s) && saleBoutique(s) === bq).reduce((a, s) => a + lineTotal(s) - Number(s.qte) * coutVente(s), 0);
