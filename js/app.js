@@ -189,7 +189,8 @@
       crSoldes: crSoldes.map((x) => ({ boutique: x.boutique, date: x.date, op: x.operateur, solde: Number(x.solde), saisiPar: x.saisi_par || "", at: x.updated_at || x.created_at || "" })),
       fgCourses: fgCourses.map((x) => {
         const d = fgDetails.find((y) => y.course_id === x.id);
-        return { id: x.id, boutique: x.boutique, date: x.date, valeur: Number(x.valeur_vente), saisiPar: x.saisi_par || "", createdAt: x.created_at,
+        return { id: x.id, boutique: x.boutique, date: x.date, valeur: Number(x.valeur_vente), cout: x.montant_course != null ? Number(x.montant_course) : d ? Number(d.total_course) : 0,
+          saisiPar: x.saisi_par || "", createdAt: x.created_at,
           detail: d ? { lignes: Array.isArray(d.lignes) ? d.lignes : [], achats: Number(d.total_achats), deplacement: Number(d.frais_deplacement), sachet: Number(d.frais_sachet),
             autres: Number(d.frais_autres), autresLib: d.frais_autres_lib || "", total: Number(d.total_course) } : null };
       }),
@@ -3086,16 +3087,18 @@
   function frigoInfo(bq, mois) {
     const courses = db.fgCourses.filter((c) => c.boutique === bq).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
     const ventes = db.fgVentes.filter((v) => v.boutique === bq);
-    const credit = sumBy(courses, (c) => c.valeur), vendu = sumBy(ventes, (v) => v.montant), restant = credit - vendu;
+    // Crédit vente = total des courses (ce qui a été dépensé) ; les ventes déclarées le font baisser
+    const credit = sumBy(courses, (c) => c.cout), vendu = sumBy(ventes, (v) => v.montant), restant = credit - vendu;
+    const resteAVendre = sumBy(courses, (c) => c.valeur) - vendu; // plafond d'une vente (valeur de vente des produits non encore vendus)
     const derniere = courses[0] || null;
-    const det = courses.filter((c) => c.detail), val = sumBy(det, (c) => c.valeur), cout = sumBy(det, (c) => c.detail.total);
-    const taux = val > 0 ? (val - cout) / val : null;
     const retire = sumBy(db.fgRetraits.filter((r) => r.boutique === bq), (r) => r.montant);
     const vMois = ventes.filter((v) => v.date.slice(0, 7) === mois), venduMois = sumBy(vMois, (v) => v.montant);
+    // Estimation des ventes et bénéfice estimé du mois : d'après les produits des courses du mois (prix de vente × quantité)
+    const cMois = courses.filter((c) => c.date.slice(0, 7) === mois), estimationMois = sumBy(cMois, (c) => c.valeur), benefMois = sumBy(cMois, (c) => c.valeur - c.cout);
     // base de la barre : restant + ventes faites depuis la dernière course
     const base = derniere ? restant + sumBy(ventes.filter((v) => v.date >= derniere.date), (v) => v.montant) : 0;
-    return { courses, ventes, credit, vendu, restant, derniere, taux, retire, aRetirer: vendu - retire, venduMois, joursMois: vMois.length,
-      benefMois: taux == null ? null : Math.round(venduMois * taux), base, seuilAtteint: !courses.length || restant <= db.settings.frigoSeuil };
+    return { courses, ventes, credit, vendu, restant, resteAVendre, derniere, retire, aRetirer: vendu - retire, venduMois, joursMois: vMois.length,
+      estimationMois, benefMois, taux: estimationMois > 0 ? benefMois / estimationMois : null, base, seuilAtteint: !courses.length || restant <= db.settings.frigoSeuil };
   }
   // Boutiques qui ont un frigo (au moins une course)
   function boutiquesFrigo() { const s = new Set(db.fgCourses.map((c) => c.boutique)); return db.boutiques.filter((b) => s.has(b.code)); }
@@ -3126,28 +3129,28 @@
     if (une) {
       const bq = scope[0].code, f = frigoInfo(bq, mois), vj = fgVenteLe(bq, t);
       const pct = f.base > 0 ? Math.max(0, Math.min(100, Math.round((f.restant / f.base) * 100))) : 0;
-      let h = '<div class="fg-card' + (f.courses.length && f.seuilAtteint ? " orange" : "") + '"><span>Crédit vente restant</span><b>' + (f.courses.length ? money0(f.restant) : "—") + "</b>" +
+      let h = '<div class="fg-card' + (f.courses.length && f.seuilAtteint ? " orange" : "") + '"><span>Crédit vente restant</span><b>' + (f.courses.length ? money0(Math.max(0, f.restant)) : "—") + "</b>" + (f.restant < 0 ? '<small class="pos">✅ Course remboursée · <b>+' + money0(-f.restant) + "</b> de bénéfice déjà vendu</small>" : "") +
         (f.courses.length ? '<div class="fg-bar' + (f.seuilAtteint ? " bas" : "") + '"><i style="width:' + pct + '%"></i></div><small>' +
-          (f.seuilAtteint ? "🛒 <b>Seuil atteint</b> : nouvelle course possible" : "Dernière course du " + fmtDate(f.derniere.date) + " : " + money0(f.derniere.valeur)) + "</small>"
+          (f.seuilAtteint ? "🛒 <b>Seuil atteint</b> : nouvelle course possible" : "Dernière course du " + fmtDate(f.derniere.date) + " : " + money0(f.derniere.cout)) + "</small>"
           : "<small>Aucune course enregistrée pour ce frigo</small>") + "</div>";
-      h += '<div class="fg-card vert"><span>Vendu ce mois</span><b>' + money0(f.venduMois) + "</b><small>" + f.joursMois + " jour" + (f.joursMois > 1 ? "s" : "") + " déclaré" + (f.joursMois > 1 ? "s" : "") +
-        " · aujourd'hui : " + (vj ? money0(vj.montant) : "pas encore déclaré") + "</small></div>";
+      h += '<div class="fg-card vert"><span>Estimation des ventes du mois</span><b>' + money0(f.estimationMois) + "</b><small>prix de vente des produits des courses · déclaré : <b>" + money0(f.venduMois) +
+        "</b> (" + f.joursMois + " jour" + (f.joursMois > 1 ? "s" : "") + ") · aujourd'hui : " + (vj ? money0(vj.montant) : "pas encore déclaré") + "</small></div>";
       if (admin) {
-        h += '<div class="fg-card violet"><span>Bénéfice estimé du mois</span><b>' + (f.benefMois == null ? "—" : money0(f.benefMois)) + "</b><small>" +
-          (f.taux == null ? "marge inconnue" : "marge moyenne des courses : " + Math.round(f.taux * 100) + " %") + "</small></div>";
+        h += '<div class="fg-card violet"><span>Bénéfice estimé du mois</span><b>' + money0(f.benefMois) + "</b><small>" +
+          (f.taux == null ? "aucune course ce mois-ci" : "somme des marges des produits achetés : " + Math.round(f.taux * 100) + " %") + "</small></div>";
         h += '<div class="fg-card"><span>Argent des ventes à retirer</span><b>' + money0(f.aRetirer) + "</b><small>déjà retiré : " + money0(f.retire) + "</small></div>";
       }
       $("#fg-cards").innerHTML = h;
     } else {
       $("#fg-cards").innerHTML = "";
-      $("#fg-table-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Crédit vente restant</th><th class=\"num\">Vendu du mois</th><th>Vente du jour</th>" +
+      $("#fg-table-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Crédit vente restant</th><th class=\"num\">Estimation des ventes du mois</th><th class=\"num\">Déclaré ce mois</th><th>Vente du jour</th>" +
         (admin ? '<th class="num">Bénéfice estimé du mois</th><th class="num">À retirer</th>' : "") + "</tr>";
       const avec = scope.filter((b) => db.fgCourses.some((c) => c.boutique === b.code));
       $("#fg-table").innerHTML = avec.length ? avec.map((b) => {
         const f = frigoInfo(b.code, mois);
         const etat = fgVenteLe(b.code, t) ? '<span class="badge ok">✓ déclarée</span>' : fgHierManquant(b.code) ? '<span class="badge warn">⚠ hier manquant</span>' : '<span class="badge">pas encore</span>';
-        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (f.seuilAtteint ? '<b class="neg">' + money0(f.restant) + "</b> 🛒" : money0(f.restant)) + '</td><td class="num">' + money0(f.venduMois) + "</td><td>" + etat + "</td>" +
-          (admin ? '<td class="num">' + (f.benefMois == null ? "—" : money0(f.benefMois)) + '</td><td class="num">' + money0(f.aRetirer) + "</td>" : "") + "</tr>";
+        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (f.seuilAtteint ? '<b class="neg">' + money0(Math.max(0, f.restant)) + "</b> 🛒" : money0(Math.max(0, f.restant))) + '</td><td class="num">' + money0(f.estimationMois) + '</td><td class="num">' + money0(f.venduMois) + "</td><td>" + etat + "</td>" +
+          (admin ? '<td class="num">' + money0(f.benefMois) + '</td><td class="num">' + money0(f.aRetirer) + "</td>" : "") + "</tr>";
       }).join("") : '<tr><td colspan="6" class="empty">Aucun frigo approvisionné : choisissez une boutique dans le filtre pour enregistrer sa première course.</td></tr>';
     }
 
@@ -3161,9 +3164,9 @@
     $("#fv-card").classList.toggle("fait", faitAuj);
     $("#fv-info").innerHTML = !sbq ? (admin ? "Choisissez une boutique dans le filtre pour déclarer sa vente." : "")
       : sansCourse ? "Le frigo n'a pas encore de course : la vente pourra être déclarée après la première course."
-      : faitAuj ? "Déclaré : <b>" + money0(fgVenteLe(sbq, t).montant) + "</b> — déduit du crédit vente restant (reste <b>" + money0(fi.restant) + "</b>). Pour une correction, voyez l'administrateur."
+      : faitAuj ? "Déclaré : <b>" + money0(fgVenteLe(sbq, t).montant) + "</b> — déduit du crédit vente restant (reste <b>" + money0(Math.max(0, fi.restant)) + "</b>). Pour une correction, voyez l'administrateur."
       : oubli ? '<b class="neg">La vente du frigo d\'hier n\'a pas été déclarée.</b> Déclarez-la d\'abord : la vente d\'aujourd\'hui est bloquée jusque-là.'
-      : "⏰ <b>À faire chaque soir</b> : notez le total vendu du frigo aujourd'hui (0 si rien). Il sera déduit du crédit vente restant (" + money0(fi.restant) + ").";
+      : "⏰ <b>À faire chaque soir</b> : notez le total vendu du frigo aujourd'hui (0 si rien). Il sera déduit du crédit vente restant (" + money0(Math.max(0, fi.restant)) + ").";
 
     // Course (admin) : possible seulement quand le seuil est atteint
     if (admin) {
@@ -3171,8 +3174,8 @@
       $("#fc-zone").classList.toggle("hidden", !ok);
       $("#fc-etat").innerHTML = !sbq ? "Choisissez une boutique dans le filtre pour enregistrer une course."
         : !fi.courses.length ? "🧊 Première course du frigo de <b>" + esc(boutiqueName(sbq)) + "</b>."
-        : fi.seuilAtteint ? "✅ Seuil atteint (restant <b>" + money0(fi.restant) + "</b> ≤ " + money0(db.settings.frigoSeuil) + ") : nouvelle course possible pour <b>" + esc(boutiqueName(sbq)) + "</b>."
-        : "🔒 Nouvelle course possible quand le crédit vente restant atteint <b>" + money0(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money0(fi.restant) + "</b>).";
+        : fi.seuilAtteint ? "✅ Seuil atteint (restant <b>" + money0(Math.max(0, fi.restant)) + "</b> ≤ " + money0(db.settings.frigoSeuil) + ") : nouvelle course possible pour <b>" + esc(boutiqueName(sbq)) + "</b>."
+        : "🔒 Nouvelle course possible quand le crédit vente restant atteint <b>" + money0(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money0(Math.max(0, fi.restant)) + "</b>).";
       if (!$("#fc-date").value) $("#fc-date").value = t;
       renderFcLignes();
       // Retrait
@@ -3198,8 +3201,8 @@
   // Une course (historique) : l'admin voit le détail (prix d'achat, frais, bénéfice)
   function courseFrigoHtml(c, admin) {
     const d = c.detail;
-    const tete = "<b>" + fmtDate(c.date) + "</b> · " + esc(boutiqueName(c.boutique)) + " · valeur de vente <b>" + money0(c.valeur) + "</b>" +
-      (admin && d ? " · coût " + money0(d.total) + ' · bénéfice estimé <b class="pos">' + money0(c.valeur - d.total) + "</b>" : "") + ' <span class="muted">par ' + esc(c.saisiPar || "—") + "</span>";
+    const tete = "<b>" + fmtDate(c.date) + "</b> · " + esc(boutiqueName(c.boutique)) + " · crédit vente (total de la course) <b>" + money0(c.cout) + "</b> · estimation des ventes " + money0(c.valeur) +
+      (admin ? ' · bénéfice estimé <b class="pos">' + money0(c.valeur - c.cout) + "</b>" : "") + ' <span class="muted">par ' + esc(c.saisiPar || "—") + "</span>";
     if (!admin || !d) return '<div class="fh-course">' + tete + "</div>";
     return '<details class="fh-course"><summary>' + tete + ' <button class="btn small danger" data-fc-del="' + c.id + '">✕</button></summary>' +
       '<div class="table-wrap" style="margin-top:8px"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix d\'achat</th><th class="num">Prix de vente</th><th class="num">Total achat</th><th class="num">Total vente</th></tr></thead><tbody>' +
@@ -3214,8 +3217,8 @@
       '<div class="sum-row"><span>Sachet</span><span>' + money0(s.sachet) + "</span></div>" +
       '<div class="sum-row"><span>' + esc(s.autresLib || "Autres frais") + "</span><span>" + money0(s.autres) + "</span></div>" +
       '<div class="sum-row"><span>Total des frais</span><span>' + money0(frais) + "</span></div>" +
-      '<div class="sum-row big"><span>TOTAL DE LA COURSE</span><span>' + money0(total) + "</span></div>" +
-      '<div class="sum-row"><span>Crédit vente du frigo (valeur de vente)</span><b>' + money0(s.vente) + "</b></div>" +
+      '<div class="sum-row big"><span>TOTAL DE LA COURSE = CRÉDIT VENTE</span><span>' + money0(total) + "</span></div>" +
+      '<div class="sum-row"><span>Estimation des ventes (prix de vente × quantité)</span><b>' + money0(s.vente) + "</b></div>" +
       '<div class="sum-row"><span>Bénéfice estimé</span><b>' + margeHtml(marge, s.vente > 0 ? (marge / s.vente) * 100 : null) + "</b></div>";
   }
   // Lignes de course : même principe que « recopiez le reçu du marché » (Entrées de stock) :
@@ -3280,13 +3283,13 @@
     if (bad) return toast("Complétez chaque ligne : produit, quantité et prix total payé.");
     if (sansPv) return toast("« " + sansPv.nom + " » n'a pas de prix de vente : définissez-le d'abord dans Stock.");
     const total = s.achats + s.deplacement + s.sachet + s.autres;
-    if (!confirm("Enregistrer la course du frigo de " + boutiqueName(bq) + " ?\n\nTotal de la course : " + money0(total) + "\nCrédit vente ajouté : " + money0(s.vente) + "\nBénéfice estimé : " + money0(s.vente - total))) return;
+    if (!confirm("Enregistrer la course du frigo de " + boutiqueName(bq) + " ?\n\nTotal de la course (crédit vente ajouté) : " + money0(total) + "\nEstimation des ventes : " + money0(s.vente) + "\nBénéfice estimé : " + money0(s.vente - total))) return;
     const lignes = s.ok.map(s.calc).map((r) => ({ nom: r.nom, code: r.code, qte: r.qte, achat: r.pu, vente: r.pv }));
     act(async () => {
       chk(await sb.rpc("frigo_ajouter_course", { p_boutique: bq, p_date: $("#fc-date").value || today(), p_lignes: lignes, p_deplacement: s.deplacement, p_sachet: s.sachet, p_autres: s.autres, p_autres_lib: s.autresLib }));
       fcLignes = [{ code: "", qte: "", total: "" }];
       ["#fc-deplacement", "#fc-sachet", "#fc-autres"].forEach((id) => { $(id).value = 0; }); $("#fc-autres-lib").value = "";
-    }, "Course enregistrée : " + money0(s.vente) + " ajoutés au crédit vente du frigo.", e.target);
+    }, "Course enregistrée : " + money0(total) + " ajoutés au crédit vente du frigo (ventes estimées " + money0(s.vente) + ").", e.target);
   });
   // Déclaration de la vente du frigo, confirmée par « Oui »
   $("#fv-save").addEventListener("click", (e) => {
@@ -3295,14 +3298,14 @@
     if (fgVenteLe(bq, d)) return toast("La vente de ce jour est déjà déclarée.");
     if (v === "" || !(Number(v) >= 0)) return toast("Indiquez le montant vendu (0 si rien).");
     const montant = Number(v), f = frigoInfo(bq, today().slice(0, 7));
-    if (montant > f.restant) return toast("La vente (" + money0(montant) + ") dépasse le crédit vente restant du frigo (" + money0(Math.max(0, f.restant)) + "). Vérifiez le montant.");
+    if (montant > f.resteAVendre) return toast("La vente (" + money0(montant) + ") dépasse la valeur des produits encore dans le frigo (" + money0(Math.max(0, f.resteAVendre)) + "). Vérifiez le montant.");
     const dlg = $("#crconf-dialog"), oubli = d !== today();
     $("#crconf-titre").textContent = "Confirmer la vente du frigo" + (oubli ? " d'hier" : "");
     $("#crconf-oui").textContent = "Oui, je déclare";
     $("#crconf-logo").innerHTML = '<span style="font-size:2.4rem">🧊</span>';
     $("#crconf-montant").textContent = money0(montant);
     $("#crconf-text").innerHTML = "Vous déclarez la vente du frigo <b>" + (oubli ? "hier, " : "ce ") + esc(jourLong(d)) + "</b> pour <b>" + esc(boutiqueName(bq)) +
-      "</b>.<br>Ce montant sera <b>déduit du crédit vente restant</b> (" + money0(f.restant) + " → " + money0(f.restant - montant) + ") et ne pourra plus être modifié (sauf par l'administrateur).<br>Confirmez-vous ?";
+      "</b>.<br>Ce montant sera <b>déduit du crédit vente restant</b> (" + money0(Math.max(0, f.restant)) + " → " + money0(Math.max(0, f.restant - montant)) + ") et ne pourra plus être modifié (sauf par l'administrateur).<br>Confirmez-vous ?";
     dlg.returnValue = "";
     dlg.onclose = () => {
       if (dlg.returnValue !== "oui") return toast("Déclaration annulée : rien n'a été enregistré.");
@@ -3350,27 +3353,26 @@
     const ventes = db.fgVentes.filter((v) => codes.includes(v.boutique) && v.date.slice(0, 7) === mois);
     const courses = db.fgCourses.filter((c) => codes.includes(c.boutique) && c.date.slice(0, 7) === mois);
     const retraits = db.fgRetraits.filter((r) => codes.includes(r.boutique) && r.date.slice(0, 7) === mois);
-    const benef = codes.reduce((a, c) => { const f = frigoInfo(c, mois); return a + (f.benefMois || 0); }, 0);
     const k = (label, val, sub, cls) => '<div class="kpi ' + (cls || "") + '"><div class="label">' + label + '</div><div class="value">' + val + (sub ? "<small>" + sub + "</small>" : "") + "</div></div>";
-    $("#fr-kpis").innerHTML = k("Ventes du frigo", money0(sumBy(ventes, (v) => v.montant)), ventes.length + " jour" + (ventes.length > 1 ? "s" : "") + " déclaré" + (ventes.length > 1 ? "s" : "")) +
-      k("Courses", String(courses.length), "crédit vente ajouté : " + money0(sumBy(courses, (c) => c.valeur))) +
-      (admin ? k("Coût des courses", money0(sumBy(courses, (c) => c.detail ? c.detail.total : 0)), "achats + déplacement + sachet") +
-        k("Bénéfice estimé", money0(benef), "ventes × marge moyenne", "hero") +
+    $("#fr-kpis").innerHTML = k("Courses (crédit vente)", money0(sumBy(courses, (c) => c.cout)), courses.length + " course" + (courses.length > 1 ? "s" : "") + " · achats + déplacement + sachet") +
+      k("Estimation des ventes", money0(sumBy(courses, (c) => c.valeur)), "prix de vente × quantité achetée") +
+      k("Ventes déclarées", money0(sumBy(ventes, (v) => v.montant)), ventes.length + " jour" + (ventes.length > 1 ? "s" : "") + " déclaré" + (ventes.length > 1 ? "s" : "")) +
+      (admin ? k("Bénéfice estimé", money0(sumBy(courses, (c) => c.valeur - c.cout)), "somme des marges des produits achetés", "hero") +
         k("Retraits", money0(sumBy(retraits, (r) => r.montant)), retraits.length + " retrait" + (retraits.length > 1 ? "s" : "")) : "");
     $("#fr-bq-card").classList.toggle("hidden", scope.length < 2);
     if (scope.length > 1) {
-      $("#fr-bq-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Ventes</th><th class=\"num\">Courses</th><th class=\"num\">Crédit vente restant</th>" + (admin ? '<th class="num">Bénéfice estimé</th><th class="num">Retraits</th>' : "") + "</tr>";
+      $("#fr-bq-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Ventes déclarées</th><th class=\"num\">Estimation des ventes</th><th class=\"num\">Crédit vente restant</th>" + (admin ? '<th class="num">Bénéfice estimé</th><th class="num">Retraits</th>' : "") + "</tr>";
       $("#fr-bq").innerHTML = scope.filter((b) => db.fgCourses.some((c) => c.boutique === b.code)).map((b) => {
         const f = frigoInfo(b.code, mois);
-        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money0(f.venduMois) + '</td><td class="num">' + courses.filter((c) => c.boutique === b.code).length + '</td><td class="num">' + money0(f.restant) + "</td>" +
-          (admin ? '<td class="num pos">' + (f.benefMois == null ? "—" : money0(f.benefMois)) + '</td><td class="num">' + money0(sumBy(retraits.filter((r) => r.boutique === b.code), (r) => r.montant)) + "</td>" : "") + "</tr>";
+        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money0(f.venduMois) + '</td><td class="num">' + money0(f.estimationMois) + '</td><td class="num">' + money0(Math.max(0, f.restant)) + "</td>" +
+          (admin ? '<td class="num pos">' + money0(f.benefMois) + '</td><td class="num">' + money0(sumBy(retraits.filter((r) => r.boutique === b.code), (r) => r.montant)) + "</td>" : "") + "</tr>";
       }).join("") || '<tr><td colspan="6" class="empty">Aucun frigo approvisionné.</td></tr>';
     }
     $("#fr-ventes").innerHTML = ventes.length ? ventes.slice().sort((a, b) => b.date.localeCompare(a.date)).map((v) => "<tr><td>" + esc(jourLong(v.date)) + "</td><td>" + esc(boutiqueName(v.boutique)) +
       '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.saisiPar || "—") + "</td></tr>").join("") : '<tr><td colspan="4" class="empty">Aucune vente déclarée en ' + esc(nomMois) + ".</td></tr>";
-    $("#fr-courses-head").innerHTML = "<tr><th>Date</th><th>Boutique</th><th class=\"num\">Crédit vente ajouté</th>" + (admin ? '<th class="num">Coût de la course</th><th class="num">Bénéfice estimé</th>' : "") + "<th>Saisi par</th></tr>";
-    $("#fr-courses").innerHTML = courses.length ? courses.slice().sort((a, b) => b.date.localeCompare(a.date)).map((c) => "<tr><td>" + fmtDate(c.date) + "</td><td>" + esc(boutiqueName(c.boutique)) + '</td><td class="num"><b>' + money0(c.valeur) + "</b></td>" +
-      (admin ? '<td class="num">' + (c.detail ? money0(c.detail.total) : "—") + '</td><td class="num pos">' + (c.detail ? money0(c.valeur - c.detail.total) : "—") + "</td>" : "") + "<td>" + esc(c.saisiPar || "—") + "</td></tr>").join("")
+    $("#fr-courses-head").innerHTML = "<tr><th>Date</th><th>Boutique</th><th class=\"num\">Total de la course (crédit vente)</th><th class=\"num\">Estimation des ventes</th>" + (admin ? '<th class="num">Bénéfice estimé</th>' : "") + "<th>Saisi par</th></tr>";
+    $("#fr-courses").innerHTML = courses.length ? courses.slice().sort((a, b) => b.date.localeCompare(a.date)).map((c) => "<tr><td>" + fmtDate(c.date) + "</td><td>" + esc(boutiqueName(c.boutique)) + '</td><td class="num"><b>' + money0(c.cout) + '</b></td><td class="num">' + money0(c.valeur) + "</td>" +
+      (admin ? '<td class="num pos">' + money0(c.valeur - c.cout) + "</td>" : "") + "<td>" + esc(c.saisiPar || "—") + "</td></tr>").join("")
       : '<tr><td colspan="6" class="empty">Aucune course en ' + esc(nomMois) + ".</td></tr>";
     if (admin) $("#fr-retraits").innerHTML = retraits.length ? retraits.slice().sort((a, b) => b.date.localeCompare(a.date)).map((r) => "<tr><td>" + fmtDate(r.date) + "</td><td>" + esc(boutiqueName(r.boutique)) +
       '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.note || "—") + "</td><td>" + esc(r.saisiPar || "—") + "</td></tr>").join("") : '<tr><td colspan="5" class="empty">Aucun retrait en ' + esc(nomMois) + ".</td></tr>";

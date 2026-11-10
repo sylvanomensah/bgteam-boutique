@@ -1269,7 +1269,8 @@ drop trigger if exists credit_achats_hier on public.credit_achats;
 create trigger credit_achats_hier before insert on public.credit_achats for each row execute function public.credit_achats_hier();
 
 -- ===================== FRIGO (boissons) =====================
--- L'admin fait une course pour le frigo d'une boutique : sa valeur de vente devient le « crédit vente ».
+-- L'admin fait une course pour le frigo d'une boutique : le TOTAL DE LA COURSE devient le « crédit vente »
+-- (valeur_vente = estimation des ventes = prix de vente × quantité, plafond des ventes déclarables).
 -- Les CC déclarent chaque jour la vente du frigo, qui est déduite du crédit vente restant.
 -- Quand le restant atteint le seuil (5 000 par défaut), une nouvelle course peut être faite.
 alter table public.settings add column if not exists frigo_seuil numeric not null default 5000;
@@ -1302,6 +1303,11 @@ create table if not exists public.frigo_courses_details (
 alter table public.frigo_courses_details enable row level security;
 drop policy if exists frigo_details_admin on public.frigo_courses_details;
 create policy frigo_details_admin on public.frigo_courses_details for all to authenticated using (public.is_admin()) with check (public.is_admin());
+-- Total de la course (= crédit vente), visible par la boutique
+alter table public.frigo_courses add column if not exists montant_course numeric not null default 0;
+update public.frigo_courses c set montant_course = d.total_course from public.frigo_courses_details d where d.course_id = c.id and c.montant_course = 0;
+update public.frigo_courses set montant_course = round(montant_course, 2) where montant_course <> round(montant_course, 2);
+update public.frigo_courses_details set total_course = round(total_course, 2), total_achats = round(total_achats, 2) where total_course <> round(total_course, 2) or total_achats <> round(total_achats, 2);
 -- Enregistrement d'une course (calculs faits par le serveur)
 create or replace function public.frigo_ajouter_course(p_boutique text, p_date date, p_lignes jsonb, p_deplacement numeric, p_sachet numeric, p_autres numeric, p_autres_lib text)
 returns uuid language plpgsql security definer set search_path = public as $$
@@ -1317,8 +1323,12 @@ begin
     v_vente := v_vente + (l->>'qte')::numeric * (l->>'vente')::numeric;
   end loop;
   if v_vente <= 0 then raise exception 'La valeur de vente doit être positive'; end if;
+  v_achats := round(v_achats, 2); v_vente := round(v_vente, 2); -- prix unitaires = total ÷ quantité : on évite les décimales parasites
   select * into prof from public.profiles where id = auth.uid();
-  insert into public.frigo_courses (boutique, date, valeur_vente, saisi_par) values (p_boutique, coalesce(p_date, current_date), v_vente, coalesce(nullif(prof.nom, ''), prof.email, ''))
+  insert into public.frigo_courses (boutique, date, valeur_vente, montant_course, saisi_par)
+    values (p_boutique, coalesce(p_date, current_date), v_vente,
+            v_achats + greatest(coalesce(p_deplacement, 0), 0) + greatest(coalesce(p_sachet, 0), 0) + greatest(coalesce(p_autres, 0), 0),
+            coalesce(nullif(prof.nom, ''), prof.email, ''))
     returning id into v_id;
   insert into public.frigo_courses_details (course_id, lignes, total_achats, frais_deplacement, frais_sachet, frais_autres, frais_autres_lib, total_course)
     values (v_id, p_lignes, v_achats, greatest(coalesce(p_deplacement, 0), 0), greatest(coalesce(p_sachet, 0), 0), greatest(coalesce(p_autres, 0), 0), coalesce(p_autres_lib, ''),
