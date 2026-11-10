@@ -1052,24 +1052,8 @@ $$;
 revoke all on function public.anniversaires_du_jour() from public, anon;
 grant execute on function public.anniversaires_du_jour() to authenticated;
 
--- =====================================================================
--- Notifications sur le téléphone (Web Push) : un abonnement par appareil
--- Envoi par la fonction Supabase « notifier » (anniversaires chaque matin, test par l'admin).
--- =====================================================================
-create table if not exists public.push_abonnements (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
-  cc text,
-  endpoint text not null unique,
-  p256dh text not null,
-  auth text not null,
-  appareil text not null default '',
-  created_at timestamptz not null default now()
-);
-alter table public.push_abonnements enable row level security;
-drop policy if exists push_own on public.push_abonnements;
-create policy push_own on public.push_abonnements for all to authenticated
-  using (user_id = auth.uid() or public.is_admin()) with check (user_id = auth.uid());
+-- Notifications sur le téléphone : abandonnées (l'anniversaire s'affiche seulement dans l'application)
+drop table if exists public.push_abonnements;
 
 -- Jours de repos d'un CC : admin ou CC « RH »
 create or replace function public.set_repos(p_cc text, p_repos smallint[]) returns void

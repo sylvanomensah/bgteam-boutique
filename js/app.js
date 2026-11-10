@@ -2744,8 +2744,7 @@
     $("#rh-fiche").innerHTML = '<div class="card">' +
       '<div class="fiche-head">' + avatarHtml(code, "lg") + "<h2>" + esc(ccName(code)) + (f.sexe === "F" ? " 👩" : f.sexe === "M" ? " 👨" : "") + "</h2>" + statusBadge(st) +
       (f.date_naissance && prochainAnniv(f.date_naissance).indexOf("Aujourd") >= 0 ? '<span class="badge" style="background:#fde7f3;color:#8a3b62">🎂 Anniversaire aujourd\'hui</span>' : "") +
-      "<span>🏬 " + esc(boutiqueName(c.boutique)) + "</span>" + (c.actif ? "" : '<span class="badge mute">CC inactif</span>') +
-      (isAdmin() ? '<button class="btn small" id="rf-push-test" style="margin-left:auto" title="Envoyer une notification de test sur le téléphone de ce CC">🔔 Notification test</button>' : "") + "</div>" +
+      "<span>🏬 " + esc(boutiqueName(c.boutique)) + "</span>" + (c.actif ? "" : '<span class="badge mute">CC inactif</span>') + "</div>" +
       '<div class="fiche-grid">' +
       // Identité & contacts (admin uniquement)
       "<div><h3>Identité & contacts <span class=\"muted\">(confidentiel)</span></h3>" +
@@ -2788,15 +2787,6 @@
         sexe: $("#rf-sexe").value, date_naissance: $("#rf-naiss").value || null, updated_at: new Date().toISOString() };
       if (row.date_naissance && row.date_naissance > today()) return toast("La date de naissance ne peut pas être dans le futur.");
       return act(async () => chk(await sb.from("rh_fiches").upsert(row)), "Fiche RH enregistrée.", e.target);
-    }
-    const pt = e.target.closest("#rf-push-test");
-    if (pt) {
-      pt.disabled = true;
-      return sb.functions.invoke("notifier", { body: { action: "test", cc: code } }).then(({ data, error }) => {
-        pt.disabled = false;
-        if (error) return toast("Envoi impossible : " + errMsg(error));
-        toast(data && data.envoyees ? "Notification envoyée sur " + data.envoyees + " appareil(s) de " + ccName(code) + "." : (data && data.message) || "Aucune notification envoyée.");
-      });
     }
     if (e.target.closest("#cg-new")) return openConge(null, code);
     const ext = e.target.closest("[data-cg-ext]");
@@ -2951,65 +2941,8 @@
               : '<button class="btn small success" data-esp-ok="' + r.id + '">✓ J\'ai bien reçu ' + money0(r.montant) + "</button>") + "</td></tr>").join("") + "</tbody></table></div>"
           : '<p class="muted">Aucune remise d\'argent pour l\'instant.</p>') + "</div>";
     }
-    // Notifications sur ce téléphone
-    h += '<div class="card" style="grid-column:1/-1"><h2>🔔 Notifications sur ce téléphone</h2><div id="push-zone"><p class="hint" style="margin:0">Vérification…</p></div></div>';
     $("#compte-body").innerHTML = h + "</div>";
-    renderPushZone();
   }
-  // ---- Notifications push (Web Push) ----
-  function pushPossible() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && !!cfg.vapidPublicKey; }
-  function cleVapid(b64) {
-    const p = (b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
-    return Uint8Array.from(atob(p), (c) => c.charCodeAt(0));
-  }
-  async function abonnementActuel() {
-    if (!pushPossible()) return null;
-    const reg = await navigator.serviceWorker.getRegistration();
-    return reg ? reg.pushManager.getSubscription() : null;
-  }
-  async function renderPushZone() {
-    const z = $("#push-zone");
-    if (!z) return;
-    if (!pushPossible()) {
-      z.innerHTML = '<p class="hint" style="margin:0">Ce téléphone ou ce navigateur ne permet pas les notifications. Sur Android, utilisez l\'application installée ou Chrome. Sur iPhone, installez d\'abord l\'application sur l\'écran d\'accueil (iOS 16.4 minimum).</p>';
-      return;
-    }
-    const sub = await abonnementActuel().catch(() => null);
-    const refuse = Notification.permission === "denied";
-    z.innerHTML = sub && Notification.permission === "granted"
-      ? '<p style="margin:0 0 10px"><span class="badge ok">✓ Activées</span> Vous recevrez les notifications (anniversaires, messages de l\'équipe) même application fermée.</p><button class="btn small" id="push-off">Désactiver sur ce téléphone</button>'
-      : refuse
-        ? '<p class="hint" style="margin:0">Les notifications ont été <b>bloquées</b> pour cette application. Autorisez-les dans les réglages du téléphone (Paramètres → Applications → BGTeam / Chrome → Notifications), puis revenez ici.</p>'
-        : '<p class="hint" style="margin:0 0 10px">Recevez les notifications de l\'équipe (par exemple les anniversaires) directement sur ce téléphone, même quand l\'application est fermée.</p><button class="btn primary" id="push-on">🔔 Activer les notifications</button>';
-  }
-  async function activerPush(btn) {
-    try {
-      btn.disabled = true;
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") { toast("Notifications refusées."); return renderPushZone(); }
-      const reg = await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cleVapid(cfg.vapidPublicKey) });
-      const j = sub.toJSON();
-      chk(await sb.from("push_abonnements").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, cc: me.cc || null, appareil: (navigator.userAgent.match(/\(([^)]+)\)/) || [])[1] || "" }, { onConflict: "endpoint" }));
-      toast("Notifications activées sur ce téléphone. 🔔");
-    } catch (e) { toast("Activation impossible : " + errMsg(e)); }
-    btn.disabled = false;
-    renderPushZone();
-  }
-  async function desactiverPush(btn) {
-    try {
-      btn.disabled = true;
-      const sub = await abonnementActuel();
-      if (sub) { await sb.from("push_abonnements").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
-      toast("Notifications désactivées sur ce téléphone.");
-    } catch (e) { toast(errMsg(e)); }
-    renderPushZone();
-  }
-  $("#compte-body").addEventListener("click", (e) => {
-    if (e.target.closest("#push-on")) activerPush(e.target.closest("#push-on"));
-    if (e.target.closest("#push-off")) desactiverPush(e.target.closest("#push-off"));
-  });
   $("#compte-body").addEventListener("click", (e) => {
     const b = e.target.closest("[data-esp-ok]");
     if (!b) return;
