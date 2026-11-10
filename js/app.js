@@ -3224,8 +3224,8 @@
   function fcSummary(s) {
     const frais = s.deplacement + s.sachet + s.autres, total = s.achats + frais, marge = s.vente - total;
     return '<div class="sum-row"><span>Sous-total des achats</span><b>' + money2(s.achats) + "</b></div>" +
-      '<div class="sum-row"><span>Déplacement</span><span>' + money2(s.deplacement) + "</span></div>" +
-      '<div class="sum-row"><span>Sachet</span><span>' + money2(s.sachet) + "</span></div>" +
+      '<div class="sum-row"><span>Frais de retrait mobile money</span><span>' + money2(s.sachet) + "</span></div>" +
+      '<div class="sum-row"><span>Transport aller-retour</span><span>' + money2(s.deplacement) + "</span></div>" +
       '<div class="sum-row"><span>' + esc(s.autresLib || "Autres frais") + "</span><span>" + money2(s.autres) + "</span></div>" +
       '<div class="sum-row"><span>Total des frais</span><span>' + money2(frais) + "</span></div>" +
       '<div class="sum-row big"><span>TOTAL DE LA COURSE = CRÉDIT VENTE</span><span>' + money2(total) + "</span></div>" +
@@ -3340,7 +3340,7 @@
     const courses = db.fgCourses.filter((c) => codes.includes(c.boutique) && c.date.slice(0, 7) === mois);
     const retraits = db.fgRetraits.filter((r) => codes.includes(r.boutique) && r.date.slice(0, 7) === mois);
     const k = (label, val, sub, cls) => '<div class="kpi ' + (cls || "") + '"><div class="label">' + label + '</div><div class="value">' + val + (sub ? "<small>" + sub + "</small>" : "") + "</div></div>";
-    $("#fr-kpis").innerHTML = k("Courses (crédit vente)", money2(sumBy(courses, (c) => c.cout)), courses.length + " course" + (courses.length > 1 ? "s" : "") + " · achats + déplacement + sachet") +
+    $("#fr-kpis").innerHTML = k("Courses (crédit vente)", money2(sumBy(courses, (c) => c.cout)), courses.length + " course" + (courses.length > 1 ? "s" : "") + " · achats + frais") +
       k("Estimation des ventes", money2(sumBy(courses, (c) => c.valeur)), "prix de vente × quantité achetée") +
       k("Vendu en caisse", money2(sumBy(ventes, (x) => x.montant)), num(sumBy(ventes, (x) => x.qte)) + " article(s)" + (admin ? " · crédit consommé " + money2(sumBy(ventes, (x) => x.consomme)) : "")) +
       (admin ? k("Bénéfice estimé", money2(sumBy(courses, (c) => c.valeur - c.cout)), "somme des marges des produits achetés", "hero") +
