@@ -2631,7 +2631,7 @@
   function canCreditSaisie() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.credit); }
   let crOp = "YAS";
   const OPS = ["YAS", "MOOV"];
-  const logoOp = (op, sm) => op === "YAS" ? '<span class="logo-op yas' + (sm ? " sm" : "") + '">yas</span>' : '<span class="logo-op moov' + (sm ? " sm" : "") + '">moov' + (sm ? "" : "<small>africa</small>") + "</span>";
+  const logoOp = (op, sm) => '<img class="logo-op ' + op.toLowerCase() + (sm ? " sm" : "") + '" src="icons/' + op.toLowerCase() + '.png" alt="' + op + '">';
   function premierDuMois(d) { return d.slice(0, 7) + "-01"; }
   function tauxOp(op) { return op === "YAS" ? db.settings.tauxYas : db.settings.tauxMoov; }
   function montantDefaut(op, bq) { const b = boutiqueByCode(bq); return op === "YAS" ? (b ? b.dotYas : 20000) : (b ? b.dotMoov : 10000); }
