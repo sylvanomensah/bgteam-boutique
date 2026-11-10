@@ -3120,7 +3120,10 @@
       return '<div class="perm-card"><div class="perm-head">' + avatarHtml(c.code) + '<div><b>' + esc(ccName(c.code)) + "</b><small>🏬 " + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") +
         (user ? " · " + esc(user.email) : "") + "</small></div>" + (c.actif ? "" : '<span class="badge mute">Inactif</span>') +
         '<button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></div>' + permsHtml(c) + "</div>";
-    }).join("") : '<p class="empty">Aucun CC ne correspond à la recherche.</p>';
+    }).join("") : '<p class="empty">' + (f && f !== "inactifs"
+      ? "Aucun CC " + (b !== "ALL" && b !== "NONE" ? "de " + esc(boutiqueName(b)) + " " : "") + "n'a l'autorisation « " + esc($("#rp-filtre").selectedOptions[0].text) +
+        " ». Pour la donner : choisissez « Tous les CC actifs », trouvez le CC, puis activez l'interrupteur sur sa carte."
+      : "Aucun CC ne correspond à la recherche.") + "</p>";
   }
   ["#rp-search", "#rp-boutique", "#rp-filtre"].forEach((id) => $(id).addEventListener(id === "#rp-search" ? "input" : "change", renderPerms));
   $("#cc-search").addEventListener("input", renderCcTable);
