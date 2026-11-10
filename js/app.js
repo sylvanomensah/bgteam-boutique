@@ -2637,7 +2637,7 @@
 
   function renderRhFilters() {
     const bcur = $("#rh-boutique").value || "ALL";
-    $("#rh-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("") +
+    $("#rh-boutique").innerHTML = '<option value="ALL">— Choisir une boutique —</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("") +
       '<option value="NONE">CC non affectés</option>';
     $("#rh-boutique").value = Array.from($("#rh-boutique").options).some((o) => o.value === bcur) ? bcur : "ALL";
     const b = $("#rh-boutique").value;
@@ -2655,8 +2655,20 @@
 
   // Fiche RH complète d'un CC (admin)
   function renderFiche() {
-    const code = $("#rh-cc").value;
-    if (!code || code === "ALL") { $("#rh-fiche").innerHTML = '<div class="card"><p class="hint" style="margin:0">Choisissez une boutique puis un CC pour afficher sa fiche RH (repos, congés, contacts, notes).</p></div>'; return; }
+    const bq = $("#rh-boutique").value;
+    let code = $("#rh-cc").value;
+    // Il faut d'abord choisir une boutique, puis cliquer sur un de ses CC
+    if (!bq || bq === "ALL") {
+      $("#rh-cc-chips").innerHTML = "";
+      $("#rh-fiche").innerHTML = '<div class="card"><p class="hint" style="margin:0">🏬 Sélectionnez une <b>boutique</b> dans le filtre ci-dessus pour afficher ses CC et leurs fiches.</p></div>';
+      return;
+    }
+    const ccsBq = db.settings.ccList.filter((c) => (bq === "NONE" ? !c.boutique : c.boutique === bq)).sort((a, b) => (a.actif === b.actif ? 0 : a.actif ? -1 : 1));
+    if (code && code !== "ALL" && !ccsBq.some((c) => c.code === code)) code = "ALL";
+    $("#rh-cc-chips").innerHTML = '<div class="card"><h2 style="margin-bottom:10px">CC de ' + esc(bq === "NONE" ? "aucune boutique" : boutiqueName(bq)) + "</h2>" +
+      '<div class="chips">' + (ccsBq.length ? ccsBq.map((c) => '<button class="chip' + (c.code === code ? " chip-on" : "") + (c.actif ? "" : " chip-off") + '" data-fiche-cc="' + esc(c.code) + '">' +
+        avatarHtml(c.code, "xs") + esc(ccName(c.code)) + "</button>").join("") : '<span class="muted">Aucun CC dans cette boutique.</span>') + "</div></div>";
+    if (!code || code === "ALL") { $("#rh-fiche").innerHTML = '<div class="card"><p class="hint" style="margin:0">Cliquez sur un CC ci-dessus pour afficher sa fiche (repos, congés, contacts, notes).</p></div>'; return; }
     const c = ccByCode(code);
     const f = db.fiches.find((x) => x.cc === code) || {};
     const st = ccStatusOn(code, today());
@@ -2798,6 +2810,12 @@
       '<div class="today-grid">' + col("service", "✓ Au travail") + col("repos", "🛌 De repos") + col("conge", "🏖 En congé") + "</div>" +
       '<p class="hint" style="margin:12px 0 0">Cliquez sur un CC pour ouvrir sa fiche (repos, congés).</p></div>';
   }
+  $("#rh-cc-chips").addEventListener("click", (e) => {
+    const c = e.target.closest("[data-fiche-cc]");
+    if (!c) return;
+    $("#rh-cc").value = c.dataset.ficheCc;
+    renderFiche();
+  });
   $("#rh-today").addEventListener("click", (e) => {
     const j = e.target.closest("[data-jour]");
     if (j) { rhJour = j.dataset.jour === "0" ? today() : addDays(rhJour || today(), Number(j.dataset.jour)); return renderPlanning(); }
@@ -3113,8 +3131,8 @@
     // CC « RH » : seulement Fiche CC et Planning
     if (isRhCc() && !["fiche", "planning"].includes(t)) t = "fiche";
     $("#rh-filters").classList.toggle("hidden", !["fiche", "planning"].includes(t));
-    // Présences : seulement le filtre Boutique (pas de filtre CC)
-    $("#rh-cc").closest("label").classList.toggle("hidden", t === "planning");
+    // Le choix du CC se fait en cliquant sur ses pastilles : le filtre « Code commercial » est masqué
+    $("#rh-cc").closest("label").classList.add("hidden");
     rhTab = t;
     try { localStorage.setItem("rhTab", t); } catch (e) {}
     document.querySelectorAll("#rh-tabs [data-rh-tab]").forEach((b) => b.classList.toggle("active", b.dataset.rhTab === t));

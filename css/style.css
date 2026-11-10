@@ -208,6 +208,9 @@ body.role-vendeur .admin-only { display: none !important; }
 body.no-entrees .only-entrees { display: none !important; }
 body.no-rh .need-rh, body.rh-limite #rh-kpis,
 body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-tab="planning"]) { display: none !important; }
+/* RH : choix du CC par pastilles */
+.chip.chip-on { background: var(--primary); color: #fff; border-color: var(--primary); }
+.chip.chip-off { opacity: .55; }
 /* RH : boutiques en liste compacte */
 .bq-list td { vertical-align: middle; }
 .bq-list .bq-name { min-width: 170px; max-width: 240px; font-weight: 650; }
