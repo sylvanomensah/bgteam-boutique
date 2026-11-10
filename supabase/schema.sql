@@ -1230,10 +1230,10 @@ alter table public.credit_ventes enable row level security;
 drop policy if exists credit_ventes_select on public.credit_ventes;
 create policy credit_ventes_select on public.credit_ventes for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
--- Un CC déclare la vente d'aujourd'hui ou un jour oublié (dans l'ordre), une seule fois (pas de modification : l'admin corrige)
+-- Un CC déclare la vente d'aujourd'hui ou l'oubli d'hier, une seule fois (pas de modification : l'admin corrige)
 drop policy if exists credit_ventes_insert on public.credit_ventes;
 create policy credit_ventes_insert on public.credit_ventes for insert to authenticated
-  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between date '2026-11-10' and current_date and created_by = auth.uid()));
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date and created_by = auth.uid()));
 drop policy if exists credit_ventes_update on public.credit_ventes;
 create policy credit_ventes_update on public.credit_ventes for update to authenticated using (public.is_admin()) with check (public.is_admin());
 drop policy if exists credit_ventes_delete on public.credit_ventes;
@@ -1245,35 +1245,12 @@ language sql stable security definer set search_path = public as $$
   select current_date - 1 >= date '2026-11-10'
     and not exists (select 1 from public.credit_ventes where boutique = p_boutique and date = current_date - 1);
 $$;
--- Plus ancien jour passé sans vente déclarée (depuis le 10/11/2026 ou la 1re activité crédit de la boutique), sinon null
-create or replace function public.credit_premier_manquant(p_boutique text) returns date
-language plpgsql security definer set search_path = public as $$
-declare v_debut date; v_d date;
-begin
-  select min(x) into v_debut from (
-    select min(date) x from public.credit_achats where boutique = p_boutique
-    union all select min(date) from public.credit_ventes where boutique = p_boutique
-    union all select min(date) from public.credit_soldes where boutique = p_boutique) s;
-  if v_debut is null then return null; end if;
-  v_debut := greatest(v_debut, date '2026-11-10');
-  select min(g::date) into v_d from generate_series(v_debut, current_date - 1, interval '1 day') g
-    where not exists (select 1 from public.credit_ventes v where v.boutique = p_boutique and v.date = g::date);
-  return v_d;
-end $$;
-create or replace function public.credit_hier_manquant(p_boutique text) returns boolean
-language plpgsql security definer set search_path = public as $$
-begin return public.credit_premier_manquant(p_boutique) is not null; end $$;
--- Les jours se déclarent dans l'ordre : le plus ancien oubli d'abord, aujourd'hui en dernier
 create or replace function public.credit_ventes_before() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare v_m date;
 begin
   if public.is_admin() then return new; end if;
-  -- l'autre réseau d'un jour déjà commencé peut toujours être complété
-  if exists (select 1 from public.credit_ventes where boutique = new.boutique and date = new.date) then return new; end if;
-  v_m := public.credit_premier_manquant(new.boutique);
-  if coalesce(v_m, current_date) <> new.date then
-    raise exception 'Déclarez d''abord le crédit vendu du %', to_char(coalesce(v_m, current_date), 'DD/MM/YYYY');
+  if new.date = current_date and public.credit_hier_manquant(new.boutique) then
+    raise exception 'Déclarez d''abord le crédit vendu hier (oubli) avant celui d''aujourd''hui';
   end if;
   return new;
 end $$;
@@ -1284,7 +1261,7 @@ create or replace function public.credit_achats_hier() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   if not public.is_admin() and public.credit_hier_manquant(new.boutique) then
-    raise exception 'Déclarez d''abord le crédit vendu du % avant de faire une nouvelle recharge', to_char(public.credit_premier_manquant(new.boutique), 'DD/MM/YYYY');
+    raise exception 'Déclarez d''abord le crédit vendu hier avant de faire une nouvelle recharge';
   end if;
   return new;
 end $$;
