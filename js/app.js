@@ -3071,7 +3071,7 @@
   // L'admin fait une course : sa valeur de vente devient le « crédit vente » du frigo de la boutique.
   // Les CC déclarent chaque soir la vente du frigo (l'oubli d'hier d'abord), déduite du crédit vente restant.
   // Quand le restant atteint le seuil (5 000 par défaut), une nouvelle course est possible.
-  let fgTab = "ops", fcLignes = [{ nom: "", qte: "", achat: "", vente: "" }];
+  let fgTab = "ops", fcLignes = [{ code: "", qte: "", total: "" }];
   const FRIGO_DEBUT = "2026-11-10";
   const sumBy = (l, f) => l.reduce((a, x) => a + (Number(f(x)) || 0), 0);
   function canFrigo() { return isAdmin() || isGlobal() || !!myBoutiqueCode(); }
@@ -3174,7 +3174,6 @@
         : fi.seuilAtteint ? "✅ Seuil atteint (restant <b>" + money0(fi.restant) + "</b> ≤ " + money0(db.settings.frigoSeuil) + ") : nouvelle course possible pour <b>" + esc(boutiqueName(sbq)) + "</b>."
         : "🔒 Nouvelle course possible quand le crédit vente restant atteint <b>" + money0(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money0(fi.restant) + "</b>).";
       if (!$("#fc-date").value) $("#fc-date").value = t;
-      $("#fc-produits").innerHTML = Array.from(new Set(db.fgCourses.flatMap((c) => c.detail ? c.detail.lignes.map((l) => l.nom) : []))).map((n) => '<option value="' + esc(n) + '">').join("");
       renderFcLignes();
       // Retrait
       $("#fx-info").innerHTML = sbq ? "Argent des ventes disponible pour " + esc(boutiqueName(sbq)) + " : <b>" + money0(fi.aRetirer) + "</b>." : "Choisissez une boutique dans le filtre.";
@@ -3219,65 +3218,73 @@
       '<div class="sum-row"><span>Crédit vente du frigo (valeur de vente)</span><b>' + money0(s.vente) + "</b></div>" +
       '<div class="sum-row"><span>Bénéfice estimé</span><b>' + margeHtml(marge, s.vente > 0 ? (marge / s.vente) * 100 : null) + "</b></div>";
   }
+  // Lignes de course : même principe que « recopiez le reçu du marché » (Entrées de stock) :
+  // produit choisi dans le catalogue, quantité, prix total payé → prix d'achat unitaire, prix de vente du catalogue, marge unitaire
   function renderFcLignes() {
-    $("#fc-lines").innerHTML = fcLignes.map((l, i) => '<tr data-i="' + i + '">' +
-      '<td><input class="fc-in" data-k="nom" list="fc-produits" value="' + esc(l.nom) + '" placeholder="Ex. : Coca 33 cl"></td>' +
-      '<td><input class="fc-in" type="number" min="0" data-k="qte" value="' + esc(l.qte) + '"></td>' +
-      '<td><input class="fc-in" type="number" min="0" data-k="achat" value="' + esc(l.achat) + '"></td>' +
-      '<td><input class="fc-in" type="number" min="0" data-k="vente" value="' + esc(l.vente) + '"></td>' +
-      '<td class="num" data-tot="achat">' + money0((Number(l.qte) || 0) * (Number(l.achat) || 0)) + '</td><td class="num" data-tot="vente">' + money0((Number(l.qte) || 0) * (Number(l.vente) || 0)) +
-      '</td><td><button class="btn small danger" data-fc-rm="' + i + '">✕</button></td></tr>').join("");
-    majFcSummary();
+    $("#fc-lines").innerHTML = fcLignes.map((l, i) => '<tr data-i="' + i + '"><td><select data-k="code"><option value="">— Choisir —</option>' + productOptions(l.code) + "</select></td>" +
+      '<td class="num"><input type="number" min="1" data-k="qte" value="' + esc(l.qte) + '"></td>' +
+      '<td class="num"><input type="number" min="0" data-k="total" value="' + esc(l.total) + '"></td>' +
+      '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
+      '<td><button class="btn small danger" data-fc-rm="' + i + '" title="Retirer">✕</button></td></tr>').join("");
+    majFcCalc();
   }
   function fcTotaux() {
-    const lignes = fcLignes.filter((l) => l.nom.trim() || Number(l.qte));
-    return { lignes, achats: sumBy(lignes, (l) => (Number(l.qte) || 0) * (Number(l.achat) || 0)), vente: sumBy(lignes, (l) => (Number(l.qte) || 0) * (Number(l.vente) || 0)),
-      deplacement: Number($("#fc-deplacement").value) || 0, sachet: Number($("#fc-sachet").value) || 0, autres: Number($("#fc-autres").value) || 0, autresLib: $("#fc-autres-lib").value.trim() };
+    const lignes = fcLignes.filter((l) => l.code || Number(l.qte) || Number(l.total));
+    const ok = lignes.filter((l) => l.code && Number(l.qte) > 0 && l.total !== "" && Number(l.total) >= 0);
+    const deplacement = Number($("#fc-deplacement").value) || 0, sachet = Number($("#fc-sachet").value) || 0, autres = Number($("#fc-autres").value) || 0;
+    const achats = sumBy(ok, (l) => Number(l.total)), frais = deplacement + sachet + autres;
+    const calc = (l) => {
+      if (!ok.includes(l)) return null;
+      const p = productByCode(l.code) || {}, qte = Number(l.qte), pu = Number(l.total) / qte, pv = Number(p.pv) || 0;
+      const part = achats > 0 ? (frais * Number(l.total) / achats) / qte : 0; // frais répartis au prorata du prix d'achat
+      return { nom: p.nom || l.code, code: l.code, qte, pu, pv, mu: pv - pu - part };
+    };
+    return { lignes, ok, calc, achats, vente: sumBy(ok, (l) => Number(l.qte) * (Number((productByCode(l.code) || {}).pv) || 0)), deplacement, sachet, autres, autresLib: $("#fc-autres-lib").value.trim() };
   }
-  function majFcSummary() { $("#fc-summary").innerHTML = fcSummary(fcTotaux()); }
-  // Derniers prix connus d'un produit (pour pré-remplir)
-  function dernierPrixFrigo(nom) {
-    const n = nom.trim().toLowerCase(); if (!n) return null;
-    for (const c of db.fgCourses.slice().sort((a, b) => b.date.localeCompare(a.date))) {
-      const l = c.detail && c.detail.lignes.find((x) => String(x.nom).trim().toLowerCase() === n);
-      if (l) return l;
-    }
-    return null;
+  function majFcCalc() {
+    const s = fcTotaux();
+    fcLignes.forEach((l, i) => {
+      const tr = document.querySelector('#fc-lines tr[data-i="' + i + '"]'); if (!tr) return;
+      const r = s.calc(l), set = (k, v) => { tr.querySelector('[data-c="' + k + '"]').innerHTML = v; };
+      if (!r) return ["pu", "pv", "mu"].forEach((k) => set(k, '<span class="muted">—</span>'));
+      set("pu", money0(r.pu)); set("pv", r.pv > 0 ? money0(r.pv) : '<span class="neg">prix de vente manquant</span>'); set("mu", margeHtml(r.mu, r.pv > 0 ? (r.mu / r.pv) * 100 : null));
+    });
+    $("#fc-summary").innerHTML = fcSummary(s);
   }
+  const majFcSummary = majFcCalc;
   $("#fc-lines").addEventListener("input", (e) => {
-    const inp = e.target.closest("[data-k]"); if (!inp) return;
-    const tr = inp.closest("tr"), i = Number(tr.dataset.i), k = inp.dataset.k;
-    fcLignes[i][k] = inp.value;
-    if (k === "nom") {
-      const p = dernierPrixFrigo(inp.value);
-      if (p) { if (!fcLignes[i].achat) { fcLignes[i].achat = p.achat; tr.querySelector('[data-k="achat"]').value = p.achat; } if (!fcLignes[i].vente) { fcLignes[i].vente = p.vente; tr.querySelector('[data-k="vente"]').value = p.vente; } }
-    }
-    const l = fcLignes[i];
-    tr.querySelector('[data-tot="achat"]').textContent = money0((Number(l.qte) || 0) * (Number(l.achat) || 0));
-    tr.querySelector('[data-tot="vente"]').textContent = money0((Number(l.qte) || 0) * (Number(l.vente) || 0));
-    majFcSummary();
+    const el = e.target.closest("[data-k]"); if (!el || el.dataset.k === "code") return;
+    fcLignes[Number(el.closest("tr").dataset.i)][el.dataset.k] = el.value;
+    majFcCalc();
+  });
+  $("#fc-lines").addEventListener("change", (e) => {
+    const el = e.target.closest('[data-k="code"]'); if (!el) return;
+    fcLignes[Number(el.closest("tr").dataset.i)].code = el.value;
+    majFcCalc();
+    const q = el.closest("tr").querySelector('[data-k="qte"]'); if (el.value && !q.value) q.focus();
   });
   $("#fc-lines").addEventListener("click", (e) => {
     const b = e.target.closest("[data-fc-rm]"); if (!b) return;
     fcLignes.splice(Number(b.dataset.fcRm), 1);
-    if (!fcLignes.length) fcLignes.push({ nom: "", qte: "", achat: "", vente: "" });
+    if (!fcLignes.length) fcLignes.push({ code: "", qte: "", total: "" });
     renderFcLignes();
   });
-  $("#fc-add").addEventListener("click", () => { fcLignes.push({ nom: "", qte: "", achat: "", vente: "" }); renderFcLignes(); const ins = document.querySelectorAll("#fc-lines [data-k=nom]"); ins[ins.length - 1].focus(); });
+  $("#fc-add").addEventListener("click", () => { fcLignes.push({ code: "", qte: "", total: "" }); renderFcLignes(); const ins = document.querySelectorAll("#fc-lines [data-k=code]"); ins[ins.length - 1].focus(); });
   ["#fc-deplacement", "#fc-sachet", "#fc-autres", "#fc-autres-lib"].forEach((id) => $(id).addEventListener("input", majFcSummary));
   $("#fc-save").addEventListener("click", (e) => {
     const bq = frigoBq(), s = fcTotaux();
     if (!bq) return toast("Choisissez une boutique dans le filtre.");
     if (!frigoInfo(bq, today().slice(0, 7)).seuilAtteint) return toast("Le crédit vente restant n'a pas encore atteint le seuil.");
     if (!s.lignes.length) return toast("Ajoutez au moins un produit.");
-    const bad = s.lignes.find((l) => !l.nom.trim() || !(Number(l.qte) > 0) || !(Number(l.achat) >= 0) || l.achat === "" || !(Number(l.vente) > 0));
-    if (bad) return toast("Complétez chaque ligne : produit, quantité, prix d'achat et prix de vente.");
+    const bad = s.lignes.find((l) => !s.ok.includes(l)), sansPv = s.ok.map(s.calc).find((r) => !(r.pv > 0));
+    if (bad) return toast("Complétez chaque ligne : produit, quantité et prix total payé.");
+    if (sansPv) return toast("« " + sansPv.nom + " » n'a pas de prix de vente : définissez-le d'abord dans Stock.");
     const total = s.achats + s.deplacement + s.sachet + s.autres;
     if (!confirm("Enregistrer la course du frigo de " + boutiqueName(bq) + " ?\n\nTotal de la course : " + money0(total) + "\nCrédit vente ajouté : " + money0(s.vente) + "\nBénéfice estimé : " + money0(s.vente - total))) return;
-    const lignes = s.lignes.map((l) => ({ nom: l.nom.trim(), qte: Number(l.qte), achat: Number(l.achat), vente: Number(l.vente) }));
+    const lignes = s.ok.map(s.calc).map((r) => ({ nom: r.nom, code: r.code, qte: r.qte, achat: r.pu, vente: r.pv }));
     act(async () => {
       chk(await sb.rpc("frigo_ajouter_course", { p_boutique: bq, p_date: $("#fc-date").value || today(), p_lignes: lignes, p_deplacement: s.deplacement, p_sachet: s.sachet, p_autres: s.autres, p_autres_lib: s.autresLib }));
-      fcLignes = [{ nom: "", qte: "", achat: "", vente: "" }];
+      fcLignes = [{ code: "", qte: "", total: "" }];
       ["#fc-deplacement", "#fc-sachet", "#fc-autres"].forEach((id) => { $(id).value = 0; }); $("#fc-autres-lib").value = "";
     }, "Course enregistrée : " + money0(s.vente) + " ajoutés au crédit vente du frigo.", e.target);
   });
