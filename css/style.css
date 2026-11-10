@@ -652,4 +652,18 @@ details.help .hint { margin: 8px 0 0; }
   .view { display: none !important; }
   #view-facture { display: block !important; }
   .receipt { border: 0; max-width: 80mm; padding: 0; }
+  body.print-recap #view-facture { display: none !important; }
+  body.print-recap #view-credit { display: block !important; }
+  body.print-recap #view-credit .title-filter, body.print-recap .recap-actions { display: none !important; }
+  body.print-recap .card, body.print-recap .kpi { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
 }
+/* Crédit : titre du mois + onglets Opérations / Récap */
+.cr-tabs { margin: 0; flex: 0 0 auto; padding: 3px; }
+.cr-tabs button { padding: 7px 14px; font-size: .9rem; flex: 0 0 auto; }
+.recap-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px; }
+.recap-head h2 { margin: 0 0 4px; font-size: 1.35rem; overflow-wrap: anywhere; }
+.recap-head > div:first-child { min-width: 0; flex: 1 1 240px; }
+.recap-actions { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.recap-actions label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; font-weight: 650; color: var(--muted); }
+.kpi .value small { display: block; font-size: .78rem; font-weight: 600; color: var(--muted); margin-top: 2px; }
+.kpi .label img.logo-op.sm { margin-right: 6px; }

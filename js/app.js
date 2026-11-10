@@ -2629,7 +2629,7 @@
   // ---------- Crédit télécom (YAS / MOOV) ----------
   // Saisie : admin, ou CC autorisé (ccs.credit) pour sa boutique. Consultation : tous les CC de la boutique.
   function canCreditSaisie() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.credit); }
-  let crOp = "YAS";
+  let crOp = "YAS", crTab = "ops";
   const OPS = ["YAS", "MOOV"];
   const logoOp = (op, sm) => '<img class="logo-op ' + op.toLowerCase() + (sm ? " sm" : "") + '" src="icons/' + op.toLowerCase() + '.png" alt="' + op + '">';
   function premierDuMois(d) { return d.slice(0, 7) + "-01"; }
@@ -2700,7 +2700,13 @@
       $("#cr-boutique").disabled = true;
     }
     if (!$("#cr-mois").value) $("#cr-mois").value = t.slice(0, 7);
-    const mois = $("#cr-mois").value, scope = creditScope(), codes = scope.map((b) => b.code);
+    // Écran principal : toujours le mois en cours ; le Récap permet de choisir un autre mois
+    const mois = t.slice(0, 7), scope = creditScope(), codes = scope.map((b) => b.code);
+    $("#cr-titre").textContent = "Opérations de " + fmtMonth(mois + "-01");
+    document.querySelectorAll("#cr-tabs [data-cr-tab]").forEach((b) => b.classList.toggle("active", b.dataset.crTab === crTab));
+    $("#cr-main").classList.toggle("hidden", crTab !== "ops");
+    $("#cr-recap").classList.toggle("hidden", crTab !== "recap");
+    if (crTab === "recap") renderRecapCredit(scope);
 
     // Alertes anti-fraude (admin / toutes boutiques) : recharges non déclarées des 30 derniers jours
     const anom = glob ? anomaliesCredit(codes, addDays(t, -30)) : [];
@@ -2786,6 +2792,54 @@
       if (document.activeElement !== $("#cr-set-moov")) $("#cr-set-moov").value = db.settings.tauxMoov;
     }
   }
+  // Récap d'un mois : crédits achetés YAS / MOOV, commission générée, historiques
+  function renderRecapCredit(scope) {
+    const mois = $("#cr-mois").value || today().slice(0, 7), codes = scope.map((b) => b.code), s = (l, f) => l.reduce((a, x) => a + f(x), 0);
+    const nomMois = fmtMonth(mois + "-01");
+    $("#rc-titre").textContent = "Récap des opérations — " + nomMois;
+    $("#rc-sous").textContent = (scope.length === 1 ? scope[0].nom : scope.length === db.boutiques.length ? "Toutes les boutiques" : scope.length + " boutiques") + " · édité le " + fmtDate(today());
+    const ach = db.crAchats.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois);
+    const yas = ach.filter((x) => x.op === "YAS"), moov = ach.filter((x) => x.op === "MOOV");
+    const vers = db.crVers.filter((v) => codes.includes(v.boutique) && String(v.createdAt || v.mois).slice(0, 7) === mois);
+    const versRecu = s(vers.filter((v) => v.statut === "Reçue"), (v) => v.montant);
+    const k = (label, val, sub, cls) => '<div class="kpi ' + (cls || "") + '"><div class="label">' + label + '</div><div class="value">' + val + (sub ? "<small>" + sub + "</small>" : "") + "</div></div>";
+    $("#rc-kpis").innerHTML =
+      k(logoOp("YAS", true) + "Crédit YAS acheté", money0(s(yas, (x) => x.montant)), yas.length + " recharge" + (yas.length > 1 ? "s" : "")) +
+      k(logoOp("MOOV", true) + "Crédit MOOV acheté", money0(s(moov, (x) => x.montant)), moov.length + " recharge" + (moov.length > 1 ? "s" : "")) +
+      k("Total crédit acheté", money0(s(ach, (x) => x.montant)), ach.length + " recharge" + (ach.length > 1 ? "s" : "") + " au total") +
+      k("Commission générée", money0(s(ach, (x) => x.commission)), "YAS " + money0(s(yas, (x) => x.commission)) + " · MOOV " + money0(s(moov, (x) => x.commission)), "hero") +
+      k("Commission reversée (validée)", money0(versRecu), vers.length ? vers.length + " versement" + (vers.length > 1 ? "s" : "") + " déclaré" + (vers.length > 1 ? "s" : "") + " ce mois" : "aucun versement ce mois");
+    // Par boutique (si plusieurs)
+    $("#rc-bq-card").classList.toggle("hidden", scope.length < 2);
+    if (scope.length > 1) {
+      $("#rc-bq").innerHTML = scope.map((b) => {
+        const a = ach.filter((x) => x.boutique === b.code), y = a.filter((x) => x.op === "YAS"), m = a.filter((x) => x.op === "MOOV");
+        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + y.length + '</td><td class="num">' + money0(s(y, (x) => x.montant)) + '</td><td class="num">' + m.length +
+          '</td><td class="num">' + money0(s(m, (x) => x.montant)) + '</td><td class="num pos"><b>' + money0(s(a, (x) => x.commission)) + "</b></td></tr>";
+      }).join("") + '<tr class="total-row"><td><b>Total</b></td><td class="num"><b>' + yas.length + '</b></td><td class="num"><b>' + money0(s(yas, (x) => x.montant)) + '</b></td><td class="num"><b>' + moov.length +
+        '</b></td><td class="num"><b>' + money0(s(moov, (x) => x.montant)) + '</b></td><td class="num pos"><b>' + money0(s(ach, (x) => x.commission)) + "</b></td></tr>";
+    }
+    const heure = (d) => d ? new Date(d).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
+    $("#rc-rech").innerHTML = ach.length ? ach.slice().sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt))).map((x) =>
+      "<tr><td>" + fmtDate(x.date) + "</td><td>" + heure(x.createdAt) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) + '</td><td class="num">' + money0(x.montant) +
+      '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + esc(x.saisiPar || "—") + "</td></tr>").join("")
+      : '<tr><td colspan="7" class="empty">Aucune recharge en ' + esc(nomMois) + ".</td></tr>";
+    // Crédit restant chaque soir (une ligne par jour et par boutique)
+    const jours = {};
+    db.crSoldes.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).forEach((x) => {
+      const key = x.date + "|" + x.boutique; jours[key] = jours[key] || { date: x.date, bq: x.boutique, par: x.saisiPar };
+      jours[key][x.op] = x.solde;
+    });
+    const lj = Object.values(jours).sort((a, b) => b.date.localeCompare(a.date) || boutiqueName(a.bq).localeCompare(boutiqueName(b.bq)));
+    $("#rc-clot").innerHTML = lj.length ? lj.map((j) => "<tr><td>" + fmtDate(j.date) + "</td><td>" + esc(boutiqueName(j.bq)) + '</td><td class="num">' + (j.YAS != null ? money0(j.YAS) : "—") +
+      '</td><td class="num">' + (j.MOOV != null ? money0(j.MOOV) : "—") + "</td><td>" + esc(j.par || "—") + "</td></tr>").join("")
+      : '<tr><td colspan="5" class="empty">Aucune clôture en ' + esc(nomMois) + ".</td></tr>";
+    $("#rc-vers").innerHTML = vers.length ? vers.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map((v) =>
+      "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
+      '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode) + "</td><td>" +
+      (v.statut === "Reçue" ? '<span class="badge ok">✓ Reçu</span>' : '<span class="badge warn">⏳ En attente</span>') + "</td></tr>").join("")
+      : '<tr><td colspan="6" class="empty">Aucun versement en ' + esc(nomMois) + ".</td></tr>";
+  }
   // Reversement de commission : ouvert le 1er et le 2 du mois, ou à tout moment pour un CC autorisé par l'admin
   function versementOuvert() { if (Number(today().slice(8, 10)) <= 2) return true; const c = myCcRow(); return !!(c && c.creditVers); }
   // Montant proposé : commission des mois écoulés pour un CC, tout ce qui reste pour l'admin
@@ -2806,6 +2860,15 @@
   function delaiHtml(j) { return j == null ? '<span class="muted">—</span>' : "<b>" + j.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + "</b> j"; }
 
   ["#cr-boutique", "#cr-mois"].forEach((id) => $(id).addEventListener("change", () => { $("#cr-montant").dataset.touche = ""; renderCredit(); }));
+  $("#cr-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cr-tab]"); if (!b) return;
+    crTab = b.dataset.crTab; renderCredit(); window.scrollTo({ top: 0 });
+  });
+  $("#rc-print").addEventListener("click", () => {
+    document.body.classList.add("print-recap");
+    window.addEventListener("afterprint", () => document.body.classList.remove("print-recap"), { once: true });
+    window.print();
+  });
   $("#cr-op").addEventListener("click", (e) => {
     const b = e.target.closest("[data-op]"); if (!b) return;
     crOp = b.dataset.op;

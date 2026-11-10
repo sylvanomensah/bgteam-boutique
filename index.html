@@ -512,10 +512,58 @@
     <!-- CRÉDIT TÉLÉCOM (YAS / MOOV) -->
     <section id="view-credit" class="view">
       <div class="title-filter">
-        <h1>Crédit télécom</h1>
+        <h1 id="cr-titre">Opérations du mois</h1>
+        <div class="tabs cr-tabs" id="cr-tabs">
+          <button data-cr-tab="ops" class="active">📱 Opérations</button>
+          <button data-cr-tab="recap">📊 Récap</button>
+        </div>
         <label>Boutique<select id="cr-boutique"></select></label>
-        <label>Mois<input type="month" id="cr-mois"></label>
       </div>
+
+      <!-- Récap d'un mois (page dédiée) -->
+      <div id="cr-recap" class="hidden">
+        <div class="card recap-head">
+          <div>
+            <h2 id="rc-titre">Récap</h2>
+            <p class="hint" id="rc-sous" style="margin:0"></p>
+          </div>
+          <div class="recap-actions">
+            <label>Mois<input type="month" id="cr-mois"></label>
+            <button class="btn" id="rc-print">🖨 Imprimer</button>
+          </div>
+        </div>
+        <div class="kpis" id="rc-kpis"></div>
+        <div class="card" id="rc-bq-card">
+          <h2>Par boutique</h2>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Boutique</th><th class="num">Recharges YAS</th><th class="num">Montant YAS</th><th class="num">Recharges MOOV</th><th class="num">Montant MOOV</th><th class="num">Commission</th></tr></thead>
+            <tbody id="rc-bq"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2>Historique des recharges</h2>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Date</th><th>Heure</th><th>Boutique</th><th>Réseau</th><th class="num">Montant</th><th class="num">Commission</th><th>Saisi par</th></tr></thead>
+            <tbody id="rc-rech"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2>Crédit restant chaque soir</h2>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Date</th><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th>Saisi par</th></tr></thead>
+            <tbody id="rc-clot"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2>Versements de commission</h2>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Date</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Statut</th></tr></thead>
+            <tbody id="rc-vers"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="cr-main">
       <div id="cr-alertes"></div>
 
       <!-- Une carte par réseau (une boutique) ou un tableau (toutes les boutiques) -->
@@ -571,7 +619,7 @@
 
       <!-- Historique (replié) -->
       <details class="card cr-details">
-        <summary><b>Historique du mois</b> — recharges et versements</summary>
+        <summary><b>Historique du mois en cours</b> — recharges et versements</summary>
         <h3 class="sub-title">Recharges</h3>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Date</th><th>Boutique</th><th>Réseau</th><th class="num">Montant</th><th class="num">Commission</th><th>Heure</th><th>Saisi par</th><th></th></tr></thead>
@@ -598,6 +646,7 @@
           <button class="btn" id="cr-set-save" style="align-self:flex-end">Enregistrer les taux</button>
         </div>
       </details>
+      </div>
     </section>
 
     <!-- BOBINES -->
