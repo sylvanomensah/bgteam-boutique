@@ -695,9 +695,9 @@
           </table></div>
         </div>
         <div class="card">
-          <h2>Ventes déclarées</h2>
+          <h2>Ventes du frigo en caisse</h2>
           <div class="table-wrap"><table class="table">
-            <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vente</th><th>Déclaré par</th></tr></thead>
+            <thead id="fr-ventes-head"></thead>
             <tbody id="fr-ventes"></tbody>
           </table></div>
         </div>
@@ -727,14 +727,10 @@
           </table></div>
         </div>
 
-        <!-- Vente du jour (tous les CC de la boutique) -->
-        <div class="card need-frigo-vente" id="fv-card">
-          <h2 id="fv-titre">🧊 Vente du frigo</h2>
-          <div class="form form-inline" id="fv-form">
-            <label>Montant vendu<input type="number" id="fv-montant" min="0" inputmode="numeric" placeholder="0 si rien"></label>
-            <button class="btn success" id="fv-save" style="align-self:flex-end">Déclarer la vente</button>
-          </div>
-          <p class="hint" style="margin:0" id="fv-info"></p>
+        <!-- Ventes du frigo du jour : faites en Caisse, déduites automatiquement -->
+        <div class="card" id="fv-card">
+          <h2 id="fv-titre">🧾 Ventes du frigo en caisse</h2>
+          <div class="hint" style="margin:0" id="fv-info"></div>
         </div>
 
         <!-- Course (admin) -->
@@ -781,10 +777,10 @@
 
         <!-- Historique du mois -->
         <details class="card cr-details">
-          <summary><b>Historique du mois en cours</b> — ventes, courses et retraits</summary>
-          <h3 class="sub-title">Ventes déclarées</h3>
+          <summary><b>Historique du mois en cours</b> — ventes en caisse, courses et retraits</summary>
+          <h3 class="sub-title">Ventes du frigo en caisse</h3>
           <div class="table-wrap"><table class="table">
-            <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vente</th><th>Déclaré par</th><th></th></tr></thead>
+            <thead id="fh-ventes-head"></thead>
             <tbody id="fh-ventes"></tbody>
           </table></div>
           <h3 class="sub-title">Courses</h3>

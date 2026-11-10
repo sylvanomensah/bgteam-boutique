@@ -1399,6 +1399,27 @@ create table if not exists public.frigo_retraits (
 alter table public.frigo_retraits enable row level security;
 drop policy if exists frigo_retraits_admin on public.frigo_retraits;
 create policy frigo_retraits_admin on public.frigo_retraits for all to authenticated using (public.is_admin()) with check (public.is_admin());
+
+-- Sorties du frigo = ventes faites en CAISSE des produits achetés dans une course du frigo de la boutique.
+-- Chaque vente fait baisser le crédit vente restant de son prix d'achat (frais de la course compris),
+-- pris dans la dernière course de la boutique contenant ce produit, faite avant la vente.
+create or replace function public.frigo_sorties() returns table (
+  sale_id uuid, boutique text, date date, created_at timestamptz, ticket integer, code text, nom text, qte numeric, pu numeric, consomme numeric)
+language sql stable security definer set search_path = public as $$
+  select s.id, s.boutique, s.date, s.created_at, s.ticket, s.code, s.nom, s.qte, s.pu, round(s.qte * x.cu, 2)
+  from public.sales s
+  cross join lateral (
+    select (l ->> 'achat')::numeric * d.total_course / nullif(d.total_achats, 0) as cu
+    from public.frigo_courses c
+    join public.frigo_courses_details d on d.course_id = c.id
+    cross join lateral jsonb_array_elements(d.lignes) l
+    where c.boutique = s.boutique and l ->> 'code' = s.code and c.created_at <= s.created_at
+    order by c.created_at desc limit 1) x
+  where public.is_member() and s.valide = 'OUI' and s.boutique is not null
+    and (public.is_global() or s.boutique = public.my_boutique());
+$$;
+revoke all on function public.frigo_sorties() from public, anon;
+grant execute on function public.frigo_sorties() to authenticated;
 drop policy if exists credit_achats_select on public.credit_achats;
 create policy credit_achats_select on public.credit_achats for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
