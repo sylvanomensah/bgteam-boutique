@@ -29,7 +29,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -105,7 +105,7 @@
     return all;
   }
   async function reload() {
-    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges, remontees, bobines, stocksInit, retraits, crAchats, crVers, crSoldes] = await Promise.all([
+    const [settingsRes, products, costs, ccs, entries, sales, users, courses, boutiques, conges, fiches, charges, remontees, bobines, stocksInit, retraits, crAchats, crVers, crSoldes, crVentes] = await Promise.all([
       sb.from("settings").select("*").eq("id", 1).maybeSingle(),
       fetchAll("products", "code"),
       isAdmin() ? fetchAll("product_costs", "code") : Promise.resolve([]),
@@ -125,7 +125,8 @@
       isAdmin() ? fetchAll("retraits", "date") : Promise.resolve([]),
       fetchAll("credit_achats", "created_at"),
       fetchAll("credit_versements", "created_at"),
-      fetchAll("credit_soldes", "date")
+      fetchAll("credit_soldes", "date"),
+      fetchAll("credit_ventes", "date")
     ]);
     const st = chk(settingsRes) || {};
     // Anniversaires du jour (sans date ni âge) : pour les notifications
@@ -178,6 +179,7 @@
       crVers: crVers.map((x) => ({ id: x.id, boutique: x.boutique, cc: x.cc ? String(x.cc) : "", mois: x.mois, montant: Number(x.montant), mode: x.mode, note: x.note || "",
         statut: x.statut, recuPar: x.recu_par || "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       crSoldes: crSoldes.map((x) => ({ boutique: x.boutique, date: x.date, op: x.operateur, solde: Number(x.solde), saisiPar: x.saisi_par || "", at: x.updated_at || x.created_at || "" })),
+      crVentes: crVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       anniv: anniv.map((a) => ({ cc: String(a.cc), nom: a.nom || "", sexe: a.sexe || "" })),
       stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
       bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
@@ -331,7 +333,8 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "retraits" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_achats" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_versements" }, onChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "credit_soldes" }, onChange)      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
+      .on("postgres_changes", { event: "*", schema: "public", table: "credit_soldes" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "credit_ventes" }, onChange)      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
     if (rtChannel) { sb.removeChannel(rtChannel); rtChannel = null; rtLive = false; }
@@ -696,9 +699,9 @@
     const crNonVerse = db.boutiques.map((b) => ({ b, c: commissionInfo(b.code) })).filter((x) => x.c.duAncien > 0);
     if (crNonVerse.length) add("warning", "📱", "Commissions de crédit des mois passés non reversées", crNonVerse.map((x) => esc(x.b.nom) + " (" + money0(x.c.duAncien) + ")").join(", ") + " (rubrique Crédit télécom).");
     const crAnom = anomaliesCredit(db.boutiques.map((b) => b.code), addDays(today(), -30));
-    if (crAnom.length) add("critical", "📱", "Recharge de crédit possiblement non déclarée", crAnom.slice(0, 5).map((a) => esc(boutiqueName(a.bq)) + " " + a.op + " le " + fmtDate(a.date) + " (+" + money0(a.ecart) + ")").join(", ") + " (rubrique Crédit télécom).");
-    const crSansClot = boutiquesCredit().filter((b) => !clotureFaite(b.code, addDays(today(), -1)));
-    if (crSansClot.length) add("warning", "🌙", "Clôture du crédit d'hier soir non faite", crSansClot.map((b) => esc(b.nom)).join(", ") + " (rubrique Crédit télécom).");
+    if (crAnom.length) add("critical", "📱", "Écart au contrôle du crédit", crAnom.slice(0, 5).map((a) => esc(boutiqueName(a.bq)) + " " + a.op + " le " + fmtDate(a.date) + " (" + ecartTxt(a) + ")").join(", ") + " (rubrique Crédit télécom).");
+    const crSansClot = boutiquesCredit().filter((b) => hierManquant(b.code));
+    if (crSansClot.length) add("warning", "🌙", "Crédit vendu d'hier non déclaré", crSansClot.map((b) => esc(b.nom)).join(", ") + " — recharges bloquées pour ces boutiques (rubrique Crédit télécom).");
     const crAValider = db.crVers.filter((v) => v.statut !== "Reçue");
     if (crAValider.length) add("warning", "📱", crAValider.length + " versement(s) de commission à valider", "Total " + money0(crAValider.reduce((a, v) => a + v.montant, 0)) + " (rubrique Crédit télécom).");
     // Bobines et remontées de fonds
@@ -2243,9 +2246,10 @@
     }
     // 🌙 Clôture du soir du crédit : rappel à tous les CC de la boutique (dès 17 h, ou si celle d'hier manque)
     if (me && !isAdmin() && canCloture() && boutiquesCredit().some((b) => b.code === myBoutiqueCode())) {
-      const bqc = myBoutiqueCode(), manqueHier = !clotureFaite(bqc, addDays(today(), -1)), manqueSoir = !clotureFaite(bqc, today()) && new Date().getHours() >= 17;
-      if (manqueHier || manqueSoir) h += '<div class="alert-line">🌙 <span><b>Clôture du crédit ' + (manqueHier ? "d'hier soir non faite" : "de ce soir à faire") +
-        "</b> — lisez le crédit restant YAS et MOOV sur les puces et notez-le.</span>" + '<button class="btn small" data-view-link="credit">Faire la clôture</button></div>';
+      const bqc = myBoutiqueCode(), manqueHier = hierManquant(bqc), manqueSoir = !venteFaite(bqc, today()) && new Date().getHours() >= 17;
+      if (manqueHier || manqueSoir) h += '<div class="alert-line">🌙 <span><b>' + (manqueHier ? "Crédit vendu hier non déclaré" : "Crédit vendu aujourd'hui à déclarer") +
+        "</b> — " + (manqueHier ? "les nouvelles recharges sont bloquées tant qu'il n'est pas déclaré." : "notez le crédit YAS et MOOV vendu aujourd'hui.") + "</span>" +
+        '<button class="btn small" data-view-link="credit">Déclarer la vente</button></div>';
     }
     // Commission de crédit des mois passés pas encore reversée (CC autorisé aux achats de crédit)
     if (me && !isAdmin() && canCreditSaisie() && myBoutiqueCode()) {
@@ -2641,8 +2645,13 @@
   // Clôture du soir : tout CC actif de la boutique (pour suivre le crédit en temps réel)
   function canCloture() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && myBoutiqueCode()); }
   // Boutiques qui vendent du crédit (activité déjà enregistrée)
-  function boutiquesCredit() { const s = new Set(db.crAchats.map((x) => x.boutique).concat(db.crSoldes.map((x) => x.boutique))); return db.boutiques.filter((b) => s.has(b.code)); }
-  const clotureFaite = (bq, d) => db.crSoldes.some((x) => x.boutique === bq && x.date === d);
+  function boutiquesCredit() { const s = new Set(db.crAchats.map((x) => x.boutique).concat(db.crSoldes.map((x) => x.boutique), db.crVentes.map((x) => x.boutique))); return db.boutiques.filter((b) => s.has(b.code)); }
+  // Crédit vendu déclaré chaque jour par les CC (règle « hier d'abord » active à partir du 10/11/2026)
+  const VENTES_DEBUT = "2026-11-10";
+  const venteFaite = (bq, d) => db.crVentes.some((x) => x.boutique === bq && x.date === d);
+  const venteLe = (bq, op, d) => { const r = db.crVentes.find((x) => x.boutique === bq && x.op === op && x.date === d); return r ? r.montant : null; };
+  function hierManquant(bq) { const h = addDays(today(), -1); return !!bq && h >= VENTES_DEBUT && !venteFaite(bq, h); }
+  function jourLong(d) { return parse(d).toLocaleDateString("fr-FR", { weekday: "long" }) + " " + fmtDate(d); }
   let crOp = "YAS", crTab = "ops";
   const OPS = ["YAS", "MOOV"];
   const logoOp = (op, sm) => '<img class="logo-op ' + op.toLowerCase() + (sm ? " sm" : "") + '" src="icons/' + op.toLowerCase() + '.png" alt="' + op + '">';
@@ -2670,26 +2679,32 @@
   function dernierSolde(bq, op) { return db.crSoldes.filter((x) => x.boutique === bq && x.op === op && x.date <= today()).sort((a, b) => b.date.localeCompare(a.date))[0] || null; }
   // Une recharge est-elle postérieure à une clôture ? (jour suivant, ou même jour mais saisie après la clôture)
   const apresCloture = (x, r) => x.date > r.date || (x.date === r.date && !!r.at && !!x.createdAt && new Date(x.createdAt) > new Date(r.at));
-  function acheteEntre(bq, op, prev, cur) { return db.crAchats.filter((x) => x.boutique === bq && x.op === op && apresCloture(x, prev) && !apresCloture(x, cur)).reduce((a, x) => a + x.montant, 0); }
-  // Crédit restant estimé = dernière clôture + recharges faites depuis
+  const somme = (l) => l.reduce((a, x) => a + x.montant, 0);
+  function acheteEntre(bq, op, prev, cur) { return somme(db.crAchats.filter((x) => x.boutique === bq && x.op === op && apresCloture(x, prev) && !apresCloture(x, cur))); }
+  function venduEntre(bq, op, prev, cur) { return somme(db.crVentes.filter((x) => x.boutique === bq && x.op === op && apresCloture(x, prev) && !apresCloture(x, cur))); }
+  // Crédit restant = dernier contrôle réel (admin) + recharges depuis − crédit vendu déclaré depuis
   function creditRestant(bq, op) {
     const r = dernierSolde(bq, op);
-    const rech = db.crAchats.filter((x) => x.boutique === bq && x.op === op && (r ? apresCloture(x, r) : x.date === today()));
-    return { r, base: r ? r.solde : null, ajout: rech.reduce((a, x) => a + x.montant, 0), nb: rech.length, total: (r ? r.solde : 0) + rech.reduce((a, x) => a + x.montant, 0), connu: !!r || rech.length > 0 };
+    const rech = db.crAchats.filter((x) => x.boutique === bq && x.op === op && (!r || apresCloture(x, r)));
+    const vend = db.crVentes.filter((x) => x.boutique === bq && x.op === op && (!r || apresCloture(x, r)));
+    const total = (r ? r.solde : 0) + somme(rech) - somme(vend);
+    return { r, base: r ? r.solde : null, ajout: somme(rech), vendu: somme(vend), nb: rech.length, total, connu: !!r || rech.length > 0 || vend.length > 0 };
   }
-  // Anti-fraude : crédit restant plus élevé que (restant précédent + recharges déclarées) => recharge non déclarée
+  // Anti-fraude (contrôle réel par l'admin) : écart entre le crédit lu sur la puce et le crédit attendu
+  //   positif = recharge non déclarée ; négatif = crédit manquant (vente non déclarée ou perte)
   function anomaliesCredit(bqs, depuis) {
     const out = [];
     bqs.forEach((bq) => OPS.forEach((op) => {
       const l = db.crSoldes.filter((x) => x.boutique === bq && x.op === op).sort((a, b) => a.date.localeCompare(b.date));
       for (let i = 1; i < l.length; i++) {
         if (l[i].date < depuis) continue;
-        const attendu = l[i - 1].solde + acheteEntre(bq, op, l[i - 1], l[i]);
-        if (l[i].solde > attendu + 1) out.push({ bq, op, date: l[i].date, ecart: l[i].solde - attendu });
+        const attendu = l[i - 1].solde + acheteEntre(bq, op, l[i - 1], l[i]) - venduEntre(bq, op, l[i - 1], l[i]);
+        if (Math.abs(l[i].solde - attendu) > 1) out.push({ bq, op, date: l[i].date, ecart: l[i].solde - attendu });
       }
     }));
     return out;
   }
+  const ecartTxt = (a) => a.ecart > 0 ? "+" + money0(a.ecart) + " (recharge non déclarée ?)" : "−" + money0(-a.ecart) + " manquants";
   function quandSolde(r) {
     if (!r) return "aucune clôture";
     const j = Math.round((parse(today()) - parse(r.date)) / 86400000);
@@ -2724,8 +2739,8 @@
 
     // Alertes anti-fraude (admin / toutes boutiques) : recharges non déclarées des 30 derniers jours
     const anom = glob ? anomaliesCredit(codes, addDays(t, -30)) : [];
-    $("#cr-alertes").innerHTML = anom.length ? '<div class="v-alert danger"><b>⚠ Recharge possiblement non déclarée</b> — le crédit restant a augmenté sans recharge enregistrée :<ul style="margin:6px 0 0 18px;padding:0">' +
-      anom.slice(0, 8).map((a) => "<li>" + esc(boutiqueName(a.bq)) + " · " + a.op + " · " + fmtDate(a.date) + " : <b>+" + money0(a.ecart) + "</b> inexpliqués</li>").join("") + "</ul></div>" : "";
+    $("#cr-alertes").innerHTML = anom.length ? '<div class="v-alert danger"><b>⚠ Écart au contrôle du crédit</b> — le crédit lu sur la puce ne correspond pas au crédit attendu (recharges − ventes déclarées) :<ul style="margin:6px 0 0 18px;padding:0">' +
+      anom.slice(0, 8).map((a) => "<li>" + esc(boutiqueName(a.bq)) + " · " + a.op + " · " + fmtDate(a.date) + " : <b>" + ecartTxt(a) + "</b></li>").join("") + "</ul></div>" : "";
 
     // Une boutique : une carte par réseau ; plusieurs : tableau
     const une = scope.length === 1;
@@ -2734,8 +2749,8 @@
       const bq = scope[0].code, m = creditMois(bq, mois);
       $("#cr-cards").innerHTML = OPS.map((op) => {
         const cr = creditRestant(bq, op), nb = op === "YAS" ? m.nbYas : m.nbMoov, com = op === "YAS" ? m.comYas : m.comMoov;
-        const detail = !cr.nb ? quandSolde(cr.r)
-          : (cr.r ? money0(cr.base) + " (" + quandSolde(cr.r) + ")" : "aucune clôture") + " + " + money0(cr.ajout) + " rechargé" + (cr.nb > 1 ? "s" : "") + " depuis";
+        const vj = venteLe(bq, op, t);
+        const detail = vj != null ? "vendu aujourd'hui : " + money0(vj) : hierManquant(bq) ? '<span class="neg">vente d\'hier non déclarée</span>' : "vente du jour pas encore déclarée";
         return '<div class="op-card ' + op.toLowerCase() + '">' + logoOp(op) +
           '<div class="op-main"><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b><small>" + detail + "</small></div>" +
           '<div class="op-stats"><div><b>' + nb + "</b><span>recharge" + (nb > 1 ? "s" : "") + " ce mois</span></div>" +
@@ -2745,11 +2760,10 @@
       $("#cr-cards").innerHTML = "";
       $("#cr-table").innerHTML = scope.map((b) => {
         const cy = creditRestant(b.code, "YAS"), cm = creditRestant(b.code, "MOOV"), m = creditMois(b.code, mois), ci = commissionInfo(b.code);
-        const der = [cy.r, cm.r].filter(Boolean).map((r) => r.date).sort().pop();
+        const etat = venteFaite(b.code, t) ? '<span class="badge ok">✓ déclarée</span>' : hierManquant(b.code) ? '<span class="badge warn">⚠ hier manquant</span>' : '<span class="badge">pas encore</span>';
         return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (cy.connu ? money0(cy.total) : "—") + '</td><td class="num">' + (cm.connu ? money0(cm.total) : "—") +
           '</td><td class="num">' + logoOp("YAS", true) + " " + m.nbYas + " &nbsp; " + logoOp("MOOV", true) + " " + m.nbMoov +
-          '</td><td class="num">' + (ci.du > 0 ? "<b>" + money0(ci.du) + "</b>" : '<span class="pos">0</span>') + "</td><td>" +
-          (der === t ? '<span class="badge ok">✓ ce soir</span>' : der ? (der === addDays(t, -1) && new Date().getHours() < 17 ? '<span class="badge">hier soir</span>' : '<span class="badge warn">⚠ ' + fmtDate(der) + "</span>") : '<span class="muted">Jamais</span>') + "</td></tr>";
+          '</td><td class="num">' + (ci.du > 0 ? "<b>" + money0(ci.du) + "</b>" : '<span class="pos">0</span>') + "</td><td>" + etat + "</td></tr>";
       }).join("");
     }
 
@@ -2773,16 +2787,18 @@
     if (document.activeElement !== $("#cr-montant") && !$("#cr-montant").dataset.touche) $("#cr-montant").value = montantDefaut(crOp, sbq);
     majPreviewCredit(sbq);
 
-    // Clôture du soir (pré-remplie si déjà saisie)
-    const cj = clotureJour(), hier = addDays(t, -1);
-    OPS.forEach((op) => { const el = $(op === "YAS" ? "#cs-yas" : "#cs-moov"); if (document.activeElement !== el) { const v = sbq ? soldeLe(sbq, op, cj) : null; el.value = v == null ? "" : v; } });
+    // Crédit vendu du jour : l'oubli d'hier d'abord, puis aujourd'hui (une seule déclaration par jour)
+    const cj = venteCible(sbq), oubli = cj !== t, faitAuj = !!sbq && venteFaite(sbq, t);
+    $("#cs-titre").innerHTML = !sbq ? "🌙 Crédit vendu du jour" : faitAuj ? "✅ Crédit vendu " + (oubli ? "" : "ce ") + esc(jourLong(t)) : "🌙 Crédit vendu " + (oubli ? "hier, " : "ce ") + esc(jourLong(cj)) + (oubli ? ' <span class="badge warn">oubli à rattraper</span>' : "");
+    $("#cs-form").classList.toggle("hidden", !sbq || faitAuj);
+    if (faitAuj) { $("#cs-yas").value = ""; $("#cs-moov").value = ""; }
     $("#cs-save").disabled = !sbq;
-    const faitAuj = sbq && clotureFaite(sbq, t), faitHier = sbq && clotureFaite(sbq, hier);
-    $("#cs-card").classList.toggle("a-faire", !!sbq && (!faitAuj && new Date().getHours() >= 17 || !faitHier && boutiquesCredit().some((b) => b.code === sbq)));
-    $("#cs-card").classList.toggle("fait", !!faitAuj);
-    $("#cs-info").innerHTML = !sbq ? (isAdmin() ? "Choisissez une boutique dans le filtre pour saisir sa clôture." : "")
-      : (faitAuj ? "✓ Clôture de ce soir enregistrée (vous pouvez la corriger)." : "⏰ <b>À faire chaque soir</b> : lisez le crédit restant sur chaque puce et notez-le ici. L'admin suit le crédit en temps réel.") +
-        (!faitHier && boutiquesCredit().some((b) => b.code === sbq) ? ' <b class="neg">La clôture d\'hier soir manque</b> : choisissez « Hier soir (oubli) ».' : "");
+    $("#cs-card").classList.toggle("a-faire", !!sbq && (oubli || !faitAuj && new Date().getHours() >= 17));
+    $("#cs-card").classList.toggle("fait", faitAuj);
+    $("#cs-info").innerHTML = !sbq ? (isAdmin() ? "Choisissez une boutique dans le filtre pour déclarer son crédit vendu." : "")
+      : faitAuj ? "Déclaré : " + OPS.map((op) => logoOp(op, true) + " <b>" + money0(venteLe(sbq, op, t) || 0) + "</b>").join(" &nbsp; ") + " — déduit du crédit restant. Pour une correction, voyez l'administrateur."
+      : oubli ? '<b class="neg">Le crédit vendu hier n\'a pas été déclaré.</b> Déclarez-le d\'abord : sans cela, la vente d\'aujourd\'hui et les nouvelles recharges sont bloquées.'
+      : "⏰ <b>À faire chaque soir</b> : notez le crédit vendu aujourd'hui sur chaque puce (0 si rien). Il sera déduit du crédit restant.";
 
     // Historique du mois
     const achats = db.crAchats.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -2790,6 +2806,10 @@
       '</td><td class="num">' + money0(x.montant) + '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + (x.createdAt ? new Date(x.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—") + "</td><td>" + esc(x.saisiPar || "—") +
       "</td><td>" + (admin ? '<button class="btn small danger" data-cr-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("")
       : '<tr><td colspan="8" class="empty">Aucune recharge ce mois-ci.</td></tr>';
+    const ventes = db.crVentes.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || a.op.localeCompare(b.op));
+    $("#cvt-rows").innerHTML = ventes.length ? ventes.map((x) => "<tr><td>" + esc(jourLong(x.date)) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) +
+      '</td><td class="num"><b>' + money0(x.montant) + "</b></td><td>" + esc(x.saisiPar || "—") + "</td><td>" + (admin ? '<button class="btn small danger" data-cvt-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("")
+      : '<tr><td colspan="6" class="empty">Aucune vente déclarée ce mois-ci.</td></tr>';
     const versTous = db.crVers.filter((v) => codes.includes(v.boutique));
     const totRecu = versTous.filter((v) => v.statut === "Reçue").reduce((a, v) => a + v.montant, 0), totAtt = versTous.filter((v) => v.statut !== "Reçue").reduce((a, v) => a + v.montant, 0);
     $("#cv-total").innerHTML = '<span>✅ Total déjà reversé (validé par l\'admin) : <b class="pos">' + money0(totRecu) + "</b></span>" + (totAtt ? '<span>⏳ En attente de validation : <b>' + money0(totAtt) + "</b></span>" : "");
@@ -2813,7 +2833,8 @@
       if (document.activeElement !== $("#cr-set-moov")) $("#cr-set-moov").value = db.settings.tauxMoov;
     }
   }
-  function clotureJour() { return $("#cs-jour").value === "1" ? addDays(today(), -1) : today(); }
+  // Jour à déclarer : hier s'il manque (oubli), sinon aujourd'hui
+  function venteCible(bq) { return hierManquant(bq) ? addDays(today(), -1) : today(); }
   // Récap d'un mois : crédits achetés YAS / MOOV, commission générée, historiques
   function renderRecapCredit(scope) {
     const mois = $("#cr-mois").value || today().slice(0, 7), codes = scope.map((b) => b.code), s = (l, f) => l.reduce((a, x) => a + f(x), 0);
@@ -2829,6 +2850,8 @@
       k(logoOp("YAS", true) + "Crédit YAS acheté", money0(s(yas, (x) => x.montant)), yas.length + " recharge" + (yas.length > 1 ? "s" : "")) +
       k(logoOp("MOOV", true) + "Crédit MOOV acheté", money0(s(moov, (x) => x.montant)), moov.length + " recharge" + (moov.length > 1 ? "s" : "")) +
       k("Total crédit acheté", money0(s(ach, (x) => x.montant)), ach.length + " recharge" + (ach.length > 1 ? "s" : "") + " au total") +
+      (() => { const v = db.crVentes.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois);
+        return k("Crédit vendu (déclaré)", money0(s(v, (x) => x.montant)), "YAS " + money0(s(v.filter((x) => x.op === "YAS"), (x) => x.montant)) + " · MOOV " + money0(s(v.filter((x) => x.op === "MOOV"), (x) => x.montant))); })() +
       k("Commission générée", money0(s(ach, (x) => x.commission)), "YAS " + money0(s(yas, (x) => x.commission)) + " · MOOV " + money0(s(moov, (x) => x.commission)), "hero") +
       k("Commission reversée (validée)", money0(versRecu), vers.length ? vers.length + " versement" + (vers.length > 1 ? "s" : "") + " déclaré" + (vers.length > 1 ? "s" : "") + " ce mois" : "aucun versement ce mois");
     // Par boutique (si plusieurs)
@@ -2846,16 +2869,16 @@
       "<tr><td>" + fmtDate(x.date) + "</td><td>" + heure(x.createdAt) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) + '</td><td class="num">' + money0(x.montant) +
       '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + esc(x.saisiPar || "—") + "</td></tr>").join("")
       : '<tr><td colspan="7" class="empty">Aucune recharge en ' + esc(nomMois) + ".</td></tr>";
-    // Crédit restant chaque soir (une ligne par jour et par boutique)
+    // Crédit vendu chaque jour (une ligne par jour et par boutique)
     const jours = {};
-    db.crSoldes.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).forEach((x) => {
+    db.crVentes.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).forEach((x) => {
       const key = x.date + "|" + x.boutique; jours[key] = jours[key] || { date: x.date, bq: x.boutique, par: x.saisiPar };
-      jours[key][x.op] = x.solde;
+      jours[key][x.op] = x.montant;
     });
     const lj = Object.values(jours).sort((a, b) => b.date.localeCompare(a.date) || boutiqueName(a.bq).localeCompare(boutiqueName(b.bq)));
-    $("#rc-clot").innerHTML = lj.length ? lj.map((j) => "<tr><td>" + fmtDate(j.date) + "</td><td>" + esc(boutiqueName(j.bq)) + '</td><td class="num">' + (j.YAS != null ? money0(j.YAS) : "—") +
+    $("#rc-clot").innerHTML = lj.length ? lj.map((j) => "<tr><td>" + esc(jourLong(j.date)) + "</td><td>" + esc(boutiqueName(j.bq)) + '</td><td class="num">' + (j.YAS != null ? money0(j.YAS) : "—") +
       '</td><td class="num">' + (j.MOOV != null ? money0(j.MOOV) : "—") + "</td><td>" + esc(j.par || "—") + "</td></tr>").join("")
-      : '<tr><td colspan="5" class="empty">Aucune clôture en ' + esc(nomMois) + ".</td></tr>";
+      : '<tr><td colspan="5" class="empty">Aucune vente déclarée en ' + esc(nomMois) + ".</td></tr>";
     $("#rc-vers").innerHTML = vers.length ? vers.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map((v) =>
       "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
       '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode) + "</td><td>" +
@@ -2871,6 +2894,10 @@
     $("#cr-preview").innerHTML = !bq ? (isAdmin() ? "Choisissez une boutique dans le filtre pour enregistrer une recharge." : "Vous n'êtes affecté à aucune boutique.")
       : "Commission " + crOp + " : <b class=\"pos\">+" + money0(Math.round(m * tauxOp(crOp) / 100)) + "</b> (" + num(tauxOp(crOp)) + " %)";
     $("#cr-save").disabled = !bq;
+    if (bq && !isAdmin() && hierManquant(bq)) {
+      $("#cr-preview").innerHTML = '<b class="neg">🔒 Recharge bloquée</b> : déclarez d\'abord le crédit vendu hier (carte « Crédit vendu » ci-dessus).';
+      $("#cr-save").disabled = true;
+    }
   }
   // Nombre moyen de jours entre deux recharges (90 derniers jours)
   function delaiRecharge(bq, op) {
@@ -2903,8 +2930,11 @@
     const bq = creditSaisieBq(), montant = Number($("#cr-montant").value), op = crOp, btn = e.target;
     if (!bq) return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant de la recharge.");
+    if (!isAdmin() && hierManquant(bq)) return toast("Déclarez d'abord le crédit vendu hier : les nouvelles recharges sont bloquées jusque-là.");
     // Avertissement : la recharge n'est enregistrée (et n'apparaît dans l'historique) que si le CC répond Oui
     const dlg = $("#crconf-dialog");
+    $("#crconf-titre").textContent = "Confirmer la recharge";
+    $("#crconf-oui").textContent = "Oui, recharger";
     $("#crconf-logo").innerHTML = logoOp(op);
     $("#crconf-montant").textContent = money0(montant);
     $("#crconf-text").innerHTML = "Vous êtes sur le point d'enregistrer une recharge <b>" + op + "</b> de <b>" + money0(montant) + "</b> pour <b>" + esc(boutiqueName(bq)) +
@@ -2931,20 +2961,55 @@
     const row = { boutique: bq, cc: isAdmin() ? null : me.cc, mois: premierDuMois(today()), montant, mode: $("#cv-mode").value, note: "", saisi_par: me.nom || me.email || "" };
     act(async () => chk(await sb.from("credit_versements").insert(row)), "Versement de " + money0(montant) + " déclaré. Le solde diminuera quand l'admin confirmera la réception.", e.target);
   });
+  // Déclaration du crédit vendu (hier d'abord si oublié), confirmée par « Oui »
   $("#cs-save").addEventListener("click", (e) => {
-    const bq = creditSaisieBq(), d = clotureJour(), y = $("#cs-yas").value, m = $("#cs-moov").value;
+    const bq = creditSaisieBq(), d = venteCible(bq), btn = e.target, y = $("#cs-yas").value.trim(), m = $("#cs-moov").value.trim();
     if (!bq) return toast("Choisissez une boutique.");
-    if (y === "" && m === "") return toast("Indiquez le crédit restant YAS et/ou MOOV.");
+    if (venteFaite(bq, d)) return toast("La vente de ce jour est déjà déclarée.");
+    if (y === "" || m === "") return toast("Indiquez le crédit vendu YAS et MOOV (0 si rien n'a été vendu).");
+    const v = { YAS: Number(y), MOOV: Number(m) };
+    if (!(v.YAS >= 0 && v.MOOV >= 0)) return toast("Montant invalide.");
+    for (const op of OPS) {
+      const cr = creditRestant(bq, op);
+      if (cr.connu && v[op] > cr.total) return toast("Le crédit " + op + " vendu (" + money0(v[op]) + ") dépasse le crédit restant (" + money0(Math.max(0, cr.total)) + "). Vérifiez, ou faites d'abord enregistrer la recharge.");
+    }
+    const dlg = $("#crconf-dialog"), oubli = d !== today();
+    $("#crconf-titre").textContent = "Confirmer la vente " + (oubli ? "d'hier" : "du jour");
+    $("#crconf-oui").textContent = "Oui, je déclare";
+    $("#crconf-logo").innerHTML = OPS.map((op) => '<div class="crconf-ligne">' + logoOp(op) + "<b>" + money0(v[op]) + "</b></div>").join("");
+    $("#crconf-montant").textContent = "";
+    $("#crconf-text").innerHTML = "Vous déclarez le crédit vendu <b>" + (oubli ? "hier, " : "ce ") + esc(jourLong(d)) + "</b> pour <b>" + esc(boutiqueName(bq)) +
+      "</b>.<br>Ce montant sera <b>déduit du crédit restant</b> et ne pourra plus être modifié (sauf par l'administrateur).<br>Confirmez-vous ?";
+    dlg.returnValue = "";
+    dlg.onclose = () => {
+      if (dlg.returnValue !== "oui") return toast("Déclaration annulée : rien n'a été enregistré.");
+      const rows = OPS.map((op) => ({ boutique: bq, date: d, operateur: op, montant: v[op], cc: me.cc || null, saisi_par: me.nom || me.email || "" }));
+      act(async () => {
+        chk(await sb.from("credit_ventes").insert(rows));
+        $("#cs-yas").value = ""; $("#cs-moov").value = "";
+      }, "Crédit vendu " + (oubli ? "d'hier" : "du jour") + " déclaré : déduit du crédit restant." + (oubli ? " Vous pouvez maintenant déclarer celui d'aujourd'hui." : ""), btn);
+    };
+    dlg.showModal();
+  });
+  // Contrôle réel du crédit (admin)
+  $("#ck-save").addEventListener("click", (e) => {
+    const bq = creditSaisieBq(), y = $("#ck-yas").value.trim(), m = $("#ck-moov").value.trim();
+    if (!bq) return toast("Choisissez une boutique dans le filtre.");
+    if (y === "" && m === "") return toast("Indiquez le crédit restant réel YAS et/ou MOOV.");
     const rows = [];
-    if (y !== "") rows.push({ boutique: bq, date: d, operateur: "YAS", solde: Number(y), cc: me.cc || null, saisi_par: me.nom || me.email || "", updated_at: new Date().toISOString() });
-    if (m !== "") rows.push({ boutique: bq, date: d, operateur: "MOOV", solde: Number(m), cc: me.cc || null, saisi_par: me.nom || me.email || "", updated_at: new Date().toISOString() });
+    if (y !== "") rows.push({ boutique: bq, date: today(), operateur: "YAS", solde: Number(y), saisi_par: me.nom || me.email || "", updated_at: new Date().toISOString() });
+    if (m !== "") rows.push({ boutique: bq, date: today(), operateur: "MOOV", solde: Number(m), saisi_par: me.nom || me.email || "", updated_at: new Date().toISOString() });
     if (rows.some((r) => !(r.solde >= 0))) return toast("Montant invalide.");
+    const ecarts = rows.map((r) => { const cr = creditRestant(bq, r.operateur); return cr.connu && Math.abs(r.solde - cr.total) > 1 ? r.operateur + " : écart " + (r.solde > cr.total ? "+" : "−") + money0(Math.abs(r.solde - cr.total)) : ""; }).filter(Boolean);
     act(async () => {
       chk(await sb.from("credit_soldes").upsert(rows, { onConflict: "boutique,date,operateur" }));
-      $("#cs-jour").value = "0";
-    }, "Clôture " + (d === today() ? "de ce soir" : "du " + fmtDate(d)) + " enregistrée.", e.target);
+      $("#ck-yas").value = ""; $("#ck-moov").value = "";
+    }, "Contrôle enregistré." + (ecarts.length ? " ⚠ " + ecarts.join(" · ") : " Aucun écart."), e.target);
   });
-  $("#cs-jour").addEventListener("change", () => { $("#cs-yas").value = ""; $("#cs-moov").value = ""; renderCredit(); });
+  $("#cvt-rows").addEventListener("click", (e) => {
+    const d = e.target.closest("[data-cvt-del]");
+    if (d && confirm("Supprimer cette déclaration de crédit vendu ? Le CC pourra la refaire.")) act(async () => chk(await sb.from("credit_ventes").delete().eq("id", d.dataset.cvtDel)), "Déclaration supprimée.", d);
+  });
   $("#cr-rows").addEventListener("click", (e) => {
     const d = e.target.closest("[data-cr-del]");
     if (d && confirm("Supprimer cette recharge ? (la commission correspondante sera retirée)")) act(async () => chk(await sb.from("credit_achats").delete().eq("id", d.dataset.crDel)), "Recharge supprimée.", d);

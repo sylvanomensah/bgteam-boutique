@@ -217,6 +217,9 @@ body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-ta
 .op-choice .op { padding: 6px; display: flex; align-items: center; justify-content: center; }
 .crconf-box { display: flex; align-items: center; gap: 16px; margin: 6px 0 4px; }
 .crconf-box b { font-size: 1.8rem; letter-spacing: -.02em; }
+.crconf-box > span { display: flex; flex-direction: column; gap: 8px; }
+.crconf-ligne { display: flex; align-items: center; gap: 14px; }
+.crconf-ligne b { font-size: 1.5rem; }
 .cv-total { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 10px; font-size: .92rem; }
 .cv-total b { font-size: 1.05rem; }
 .cv-ferme { background: #f1f4f9; border-radius: 10px; padding: 10px 12px; color: var(--muted); font-size: .9rem; margin-top: 10px; }

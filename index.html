@@ -548,9 +548,9 @@
           </table></div>
         </div>
         <div class="card">
-          <h2>Crédit restant chaque soir</h2>
+          <h2>Crédit vendu chaque jour</h2>
           <div class="table-wrap"><table class="table">
-            <thead><tr><th>Date</th><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th>Saisi par</th></tr></thead>
+            <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vendu YAS</th><th class="num">Vendu MOOV</th><th>Déclaré par</th></tr></thead>
             <tbody id="rc-clot"></tbody>
           </table></div>
         </div>
@@ -571,22 +571,31 @@
       <div class="card hidden" id="cr-table-card">
         <h2>Crédit restant par boutique</h2>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th class="num">Recharges du mois</th><th class="num">Commission à reverser</th><th>Dernière clôture</th></tr></thead>
+          <thead><tr><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th class="num">Recharges du mois</th><th class="num">Commission à reverser</th><th>Vente du jour</th></tr></thead>
           <tbody id="cr-table"></tbody>
         </table></div>
       </div>
 
       <!-- Clôture du soir : tous les CC de la boutique, chaque soir -->
       <div class="card need-cloture" id="cs-card">
-        <h2>🌙 Clôture du soir — crédit restant sur les puces</h2>
-        <div class="form form-inline">
-          <label>Jour<select id="cs-jour"><option value="0">Ce soir</option><option value="1">Hier soir (oubli)</option></select></label>
-          <label><span><img class="logo-op yas sm" src="icons/yas.png" alt="YAS"> Crédit restant</span><input type="number" id="cs-yas" min="0" inputmode="numeric"></label>
-          <label><span><img class="logo-op moov sm" src="icons/moov.png" alt="MOOV"> Crédit restant</span><input type="number" id="cs-moov" min="0" inputmode="numeric"></label>
-          <button class="btn success" id="cs-save" style="align-self:flex-end">Enregistrer</button>
+        <h2 id="cs-titre">🌙 Crédit vendu du jour</h2>
+        <div class="form form-inline" id="cs-form">
+          <label><span><img class="logo-op yas sm" src="icons/yas.png" alt="YAS"> Crédit vendu</span><input type="number" id="cs-yas" min="0" inputmode="numeric" placeholder="0 si rien"></label>
+          <label><span><img class="logo-op moov sm" src="icons/moov.png" alt="MOOV"> Crédit vendu</span><input type="number" id="cs-moov" min="0" inputmode="numeric" placeholder="0 si rien"></label>
+          <button class="btn success" id="cs-save" style="align-self:flex-end">Déclarer la vente</button>
         </div>
-        <p class="hint" style="margin:0" id="cs-info">À faire chaque soir : notez le crédit restant lu sur chaque puce.</p>
+        <p class="hint" style="margin:0" id="cs-info"></p>
       </div>
+      <!-- Contrôle réel (admin) : crédit lu sur la puce, pour détecter les écarts -->
+      <details class="card cr-details admin-only">
+        <summary><b>🔍 Contrôle du crédit restant réel</b> — lu sur la puce (admin)</summary>
+        <div class="form form-inline" style="margin-top:10px">
+          <label><span><img class="logo-op yas sm" src="icons/yas.png" alt="YAS"> Restant réel</span><input type="number" id="ck-yas" min="0" inputmode="numeric"></label>
+          <label><span><img class="logo-op moov sm" src="icons/moov.png" alt="MOOV"> Restant réel</span><input type="number" id="ck-moov" min="0" inputmode="numeric"></label>
+          <button class="btn" id="ck-save" style="align-self:flex-end">Enregistrer le contrôle</button>
+        </div>
+        <p class="hint" style="margin:0" id="ck-info">Le crédit restant repart de ce chiffre ; un écart avec le crédit attendu est signalé.</p>
+      </details>
 
       <div class="grid2">
         <!-- Recharge -->
@@ -626,6 +635,11 @@
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Date</th><th>Boutique</th><th>Réseau</th><th class="num">Montant</th><th class="num">Commission</th><th>Heure</th><th>Saisi par</th><th></th></tr></thead>
           <tbody id="cr-rows"></tbody>
+        </table></div>
+        <h3 class="sub-title">Crédit vendu déclaré</h3>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Jour</th><th>Boutique</th><th>Réseau</th><th class="num">Vendu</th><th>Déclaré par</th><th></th></tr></thead>
+          <tbody id="cvt-rows"></tbody>
         </table></div>
         <h3 class="sub-title">Versements de commission</h3>
         <div class="cv-total" id="cv-total"></div>
@@ -1018,12 +1032,12 @@
   <!-- Confirmation d'une recharge de crédit -->
   <dialog id="crconf-dialog">
     <form method="dialog">
-      <h2>Confirmer la recharge</h2>
+      <h2 id="crconf-titre">Confirmer la recharge</h2>
       <div class="crconf-box"><span id="crconf-logo"></span><b id="crconf-montant"></b></div>
       <p id="crconf-text" class="hint"></p>
       <div class="actions">
         <button class="btn danger" value="non">Non</button>
-        <button class="btn success" value="oui">Oui, recharger</button>
+        <button class="btn success" value="oui" id="crconf-oui">Oui, recharger</button>
       </div>
     </form>
   </dialog>

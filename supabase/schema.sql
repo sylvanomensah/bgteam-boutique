@@ -1205,16 +1205,68 @@ alter table public.credit_soldes enable row level security;
 drop policy if exists credit_soldes_select on public.credit_soldes;
 create policy credit_soldes_select on public.credit_soldes for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
--- Clôture du soir : tout CC actif de la boutique (pas seulement ceux autorisés aux achats de crédit)
+-- Crédit restant réel (contrôle) : saisi par l'administrateur uniquement ; les CC déclarent le crédit VENDU (credit_ventes)
 drop policy if exists credit_soldes_insert on public.credit_soldes;
-create policy credit_soldes_insert on public.credit_soldes for insert to authenticated
-  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date));
+create policy credit_soldes_insert on public.credit_soldes for insert to authenticated with check (public.is_admin());
 drop policy if exists credit_soldes_update on public.credit_soldes;
-create policy credit_soldes_update on public.credit_soldes for update to authenticated
-  using (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date))
-  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date));
+create policy credit_soldes_update on public.credit_soldes for update to authenticated using (public.is_admin()) with check (public.is_admin());
 drop policy if exists credit_soldes_delete on public.credit_soldes;
 create policy credit_soldes_delete on public.credit_soldes for delete to authenticated using (public.is_admin());
+
+-- Crédit vendu chaque jour (YAS / MOOV), déclaré par un CC de la boutique ; il est déduit du crédit restant
+create table if not exists public.credit_ventes (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  operateur text not null check (operateur in ('YAS', 'MOOV')),
+  montant numeric not null check (montant >= 0),
+  cc text,
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (boutique, date, operateur)
+);
+alter table public.credit_ventes enable row level security;
+drop policy if exists credit_ventes_select on public.credit_ventes;
+create policy credit_ventes_select on public.credit_ventes for select to authenticated
+  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+-- Un CC déclare la vente d'aujourd'hui ou l'oubli d'hier, une seule fois (pas de modification : l'admin corrige)
+drop policy if exists credit_ventes_insert on public.credit_ventes;
+create policy credit_ventes_insert on public.credit_ventes for insert to authenticated
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date and created_by = auth.uid()));
+drop policy if exists credit_ventes_update on public.credit_ventes;
+create policy credit_ventes_update on public.credit_ventes for update to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists credit_ventes_delete on public.credit_ventes;
+create policy credit_ventes_delete on public.credit_ventes for delete to authenticated using (public.is_admin());
+
+-- La vente d'hier doit être déclarée (règle active à partir des ventes du 10/11/2026)
+create or replace function public.credit_hier_manquant(p_boutique text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select current_date - 1 >= date '2026-11-10'
+    and not exists (select 1 from public.credit_ventes where boutique = p_boutique and date = current_date - 1);
+$$;
+create or replace function public.credit_ventes_before() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if public.is_admin() then return new; end if;
+  if new.date = current_date and public.credit_hier_manquant(new.boutique) then
+    raise exception 'Déclarez d''abord le crédit vendu hier (oubli) avant celui d''aujourd''hui';
+  end if;
+  return new;
+end $$;
+drop trigger if exists credit_ventes_before on public.credit_ventes;
+create trigger credit_ventes_before before insert on public.credit_ventes for each row execute function public.credit_ventes_before();
+-- Pas de nouvelle recharge tant que la vente d'hier n'est pas déclarée
+create or replace function public.credit_achats_hier() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() and public.credit_hier_manquant(new.boutique) then
+    raise exception 'Déclarez d''abord le crédit vendu hier avant de faire une nouvelle recharge';
+  end if;
+  return new;
+end $$;
+drop trigger if exists credit_achats_hier on public.credit_achats;
+create trigger credit_achats_hier before insert on public.credit_achats for each row execute function public.credit_achats_hier();
 drop policy if exists credit_achats_select on public.credit_achats;
 create policy credit_achats_select on public.credit_achats for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
@@ -1343,7 +1395,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;
