@@ -2644,7 +2644,6 @@
     const list = db.settings.ccList.filter((c) => b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b));
     $("#rh-cc").innerHTML = '<option value="ALL">— Choisir un CC —</option>' + list.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("");
     $("#rh-cc").value = list.some((c) => c.code === ccur) ? ccur : "ALL";
-    if (!$("#rh-week").value) $("#rh-week").value = today();
   }
   $("#rh-boutique").addEventListener("change", () => { renderRhFilters(); renderFiche(); renderPlanning(); });
   $("#rh-cc").addEventListener("change", () => {
@@ -2652,7 +2651,6 @@
     if (cc !== "ALL" && $("#rh-boutique").value === "ALL" && ccBoutique(cc)) { $("#rh-boutique").value = ccBoutique(cc); renderRhFilters(); $("#rh-cc").value = cc; }
     renderFiche(); renderPlanning();
   });
-  $("#rh-week").addEventListener("change", renderPlanning);
 
   // Fiche RH complète d'un CC (admin)
   function renderFiche() {
@@ -2772,11 +2770,9 @@
     act(async () => chk(id ? await sb.from("conges").update(row).eq("id", id) : await sb.from("conges").insert(row)), "Congé enregistré.");
   });
 
-  // Planning de la semaine (boutique choisie)
+  // Qui travaille aujourd'hui (boutique choisie)
   function renderPlanning() {
     const b = $("#rh-boutique").value;
-    const lundi = mondayOf($("#rh-week").value || today());
-    const days = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(lundi, i));
     const list = db.settings.ccList.filter((c) => c.actif && (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)));
     // Aujourd'hui : qui travaille, qui est de repos, qui est en congé (boutique filtrée)
     const auj = today(), groupes = { service: [], repos: [], conge: [] };
@@ -2785,23 +2781,9 @@
       '<div class="chips">' + (groupes[k].length ? groupes[k].map((x) => '<button class="chip" data-plan-cc="' + esc(x.c.code) + '" title="' + esc(x.st.label) + '">' + avatarHtml(x.c.code, "xs") + esc(ccName(x.c.code)) +
         (b === "ALL" ? ' <small class="muted">· ' + esc(boutiqueName(x.c.boutique)) + "</small>" : "") + "</button>").join("") : '<span class="muted">Personne</span>') + "</div></div>";
     $("#rh-today").innerHTML = '<div class="card"><h2>Aujourd\'hui, ' + esc(fmtLong(auj)) + " — " + esc(b === "ALL" ? "toutes les boutiques" : b === "NONE" ? "CC non affectés" : boutiqueName(b)) + "</h2>" +
-      '<div class="today-grid">' + col("service", "✓ Au travail") + col("repos", "🛌 De repos") + col("conge", "🏖 En congé") + "</div></div>";
-    $("#rh-planning-title").textContent = "Planning de la semaine du " + fmtDate(lundi) + " au " + fmtDate(days[6]) + " — " + (b === "ALL" ? "toutes les boutiques" : b === "NONE" ? "CC non affectés" : boutiqueName(b));
-    const t = today();
-    $("#rh-planning").innerHTML = "<thead><tr><th>CC</th>" + (b === "ALL" ? "<th>Boutique</th>" : "") +
-      days.map((d, i) => '<th class="' + (d === t ? "today" : "") + '">' + JOURS[i] + "<br><small>" + fmtDate(d).slice(0, 5) + "</small></th>").join("") + "<th>En service</th></tr></thead><tbody>" +
-      (list.length ? list.map((c) => {
-        const st = days.map((d) => ccStatusOn(c.code, d));
-        return '<tr class="clickable" data-plan-cc="' + esc(c.code) + '"><td>' + esc(ccName(c.code)) + "</td>" + (b === "ALL" ? "<td>" + esc(boutiqueName(c.boutique)) + "</td>" : "") +
-          st.map((s, i) => '<td class="' + (s.k === "conge" ? "c" : s.k === "repos" ? "r" : "s") + (days[i] === t ? " today" : "") + '">' + (s.k === "conge" ? "C" : s.k === "repos" ? "R" : "✓") + "</td>").join("") +
-          "<td>" + st.filter((s) => s.k === "service").length + " / 7</td></tr>";
-      }).join("") : '<tr><td colspan="10" class="empty">Aucun CC actif.</td></tr>') + "</tbody>";
+      '<div class="today-grid">' + col("service", "✓ Au travail") + col("repos", "🛌 De repos") + col("conge", "🏖 En congé") + "</div>" +
+      '<p class="hint" style="margin:12px 0 0">Cliquez sur un CC pour ouvrir sa fiche (repos, congés).</p></div>';
   }
-  $("#rh-planning").addEventListener("click", (e) => {
-    const tr = e.target.closest("[data-plan-cc]");
-    if (!tr) return;
-    openFiche(tr.dataset.planCc);
-  });
   $("#rh-today").addEventListener("click", (e) => { const c = e.target.closest("[data-plan-cc]"); if (c) openFiche(c.dataset.planCc); });
 
   // ---------- Mon compte (chaque utilisateur) ----------
