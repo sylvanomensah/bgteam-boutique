@@ -29,7 +29,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -125,6 +125,9 @@
       isAdmin() ? fetchAll("retraits", "date") : Promise.resolve([])
     ]);
     const st = chk(settingsRes) || {};
+    // Anniversaires du jour (sans date ni âge) : pour les notifications
+    let anniv = [];
+    try { anniv = chk(await sb.rpc("anniversaires_du_jour")) || []; } catch (e) { anniv = []; }
     const pa = {}, cmp = {};
     costs.forEach((c) => { pa[c.code] = Number(c.pa); cmp[c.code] = c.cmp == null ? Number(c.pa) : Number(c.cmp); });
     db = {
@@ -166,6 +169,7 @@
         txId: r.tx_id || "", recuInfos: r.recu_infos || {}, alerte: r.alerte || "",
         ccReceveur: r.cc_receveur ? String(r.cc_receveur) : "", confirmeLe: r.reception_confirmee_le, confirmePar: r.reception_confirmee_par || "" })),
       retraits: retraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "" })),
+      anniv: anniv.map((a) => ({ cc: String(a.cc), nom: a.nom || "", sexe: a.sexe || "" })),
       stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
       bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       boutiques: boutiques.map((b) => ({ code: b.code, nom: b.nom, actif: b.actif !== false }))
@@ -2178,12 +2182,34 @@
     if (!me || isAdmin() || !me.cc) return [];
     return db.remontees.filter((r) => r.ccReceveur === String(me.cc) && !r.confirmeLe);
   }
+  // Fermer les annonces d'anniversaire pour la journée
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("[data-anniv-ok]")) return;
+    try { localStorage.setItem("anniv-ferme", today()); } catch (err) {}
+    renderAppAlert();
+  });
   function renderAppAlert() {
     const el = $("#app-alert");
     const bq = !isAdmin() && canEntrees() ? myBoutiqueCode() : "";
     const r = bq ? resteARemonter(bq) : { total: 0 };
     const recus = especesAConfirmer();
     let h = "";
+    // 🎂 Anniversaires du jour : message personnel pour le CC fêté, annonce pour tous les autres
+    let fermes = ""; try { fermes = localStorage.getItem("anniv-ferme") || ""; } catch (e) {}
+    if (fermes !== today()) {
+      (db.anniv || []).forEach((a) => {
+        const prenom = a.nom || ccName(a.cc), elle = a.sexe === "F";
+        if (me && !isAdmin() && String(me.cc) === a.cc) {
+          h += '<div class="alert-line anniv">🎉 <span><b>Joyeux anniversaire ' + esc(prenom) + " !</b> Toute l'équipe " + esc(db.settings.nom || "BGTeam") +
+            " te souhaite une excellente journée et une très belle année" + (elle ? " pleine de réussite, chère collègue." : " pleine de réussite, cher collègue.") + "</span>" +
+            '<button class="btn small" data-anniv-ok>Merci 🙏</button></div>';
+        } else {
+          h += '<div class="alert-line anniv">🎂 <span>Aujourd\'hui, c\'est l\'anniversaire de <b>' + esc(ccName(a.cc)) + "</b>" + (a.sexe ? (elle ? " 👩" : " 👨") : "") +
+            " ! Pensez à " + (a.sexe ? (elle ? "la" : "le") : "lui") + " féliciter.</span>" +
+            '<button class="btn small" data-anniv-ok>OK</button></div>';
+        }
+      });
+    }
     if (recus.length) {
       h += '<div class="alert-line ok">💵 <span><b>Vous avez reçu en espèces ' + money0(sumMontant(recus)) + "</b> — " +
         recus.map((x) => money0(x.montant) + " de " + esc(x.cc ? ccName(x.cc) : "l'admin") + " (" + esc(boutiqueName(x.boutique)) + ")").join(" · ") +
@@ -2644,6 +2670,21 @@
     for (let i = 0; i < 8; i++) { const d = addDays(from, i); if (c.repos.includes(isoDow(d))) return d; }
     return "";
   }
+  // Âge et prochain anniversaire à partir de la date de naissance
+  function ageDe(naiss) {
+    const n = parse(naiss), t = parse(today());
+    let a = t.getFullYear() - n.getFullYear();
+    if (t.getMonth() < n.getMonth() || (t.getMonth() === n.getMonth() && t.getDate() < n.getDate())) a--;
+    return a;
+  }
+  function prochainAnniv(naiss) {
+    const t = today(), an = Number(t.slice(0, 4));
+    let d = an + naiss.slice(4);
+    if (naiss.slice(5) === "02-29" && new Date(an, 1, 29).getMonth() !== 1) d = an + "-02-28";
+    if (d < t) d = (an + 1) + naiss.slice(4);
+    const j = Math.round((parse(d) - parse(t)) / 86400000);
+    return j === 0 ? "🎂 Aujourd'hui !" : fmtDate(d) + " (dans " + j + " jour" + (j > 1 ? "s" : "") + ")";
+  }
   function anciennete(dateEmb) {
     if (!dateEmb) return "";
     const m = Math.max(0, Math.floor((parse(today()) - parse(dateEmb)) / (86400000 * 30.44)));
@@ -2701,12 +2742,18 @@
       '<button class="btn small danger" data-cg-del="' + g.id + '">✕</button></span></div>';
     const hist = c.agents.length ? c.agents.map((a) => esc(a.nom) + " : " + (a.debut ? fmtDate(a.debut) : "…") + " → " + (a.fin ? fmtDate(a.fin) : "aujourd'hui")).join("<br>") : "Aucun vendeur affecté";
     $("#rh-fiche").innerHTML = '<div class="card">' +
-      '<div class="fiche-head">' + avatarHtml(code, "lg") + "<h2>" + esc(ccName(code)) + "</h2>" + statusBadge(st) +
-      "<span>🏬 " + esc(boutiqueName(c.boutique)) + "</span>" + (c.actif ? "" : '<span class="badge mute">CC inactif</span>') + "</div>" +
+      '<div class="fiche-head">' + avatarHtml(code, "lg") + "<h2>" + esc(ccName(code)) + (f.sexe === "F" ? " 👩" : f.sexe === "M" ? " 👨" : "") + "</h2>" + statusBadge(st) +
+      (f.date_naissance && prochainAnniv(f.date_naissance).indexOf("Aujourd") >= 0 ? '<span class="badge" style="background:#fde7f3;color:#8a3b62">🎂 Anniversaire aujourd\'hui</span>' : "") +
+      "<span>🏬 " + esc(boutiqueName(c.boutique)) + "</span>" + (c.actif ? "" : '<span class="badge mute">CC inactif</span>') +
+      (isAdmin() ? '<button class="btn small" id="rf-push-test" style="margin-left:auto" title="Envoyer une notification de test sur le téléphone de ce CC">🔔 Notification test</button>' : "") + "</div>" +
       '<div class="fiche-grid">' +
       // Identité & contacts (admin uniquement)
       "<div><h3>Identité & contacts <span class=\"muted\">(confidentiel)</span></h3>" +
       '<div class="form">' +
+      '<label>Sexe<select id="rf-sexe"><option value="">—</option><option value="F"' + (f.sexe === "F" ? " selected" : "") + '>Féminin</option><option value="M"' + (f.sexe === "M" ? " selected" : "") + ">Masculin</option></select></label>" +
+      '<label>Date de naissance<input id="rf-naiss" type="date" value="' + esc(f.date_naissance || "") + '"></label>' +
+      "<label>Âge<input readonly value=\"" + esc(f.date_naissance ? ageDe(f.date_naissance) + " ans" : "—") + '"></label>' +
+      "<label>Prochain anniversaire<input readonly value=\"" + esc(f.date_naissance ? prochainAnniv(f.date_naissance) : "—") + '"></label>' +
       '<label>Téléphone<input id="rf-tel" type="tel" value="' + esc(f.telephone || "") + '" placeholder="Ex. : 90 12 34 56"></label>' +
       '<label>Contact d\'urgence<input id="rf-urg" value="' + esc(f.contact_urgence || "") + '" placeholder="Nom et téléphone"></label>' +
       '<label>Date d\'embauche<input id="rf-emb" type="date" value="' + esc(f.date_embauche || "") + '"></label>' +
@@ -2737,8 +2784,19 @@
   $("#rh-fiche").addEventListener("click", (e) => {
     const code = $("#rh-cc").value;
     if (e.target.closest("#rf-save")) {
-      const row = { cc: code, telephone: $("#rf-tel").value.trim(), contact_urgence: $("#rf-urg").value.trim(), date_embauche: $("#rf-emb").value || null, notes: $("#rf-notes").value.trim(), updated_at: new Date().toISOString() };
+      const row = { cc: code, telephone: $("#rf-tel").value.trim(), contact_urgence: $("#rf-urg").value.trim(), date_embauche: $("#rf-emb").value || null, notes: $("#rf-notes").value.trim(),
+        sexe: $("#rf-sexe").value, date_naissance: $("#rf-naiss").value || null, updated_at: new Date().toISOString() };
+      if (row.date_naissance && row.date_naissance > today()) return toast("La date de naissance ne peut pas être dans le futur.");
       return act(async () => chk(await sb.from("rh_fiches").upsert(row)), "Fiche RH enregistrée.", e.target);
+    }
+    const pt = e.target.closest("#rf-push-test");
+    if (pt) {
+      pt.disabled = true;
+      return sb.functions.invoke("notifier", { body: { action: "test", cc: code } }).then(({ data, error }) => {
+        pt.disabled = false;
+        if (error) return toast("Envoi impossible : " + errMsg(error));
+        toast(data && data.envoyees ? "Notification envoyée sur " + data.envoyees + " appareil(s) de " + ccName(code) + "." : (data && data.message) || "Aucune notification envoyée.");
+      });
     }
     if (e.target.closest("#cg-new")) return openConge(null, code);
     const ext = e.target.closest("[data-cg-ext]");
@@ -2893,8 +2951,65 @@
               : '<button class="btn small success" data-esp-ok="' + r.id + '">✓ J\'ai bien reçu ' + money0(r.montant) + "</button>") + "</td></tr>").join("") + "</tbody></table></div>"
           : '<p class="muted">Aucune remise d\'argent pour l\'instant.</p>') + "</div>";
     }
+    // Notifications sur ce téléphone
+    h += '<div class="card" style="grid-column:1/-1"><h2>🔔 Notifications sur ce téléphone</h2><div id="push-zone"><p class="hint" style="margin:0">Vérification…</p></div></div>';
     $("#compte-body").innerHTML = h + "</div>";
+    renderPushZone();
   }
+  // ---- Notifications push (Web Push) ----
+  function pushPossible() { return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && !!cfg.vapidPublicKey; }
+  function cleVapid(b64) {
+    const p = (b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+    return Uint8Array.from(atob(p), (c) => c.charCodeAt(0));
+  }
+  async function abonnementActuel() {
+    if (!pushPossible()) return null;
+    const reg = await navigator.serviceWorker.getRegistration();
+    return reg ? reg.pushManager.getSubscription() : null;
+  }
+  async function renderPushZone() {
+    const z = $("#push-zone");
+    if (!z) return;
+    if (!pushPossible()) {
+      z.innerHTML = '<p class="hint" style="margin:0">Ce téléphone ou ce navigateur ne permet pas les notifications. Sur Android, utilisez l\'application installée ou Chrome. Sur iPhone, installez d\'abord l\'application sur l\'écran d\'accueil (iOS 16.4 minimum).</p>';
+      return;
+    }
+    const sub = await abonnementActuel().catch(() => null);
+    const refuse = Notification.permission === "denied";
+    z.innerHTML = sub && Notification.permission === "granted"
+      ? '<p style="margin:0 0 10px"><span class="badge ok">✓ Activées</span> Vous recevrez les notifications (anniversaires, messages de l\'équipe) même application fermée.</p><button class="btn small" id="push-off">Désactiver sur ce téléphone</button>'
+      : refuse
+        ? '<p class="hint" style="margin:0">Les notifications ont été <b>bloquées</b> pour cette application. Autorisez-les dans les réglages du téléphone (Paramètres → Applications → BGTeam / Chrome → Notifications), puis revenez ici.</p>'
+        : '<p class="hint" style="margin:0 0 10px">Recevez les notifications de l\'équipe (par exemple les anniversaires) directement sur ce téléphone, même quand l\'application est fermée.</p><button class="btn primary" id="push-on">🔔 Activer les notifications</button>';
+  }
+  async function activerPush(btn) {
+    try {
+      btn.disabled = true;
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { toast("Notifications refusées."); return renderPushZone(); }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cleVapid(cfg.vapidPublicKey) });
+      const j = sub.toJSON();
+      chk(await sb.from("push_abonnements").upsert({ endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, cc: me.cc || null, appareil: (navigator.userAgent.match(/\(([^)]+)\)/) || [])[1] || "" }, { onConflict: "endpoint" }));
+      toast("Notifications activées sur ce téléphone. 🔔");
+    } catch (e) { toast("Activation impossible : " + errMsg(e)); }
+    btn.disabled = false;
+    renderPushZone();
+  }
+  async function desactiverPush(btn) {
+    try {
+      btn.disabled = true;
+      const sub = await abonnementActuel();
+      if (sub) { await sb.from("push_abonnements").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+      toast("Notifications désactivées sur ce téléphone.");
+    } catch (e) { toast(errMsg(e)); }
+    renderPushZone();
+  }
+  $("#compte-body").addEventListener("click", (e) => {
+    if (e.target.closest("#push-on")) activerPush(e.target.closest("#push-on"));
+    if (e.target.closest("#push-off")) desactiverPush(e.target.closest("#push-off"));
+  });
   $("#compte-body").addEventListener("click", (e) => {
     const b = e.target.closest("[data-esp-ok]");
     if (!b) return;

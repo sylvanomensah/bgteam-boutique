@@ -1035,6 +1035,42 @@ create policy conges_select on public.conges for select to authenticated
 drop policy if exists conges_admin on public.conges;
 drop policy if exists conges_rh on public.conges;
 create policy conges_rh on public.conges for all to authenticated using (public.is_rh()) with check (public.is_rh());
+-- Sexe et date de naissance dans la fiche RH (confidentielle)
+alter table public.rh_fiches add column if not exists sexe text not null default '';
+alter table public.rh_fiches add column if not exists date_naissance date;
+-- Anniversaires du jour, visibles par tous les membres : seulement le CC, son nom et son sexe
+-- (ni la date de naissance ni l'âge). Un 29 février est fêté le 28 février les autres années.
+create or replace function public.anniversaires_du_jour() returns table (cc text, nom text, sexe text)
+language sql stable security definer set search_path = public as $$
+  select f.cc, coalesce(c.agents -> -1 ->> 'nom', ''), f.sexe
+  from public.rh_fiches f join public.ccs c on c.code = f.cc
+  where public.is_member() and c.actif and f.date_naissance is not null
+    and (to_char(f.date_naissance, 'MM-DD') = to_char(current_date, 'MM-DD')
+      or (to_char(f.date_naissance, 'MM-DD') = '02-29' and to_char(current_date, 'MM-DD') = '02-28'
+          and extract(day from (date_trunc('year', current_date) + interval '2 months' - interval '1 day')) = 28));
+$$;
+revoke all on function public.anniversaires_du_jour() from public, anon;
+grant execute on function public.anniversaires_du_jour() to authenticated;
+
+-- =====================================================================
+-- Notifications sur le téléphone (Web Push) : un abonnement par appareil
+-- Envoi par la fonction Supabase « notifier » (anniversaires chaque matin, test par l'admin).
+-- =====================================================================
+create table if not exists public.push_abonnements (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  cc text,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  appareil text not null default '',
+  created_at timestamptz not null default now()
+);
+alter table public.push_abonnements enable row level security;
+drop policy if exists push_own on public.push_abonnements;
+create policy push_own on public.push_abonnements for all to authenticated
+  using (user_id = auth.uid() or public.is_admin()) with check (user_id = auth.uid());
+
 -- Jours de repos d'un CC : admin ou CC « RH »
 create or replace function public.set_repos(p_cc text, p_repos smallint[]) returns void
 language plpgsql security definer set search_path = public as $$
