@@ -177,7 +177,7 @@
         reference: x.reference || "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       crVers: crVers.map((x) => ({ id: x.id, boutique: x.boutique, cc: x.cc ? String(x.cc) : "", mois: x.mois, montant: Number(x.montant), mode: x.mode, note: x.note || "",
         statut: x.statut, recuPar: x.recu_par || "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
-      crSoldes: crSoldes.map((x) => ({ boutique: x.boutique, date: x.date, op: x.operateur, solde: Number(x.solde), saisiPar: x.saisi_par || "" })),
+      crSoldes: crSoldes.map((x) => ({ boutique: x.boutique, date: x.date, op: x.operateur, solde: Number(x.solde), saisiPar: x.saisi_par || "", at: x.updated_at || x.created_at || "" })),
       anniv: anniv.map((a) => ({ cc: String(a.cc), nom: a.nom || "", sexe: a.sexe || "" })),
       stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
       bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
@@ -2654,7 +2654,15 @@
   // Clôtures du soir
   function soldeLe(bq, op, d) { const r = db.crSoldes.find((x) => x.boutique === bq && x.op === op && x.date === d); return r ? r.solde : null; }
   function dernierSolde(bq, op) { return db.crSoldes.filter((x) => x.boutique === bq && x.op === op && x.date <= today()).sort((a, b) => b.date.localeCompare(a.date))[0] || null; }
-  function acheteEntre(bq, op, apres, jusqua) { return db.crAchats.filter((x) => x.boutique === bq && x.op === op && x.date > apres && x.date <= jusqua).reduce((a, x) => a + x.montant, 0); }
+  // Une recharge est-elle postérieure à une clôture ? (jour suivant, ou même jour mais saisie après la clôture)
+  const apresCloture = (x, r) => x.date > r.date || (x.date === r.date && !!r.at && !!x.createdAt && new Date(x.createdAt) > new Date(r.at));
+  function acheteEntre(bq, op, prev, cur) { return db.crAchats.filter((x) => x.boutique === bq && x.op === op && apresCloture(x, prev) && !apresCloture(x, cur)).reduce((a, x) => a + x.montant, 0); }
+  // Crédit restant estimé = dernière clôture + recharges faites depuis
+  function creditRestant(bq, op) {
+    const r = dernierSolde(bq, op);
+    const rech = db.crAchats.filter((x) => x.boutique === bq && x.op === op && (r ? apresCloture(x, r) : x.date === today()));
+    return { r, base: r ? r.solde : null, ajout: rech.reduce((a, x) => a + x.montant, 0), nb: rech.length, total: (r ? r.solde : 0) + rech.reduce((a, x) => a + x.montant, 0), connu: !!r || rech.length > 0 };
+  }
   // Anti-fraude : crédit restant plus élevé que (restant précédent + recharges déclarées) => recharge non déclarée
   function anomaliesCredit(bqs, depuis) {
     const out = [];
@@ -2662,7 +2670,7 @@
       const l = db.crSoldes.filter((x) => x.boutique === bq && x.op === op).sort((a, b) => a.date.localeCompare(b.date));
       for (let i = 1; i < l.length; i++) {
         if (l[i].date < depuis) continue;
-        const attendu = l[i - 1].solde + acheteEntre(bq, op, l[i - 1].date, l[i].date);
+        const attendu = l[i - 1].solde + acheteEntre(bq, op, l[i - 1], l[i]);
         if (l[i].solde > attendu + 1) out.push({ bq, op, date: l[i].date, ecart: l[i].solde - attendu });
       }
     }));
@@ -2705,18 +2713,20 @@
     if (une) {
       const bq = scope[0].code, m = creditMois(bq, mois);
       $("#cr-cards").innerHTML = OPS.map((op) => {
-        const r = dernierSolde(bq, op), nb = op === "YAS" ? m.nbYas : m.nbMoov, com = op === "YAS" ? m.comYas : m.comMoov;
+        const cr = creditRestant(bq, op), nb = op === "YAS" ? m.nbYas : m.nbMoov, com = op === "YAS" ? m.comYas : m.comMoov;
+        const detail = !cr.nb ? quandSolde(cr.r)
+          : (cr.r ? money0(cr.base) + " (" + quandSolde(cr.r) + ")" : "aucune clôture") + " + " + money0(cr.ajout) + " rechargé" + (cr.nb > 1 ? "s" : "") + " depuis";
         return '<div class="op-card ' + op.toLowerCase() + '">' + logoOp(op) +
-          '<div class="op-main"><span>Crédit restant</span><b>' + (r ? money0(r.solde) : "—") + "</b><small>" + quandSolde(r) + "</small></div>" +
+          '<div class="op-main"><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b><small>" + detail + "</small></div>" +
           '<div class="op-stats"><div><b>' + nb + "</b><span>recharge" + (nb > 1 ? "s" : "") + " ce mois</span></div>" +
           "<div><b>" + money0(com) + "</b><span>commission du mois</span></div></div></div>";
       }).join("");
     } else {
       $("#cr-cards").innerHTML = "";
       $("#cr-table").innerHTML = scope.map((b) => {
-        const ry = dernierSolde(b.code, "YAS"), rm = dernierSolde(b.code, "MOOV"), m = creditMois(b.code, mois), ci = commissionInfo(b.code);
-        const der = [ry, rm].filter(Boolean).map((r) => r.date).sort().pop();
-        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (ry ? money0(ry.solde) : "—") + '</td><td class="num">' + (rm ? money0(rm.solde) : "—") +
+        const cy = creditRestant(b.code, "YAS"), cm = creditRestant(b.code, "MOOV"), m = creditMois(b.code, mois), ci = commissionInfo(b.code);
+        const der = [cy.r, cm.r].filter(Boolean).map((r) => r.date).sort().pop();
+        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (cy.connu ? money0(cy.total) : "—") + '</td><td class="num">' + (cm.connu ? money0(cm.total) : "—") +
           '</td><td class="num">' + logoOp("YAS", true) + " " + m.nbYas + " &nbsp; " + logoOp("MOOV", true) + " " + m.nbMoov +
           '</td><td class="num">' + (ci.du > 0 ? "<b>" + money0(ci.du) + "</b>" : '<span class="pos">0</span>') + "</td><td>" + (der ? fmtDate(der) : '<span class="muted">Jamais</span>') + "</td></tr>";
       }).join("");
