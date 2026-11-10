@@ -209,10 +209,17 @@ body.no-entrees .only-entrees { display: none !important; }
 body.no-rh .need-rh,
 body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-tab="planning"]) { display: none !important; }
 /* Crédit télécom : logos des réseaux */
-.logo-op { display: inline-block; height: 52px; width: auto; border-radius: 10px; object-fit: contain; vertical-align: middle; }
-.logo-op.sm { height: 22px; border-radius: 4px; margin-right: 2px; }
+/* même cadre pour les deux logos (le fond reprend la couleur du logo) */
+.logo-op { display: inline-block; width: 90px; height: 56px; border-radius: 10px; object-fit: contain; vertical-align: middle; }
+.logo-op.yas { background: #f3d20b; }
+.logo-op.moov { background: #0063ad; }
+.logo-op.sm { width: 36px; height: 22px; border-radius: 4px; margin-right: 2px; }
 .op-choice .op { padding: 6px; display: flex; align-items: center; justify-content: center; }
-.op-choice .op .logo-op { height: 56px; }
+.crconf-box { display: flex; align-items: center; gap: 16px; margin: 6px 0 4px; }
+.crconf-box b { font-size: 1.8rem; letter-spacing: -.02em; }
+.cv-total { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0 0 10px; font-size: .92rem; }
+.cv-total b { font-size: 1.05rem; }
+.cv-ferme { background: #f1f4f9; border-radius: 10px; padding: 10px 12px; color: var(--muted); font-size: .9rem; margin-top: 10px; }
 .op-choice .op:not(.active) .logo-op { filter: grayscale(.85); opacity: .6; }
 .op-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 18px; }
 .op-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: flex; flex-direction: column; gap: 14px; border-top: 5px solid; }

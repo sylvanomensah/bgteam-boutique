@@ -2729,10 +2729,13 @@
       (ci.attente ? '<div class="info-row"><span>dont versé, en attente de validation</span><span>' + money0(ci.attente) + "</span></div>" : "") +
       '<div class="info-row"><span>' + logoOp("YAS", true) + " commission de " + esc(fmtMonth(mois + "-01")) + "</span><b>" + money0(mAll.y) + "</b></div>" +
       '<div class="info-row"><span>' + logoOp("MOOV", true) + " commission de " + esc(fmtMonth(mois + "-01")) + "</span><b>" + money0(mAll.m) + "</b></div>";
-    const sbq = creditSaisieBq();
-    const reste = sbq ? commissionInfo(sbq).aDeclarer : 0;
+    const sbq = creditSaisieBq(), ouvert = versementOuvert();
+    const reste = resteAVerser(sbq);
     if (document.activeElement !== $("#cv-montant")) $("#cv-montant").value = reste > 0 ? reste : "";
-    $("#cv-save").disabled = !sbq || reste <= 0;
+    $("#cv-save").disabled = !sbq || reste <= 0 || !ouvert;
+    $("#cv-form").classList.toggle("hidden", !ouvert);
+    $("#cv-ferme").classList.toggle("hidden", ouvert);
+    $("#cv-ferme").innerHTML = ouvert ? "" : "🔒 Le reversement de la commission se fait uniquement <b>le 1er et le 2 de chaque mois</b> (commission du mois écoulé). Prochaine ouverture : <b>" + fmtDate(premierDuMois(addDays(premierDuMois(t), 32))) + "</b>.";
 
     // Recharge : montant proposé automatiquement (dotation du réseau)
     document.querySelectorAll("#cr-op [data-op]").forEach((b) => b.classList.toggle("active", b.dataset.op === crOp));
@@ -2747,10 +2750,13 @@
     // Historique du mois
     const achats = db.crAchats.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
     $("#cr-rows").innerHTML = achats.length ? achats.map((x) => "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) +
-      '</td><td class="num">' + money0(x.montant) + '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + esc(x.reference || "—") + "</td><td>" + esc(x.saisiPar || "—") +
+      '</td><td class="num">' + money0(x.montant) + '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + (x.createdAt ? new Date(x.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—") + "</td><td>" + esc(x.saisiPar || "—") +
       "</td><td>" + (admin ? '<button class="btn small danger" data-cr-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("")
       : '<tr><td colspan="8" class="empty">Aucune recharge ce mois-ci.</td></tr>';
-    const vers = db.crVers.filter((v) => codes.includes(v.boutique)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30);
+    const versTous = db.crVers.filter((v) => codes.includes(v.boutique));
+    const totRecu = versTous.filter((v) => v.statut === "Reçue").reduce((a, v) => a + v.montant, 0), totAtt = versTous.filter((v) => v.statut !== "Reçue").reduce((a, v) => a + v.montant, 0);
+    $("#cv-total").innerHTML = '<span>✅ Total déjà reversé (validé par l\'admin) : <b class="pos">' + money0(totRecu) + "</b></span>" + (totAtt ? '<span>⏳ En attente de validation : <b>' + money0(totAtt) + "</b></span>" : "");
+    const vers = versTous.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30);
     $("#cv-rows").innerHTML = vers.length ? vers.map((v) => {
       const canDel = admin || (v.createdBy === me.id && v.statut === "Déclarée" && Date.now() - new Date(v.createdAt).getTime() < EDIT_WINDOW_MS);
       return "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
@@ -2770,6 +2776,10 @@
       if (document.activeElement !== $("#cr-set-moov")) $("#cr-set-moov").value = db.settings.tauxMoov;
     }
   }
+  // Reversement de commission : ouvert aux CC seulement le 1er et le 2 du mois (l'admin peut toujours enregistrer)
+  function versementOuvert() { return isAdmin() || Number(today().slice(8, 10)) <= 2; }
+  // Montant proposé : commission des mois écoulés pour un CC, tout ce qui reste pour l'admin
+  function resteAVerser(bq) { if (!bq) return 0; const c = commissionInfo(bq); return isAdmin() ? c.aDeclarer : c.duAncien; }
   function majPreviewCredit(bq) {
     const m = Number($("#cr-montant").value) || 0;
     $("#cr-preview").innerHTML = !bq ? (isAdmin() ? "Choisissez une boutique dans le filtre pour enregistrer une recharge." : "Vous n'êtes affecté à aucune boutique.")
@@ -2795,22 +2805,33 @@
   });
   $("#cr-montant").addEventListener("input", () => { $("#cr-montant").dataset.touche = "1"; majPreviewCredit(creditSaisieBq()); });
   $("#cr-save").addEventListener("click", (e) => {
-    const bq = creditSaisieBq(), montant = Number($("#cr-montant").value), ref = $("#cr-ref").value.trim();
+    const bq = creditSaisieBq(), montant = Number($("#cr-montant").value), op = crOp, btn = e.target;
     if (!bq) return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant de la recharge.");
-    if (!isAdmin() && ref.length < 4) return toast("Indiquez la référence de la transaction (n° de recharge).");
-    if (db.crAchats.some((x) => ref && x.reference.toLowerCase() === ref.toLowerCase())) return toast("Cette référence a déjà été enregistrée.");
-    const row = { boutique: bq, cc: isAdmin() ? null : me.cc, date: today(), operateur: crOp, montant, reference: ref, saisi_par: me.nom || me.email || "" };
-    act(async () => {
-      chk(await sb.from("credit_achats").insert(row));
-      $("#cr-ref").value = ""; $("#cr-montant").dataset.touche = "";
-    }, "Recharge " + crOp + " de " + money0(montant) + " enregistrée : commission +" + money0(Math.round(montant * tauxOp(crOp) / 100)) + ".", e.target);
+    // Avertissement : la recharge n'est enregistrée (et n'apparaît dans l'historique) que si le CC répond Oui
+    const dlg = $("#crconf-dialog");
+    $("#crconf-logo").innerHTML = logoOp(op);
+    $("#crconf-montant").textContent = money0(montant);
+    $("#crconf-text").innerHTML = "Vous êtes sur le point d'enregistrer une recharge <b>" + op + "</b> de <b>" + money0(montant) + "</b> pour <b>" + esc(boutiqueName(bq)) +
+      "</b>.<br>Voulez-vous vraiment faire cette recharge ?";
+    dlg.returnValue = "";
+    dlg.onclose = () => {
+      if (dlg.returnValue !== "oui") return toast("Recharge annulée : rien n'a été enregistré.");
+      const ref = "AUTO-" + Date.now().toString(36).toUpperCase() + "-" + Math.random().toString(36).slice(2, 6).toUpperCase();
+      const row = { boutique: bq, cc: isAdmin() ? null : me.cc, date: today(), operateur: op, montant, reference: ref, saisi_par: me.nom || me.email || "" };
+      act(async () => {
+        chk(await sb.from("credit_achats").insert(row));
+        $("#cr-montant").dataset.touche = "";
+      }, "Recharge " + op + " de " + money0(montant) + " enregistrée : commission +" + money0(Math.round(montant * tauxOp(op) / 100)) + ".", btn);
+    };
+    dlg.showModal();
   });
   $("#cv-save").addEventListener("click", (e) => {
     const bq = creditSaisieBq(), montant = Number($("#cv-montant").value);
     if (!bq) return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant versé.");
-    const reste = commissionInfo(bq).aDeclarer;
+    if (!versementOuvert()) return toast("Le reversement se fait uniquement le 1er et le 2 de chaque mois.");
+    const reste = resteAVerser(bq);
     if (montant > reste) return toast("Le versement dépasse la commission à reverser (" + money0(reste) + ").");
     const row = { boutique: bq, cc: isAdmin() ? null : me.cc, mois: premierDuMois(today()), montant, mode: $("#cv-mode").value, note: "", saisi_par: me.nom || me.email || "" };
     act(async () => chk(await sb.from("credit_versements").insert(row)), "Versement de " + money0(montant) + " déclaré. Le solde diminuera quand l'admin confirmera la réception.", e.target);

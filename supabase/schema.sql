@@ -1243,6 +1243,10 @@ declare v_du numeric;
 begin
   new.mois := date_trunc('month', coalesce(new.mois, current_date))::date;
   if public.is_admin() then return new; end if;
+  -- Reversement ouvert aux CC uniquement le 1er et le 2 du mois (heure de Lomé = UTC)
+  if extract(day from (now() at time zone 'Africa/Lome')) > 2 then
+    raise exception 'Le reversement de la commission se fait uniquement le 1er et le 2 de chaque mois';
+  end if;
   select coalesce((select sum(commission) from public.credit_achats where boutique = new.boutique), 0)
        - coalesce((select sum(montant) from public.credit_versements where boutique = new.boutique), 0) into v_du;
   if new.montant > v_du then raise exception 'Le versement (% F) dépasse la commission encore due (% F)', new.montant, greatest(v_du, 0); end if;
