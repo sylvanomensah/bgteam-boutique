@@ -2200,13 +2200,13 @@
       (db.anniv || []).forEach((a) => {
         const prenom = a.nom || ccName(a.cc), elle = a.sexe === "F";
         if (me && !isAdmin() && String(me.cc) === a.cc) {
-          h += '<div class="alert-line anniv">🎉 <span><b>Joyeux anniversaire ' + esc(prenom) + " !</b> Toute l'équipe " + esc(db.settings.nom || "BGTeam") +
-            " te souhaite une excellente journée et une très belle année" + (elle ? " pleine de réussite, chère collègue." : " pleine de réussite, cher collègue.") + "</span>" +
-            '<button class="btn small" data-anniv-ok>Merci 🙏</button></div>';
+          h += '<div class="alert-line anniv"><span class="fete">🎉🎂</span><span><b>Joyeux anniversaire ' + esc(prenom) + " ! 🥳</b><br>Toute l'équipe " + esc(db.settings.nom || "BGTeam") +
+            " te souhaite une excellente journée et une très belle année" + (elle ? " pleine de réussite, chère collègue." : " pleine de réussite, cher collègue.") + " 🎈🎁🎊</span>" +
+            '<span class="fete">🎈🎁</span><button class="btn small" data-anniv-ok>Merci 🙏</button></div>';
         } else {
-          h += '<div class="alert-line anniv">🎂 <span>Aujourd\'hui, c\'est l\'anniversaire de <b>' + esc(ccName(a.cc)) + "</b>" + (a.sexe ? (elle ? " 👩" : " 👨") : "") +
-            " ! Pensez à " + (a.sexe ? (elle ? "la" : "le") : "lui") + " féliciter.</span>" +
-            '<button class="btn small" data-anniv-ok>OK</button></div>';
+          h += '<div class="alert-line anniv"><span class="fete">🎂🎉</span><span>Aujourd\'hui, c\'est l\'anniversaire de <b>' + esc(ccName(a.cc)) + "</b>" + (a.sexe ? (elle ? " 👩" : " 👨") : "") +
+            " ! 🥳 Pensez à " + (a.sexe ? (elle ? "la" : "le") : "lui") + " féliciter. 🎈🎁</span>" +
+            '<span class="fete">🎊</span><button class="btn small" data-anniv-ok>OK</button></div>';
         }
       });
     }

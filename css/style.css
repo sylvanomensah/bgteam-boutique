@@ -504,7 +504,11 @@ a.btn { text-decoration: none; }
 .app-alert .alert-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 16px; border-radius: 12px;
   background: var(--danger-soft); color: var(--danger); border: 1px solid #f5b5b5; border-left: 5px solid var(--danger); }
 .app-alert .alert-line.ok { background: var(--success-soft); color: var(--success); border-color: #b7e2c6; border-left-color: var(--success); }
-.app-alert .alert-line.anniv { background: linear-gradient(90deg, #fff4dd, #fde7f3); color: #8a3b62; border-color: #f3c7dc; border-left-color: #e05297; font-size: .95rem; }
+.app-alert .alert-line.anniv { background: linear-gradient(135deg, #17804a, #22a35f); color: #fff; border-color: #17804a; border-left-color: #0f5c35; font-size: .98rem; flex-wrap: nowrap; }
+.app-alert .alert-line.anniv b { color: #fff; }
+.app-alert .alert-line.anniv .fete { font-size: 1.7rem; line-height: 1; flex: none; letter-spacing: 2px; }
+.app-alert .alert-line.anniv .btn { background: #fff; color: #17804a; border-color: #fff; flex: none; }
+@media (max-width: 640px) { .app-alert .alert-line.anniv { flex-wrap: wrap; } }
 /* Deux cases de soldes à côté des filtres Boutique / Mois */
 .fd-mini { display: flex; gap: 12px; margin-left: auto; flex-wrap: wrap; }
 .fd-mini .mini { min-width: 200px; padding: 10px 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 2px; }
