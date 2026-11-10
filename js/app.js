@@ -3095,7 +3095,7 @@
     const cMois = courses.filter((c) => c.date.slice(0, 7) === mois), estimationMois = sumBy(cMois, (c) => c.valeur), benefMois = sumBy(cMois, (c) => c.valeur - c.cout);
     // base de la barre : restant + consommé depuis la dernière course
     const base = derniere ? restant + sumBy(sorties.filter((x) => String(x.createdAt) >= String(derniere.createdAt)), (x) => x.consomme) : 0;
-    return { courses, sorties, credit, consomme, restant, ca, derniere, retire, aRetirer: ca - retire, venduMois, articlesMois,
+    return { courses, sorties, credit, consomme, restant, ca, derniere, retire, benefVentes: ca - consomme, aRetirer: ca - consomme - retire, venduMois, articlesMois,
       venteJour: sumBy(sJour, (x) => x.montant), consJour: sumBy(sJour, (x) => x.consomme), articlesJour: sumBy(sJour, (x) => x.qte),
       estimationMois, benefMois, taux: estimationMois > 0 ? benefMois / estimationMois : null, base, seuilAtteint: !courses.length || restant <= db.settings.frigoSeuil };
   }
@@ -3137,13 +3137,13 @@
       if (admin) {
         h += '<div class="fg-card violet"><span>Bénéfice estimé du mois</span><b>' + money0(f.benefMois) + "</b><small>" +
           (f.taux == null ? "aucune course ce mois-ci" : "somme des marges des produits achetés : " + Math.round(f.taux * 100) + " %") + "</small></div>";
-        h += '<div class="fg-card"><span>Argent des ventes à retirer</span><b>' + money0(f.aRetirer) + "</b><small>déjà retiré : " + money0(f.retire) + "</small></div>";
+        h += '<div class="fg-card"><span>Bénéfice des ventes (retirable)</span><b>' + money0(f.aRetirer) + "</b><small>bénéfice des ventes en caisse : " + money0(f.benefVentes) + " · déjà retiré : " + money0(f.retire) + "</small></div>";
       }
       $("#fg-cards").innerHTML = h;
     } else {
       $("#fg-cards").innerHTML = "";
       $("#fg-table-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Crédit vente restant</th><th class=\"num\">Estimation des ventes du mois</th><th class=\"num\">Vendu en caisse ce mois</th><th class=\"num\">Vendu aujourd'hui</th>" +
-        (admin ? '<th class="num">Bénéfice estimé du mois</th><th class="num">À retirer</th>' : "") + "</tr>";
+        (admin ? '<th class="num">Bénéfice estimé du mois</th><th class="num">Bénéfice des ventes (retirable)</th>' : "") + "</tr>";
       const avec = scope.filter((b) => db.fgCourses.some((c) => c.boutique === b.code));
       $("#fg-table").innerHTML = avec.length ? avec.map((b) => {
         const f = frigoInfo(b.code, mois);
@@ -3178,7 +3178,7 @@
       if (!$("#fc-date").value) $("#fc-date").value = t;
       renderFcLignes();
       // Retrait
-      $("#fx-info").innerHTML = sbq ? "Argent des ventes disponible pour " + esc(boutiqueName(sbq)) + " : <b>" + money0(fi.aRetirer) + "</b>." : "Choisissez une boutique dans le filtre.";
+      $("#fx-info").innerHTML = sbq ? "Bénéfice des ventes retirable pour " + esc(boutiqueName(sbq)) + " : <b>" + money0(fi.aRetirer) + "</b>." : "Choisissez une boutique dans le filtre.";
       $("#fx-save").disabled = !sbq;
       if (document.activeElement !== $("#fg-seuil")) $("#fg-seuil").value = db.settings.frigoSeuil;
     }
@@ -3305,7 +3305,7 @@
     if (!bq) return toast("Choisissez une boutique dans le filtre.");
     if (!(montant > 0)) return toast("Indiquez le montant du retrait.");
     const dispo = frigoInfo(bq, today().slice(0, 7)).aRetirer;
-    if (montant > dispo && !confirm("L'argent des ventes disponible n'est que de " + money0(dispo) + ". Retirer quand même " + money0(montant) + " ?")) return;
+    if (montant > dispo && !confirm("Le bénéfice des ventes retirable n'est que de " + money0(dispo) + ". Retirer quand même " + money0(montant) + " ?")) return;
     act(async () => {
       chk(await sb.from("frigo_retraits").insert({ boutique: bq, date: today(), montant, note: $("#fx-note").value.trim(), saisi_par: me.nom || me.email || "" }));
       $("#fx-montant").value = ""; $("#fx-note").value = "";
