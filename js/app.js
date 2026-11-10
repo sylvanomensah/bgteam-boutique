@@ -2774,8 +2774,14 @@
   // Présences d'un jour choisi (hier, aujourd'hui, demain…) selon la boutique et le CC filtrés
   let rhJour = "";
   function renderPlanning() {
-    const b = $("#rh-boutique").value, ccF = $("#rh-cc").value;
-    const list = db.settings.ccList.filter((c) => c.actif && (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)) && (!ccF || ccF === "ALL" || c.code === ccF));
+    const b = $("#rh-boutique").value;
+    // Il faut d'abord choisir une boutique
+    if (!b || b === "ALL") {
+      $("#rh-today").innerHTML = '<div class="card"><p class="hint" style="margin:0">🏬 Sélectionnez une <b>boutique</b> dans le filtre ci-dessus pour voir les CC au travail, de repos ou en congé.</p></div>';
+      return;
+    }
+    const ccF = "";
+    const list = db.settings.ccList.filter((c) => c.actif && (b === "NONE" ? !c.boutique : c.boutique === b));
     if (!rhJour) rhJour = today();
     const auj = rhJour, groupes = { service: [], repos: [], conge: [] };
     const ecart = Math.round((parse(auj) - parse(today())) / 86400000);
@@ -3107,6 +3113,8 @@
     // CC « RH » : seulement Fiche CC et Planning
     if (isRhCc() && !["fiche", "planning"].includes(t)) t = "fiche";
     $("#rh-filters").classList.toggle("hidden", !["fiche", "planning"].includes(t));
+    // Présences : seulement le filtre Boutique (pas de filtre CC)
+    $("#rh-cc").closest("label").classList.toggle("hidden", t === "planning");
     rhTab = t;
     try { localStorage.setItem("rhTab", t); } catch (e) {}
     document.querySelectorAll("#rh-tabs [data-rh-tab]").forEach((b) => b.classList.toggle("active", b.dataset.rhTab === t));
