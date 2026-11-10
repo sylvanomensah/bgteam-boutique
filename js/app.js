@@ -2071,11 +2071,7 @@
       if (!remBq) {
         $("#rm-info").innerHTML = '<p class="hint" style="margin:0">' + (admin ? "Choisissez une boutique dans le filtre en haut pour enregistrer une remontée." : "Vous n'êtes affecté à aucune boutique. Demandez à l'administrateur.") + "</p>";
       } else {
-        const v = ventesDeclarees(remBq, w, weekEnd(w)), r = sumMontant(remonteesOf(remBq, w));
-        $("#rm-info").innerHTML = '<div class="info-row"><span>Boutique</span><span><b>' + esc(boutiqueName(remBq)) + "</b></span></div>" +
-          '<div class="info-row"><span>Ventes déclarées dans l\'application</span><span><b>' + money0(v) + "</b></span></div>" +
-          '<div class="info-row"><span>Déjà remonté pour cette semaine</span><span>' + money0(r) + "</span></div>" +
-          '<div class="info-row"><span>Reste à remonter</span><span><b>' + money0(Math.max(0, v - r)) + "</b></span></div>";
+        majRmInfo(true);
       }
       $("#rm-save").disabled = !remBq;
       syncRmNote(); // liste des CC qui peuvent recevoir les espèces
@@ -2173,15 +2169,16 @@
       $("#rt-boutique").value = $("#fd-boutique").value !== "ALL" ? $("#fd-boutique").value : db.boutiques.some((b) => b.code === rcur) ? rcur : (db.boutiques[0] || {}).code || "";
       if (!$("#rt-date").value) $("#rt-date").value = t;
       const sb0 = soldesOf($("#rt-boutique").value);
-      $("#rt-info").textContent = "Solde bénéfice disponible : " + money0(sb0.benefice) + ".";
+      $("#rt-info").textContent = "Solde bénéfice disponible : " + money2(sb0.benefice) + ".";
       // Journal du mois
+      const ecart2 = (v) => '<span class="' + (v >= 0 ? "pos" : "neg") + '">' + (v > 0 ? "+" : "") + money2(v) + "</span>";
       $("#fd-journal-title").textContent = "Journal des mouvements — " + fmtMonth(du);
       const mv = journalOf(codes).filter((m) => m.date >= du && m.date <= au).sort((a, b) => b.date.localeCompare(a.date));
       $("#fd-journal").innerHTML = mv.length ? mv.map((m) => "<tr><td>" + fmtDate(m.date) + "</td><td>" + esc(boutiqueName(m.boutique)) + "</td><td>" + m.label +
-        '</td><td class="num">' + (m.ca ? money0(m.ca) : '<span class="muted">—</span>') + '</td><td class="num">' + (m.bene ? ecartHtml(m.bene) : '<span class="muted">—</span>') + "</td><td>" +
+        '</td><td class="num">' + (m.ca ? money0(m.ca) : '<span class="muted">—</span>') + '</td><td class="num">' + (m.bene ? ecart2(m.bene) : '<span class="muted">—</span>') + "</td><td>" +
         (m.retraitId ? '<button class="btn small danger" data-rt-del="' + m.retraitId + '">✕</button>' : "") + "</td></tr>").join("")
         : '<tr><td colspan="6" class="empty">Aucun mouvement sur ce mois.</td></tr>';
-      $("#fd-journal-foot").innerHTML = mv.length ? '<tr><td colspan="3">TOTAL DU MOIS</td><td class="num">' + money0(mv.reduce((a, m) => a + m.ca, 0)) + '</td><td class="num">' + ecartHtml(mv.reduce((a, m) => a + m.bene, 0)) + "</td><td></td></tr>" : "";
+      $("#fd-journal-foot").innerHTML = mv.length ? '<tr><td colspan="3">TOTAL DU MOIS</td><td class="num">' + money0(mv.reduce((a, m) => a + m.ca, 0)) + '</td><td class="num">' + ecart2(mv.reduce((a, m) => a + m.bene, 0)) + "</td><td></td></tr>" : "";
     }
     $("#fd-kpis").innerHTML = kpiHtml(k);
   }
@@ -2192,9 +2189,36 @@
     return p ? Number(p.cmp) || 0 : 0;
   }
   // Mouvements du solde bénéfice : marge des ventes (par jour), dépenses et retraits
+  // Cadre « Remonter les fonds » : boutique avec frigo = on remonte le BÉNÉFICE (proposé par défaut) ;
+  // sinon les ventes déclarées de la semaine. « Reste à remonter » suit le montant saisi.
+  function majRmInfo(proposer) {
+    const admin = isAdmin(), remBq = admin ? ($("#fd-boutique").value !== "ALL" ? $("#fd-boutique").value : "") : (canEntrees() ? myBoutiqueCode() : "");
+    if (!remBq) return;
+    const w = $("#rm-semaine").value, r = sumMontant(remonteesOf(remBq, w)), frigo = db.fgCourses.some((c) => c.boutique === remBq);
+    const base = frigo ? Math.max(0, soldesOf(remBq).benefice) : Math.max(0, ventesDeclarees(remBq, w, weekEnd(w)) - r);
+    const el = $("#rm-montant");
+    if (proposer && document.activeElement !== el && !rmOcr) el.value = base > 0 ? Math.round(base * 100) / 100 : "";
+    const saisi = Number(el.value) || 0, reste = Math.max(0, Math.round((base - saisi) * 100) / 100);
+    $("#rm-info").innerHTML = '<div class="info-row"><span>Boutique</span><span><b>' + esc(boutiqueName(remBq)) + "</b></span></div>" +
+      (frigo
+        ? '<div class="info-row"><span>Solde bénéfice à remonter</span><span><b>' + money2(base) + "</b></span></div>" +
+          '<div class="info-row"><span>Bénéfice remonté cette semaine</span><span>' + money2(r) + "</span></div>"
+        : '<div class="info-row"><span>Ventes déclarées dans l\'application</span><span><b>' + money0(ventesDeclarees(remBq, w, weekEnd(w))) + "</b></span></div>" +
+          '<div class="info-row"><span>Déjà remonté pour cette semaine</span><span>' + money0(r) + "</span></div>") +
+      '<div class="info-row"><span>Reste à remonter</span><span><b' + (reste > 0 ? ' class="neg"' : ' class="pos"') + ">" + money2(reste) + "</b></span></div>";
+  }
   function journalOf(codes) {
     const out = [];
     codes.forEach((bq) => {
+      // Boutique avec frigo : bénéfice des ventes du frigo (prix de vente − prix d'achat de la course), remontées et retraits du frigo
+      if (db.fgCourses.some((c) => c.boutique === bq)) {
+        const jf = {};
+        db.fgSorties.filter((x) => x.boutique === bq).forEach((x) => { const j = jf[x.date] || (jf[x.date] = { ca: 0, bene: 0 }); j.ca += x.montant; j.bene += x.montant - x.consomme; });
+        Object.keys(jf).forEach((d) => out.push({ date: d, boutique: bq, ca: jf[d].ca, bene: Math.round(jf[d].bene * 100) / 100, label: "🧊 Bénéfice des ventes du frigo du jour" }));
+        db.remontees.filter((r) => r.boutique === bq).forEach((r) => out.push({ date: String(r.createdAt || r.semaine).slice(0, 10), boutique: bq, ca: 0, bene: -r.montant, label: "⬆ Bénéfice remonté (" + esc(r.mode || "") + ")" }));
+        db.fgRetraits.filter((x) => x.boutique === bq).forEach((x) => out.push({ date: x.date, boutique: bq, ca: 0, bene: -x.montant, label: "🏧 Retrait (Frigo)" + (x.note ? " — " + esc(x.note) : "") }));
+        return;
+      }
       const jours = {};
       db.sales.filter((s) => isCountedSale(s) && saleBoutique(s) === bq).forEach((s) => {
         const j = jours[s.date] || (jours[s.date] = { ca: 0, marge: 0 });
@@ -2331,6 +2355,7 @@
   $("#fd-boutique").addEventListener("change", renderFonds);
   $("#fd-mois").addEventListener("change", renderFonds);
   $("#rm-semaine").addEventListener("change", renderFonds);
+  $("#rm-montant").addEventListener("input", () => majRmInfo(false));
   // Mobile money / virement : photo du reçu de dépôt obligatoire (+ référence facultative)
   let rmPhotoBlob = null, rmOcr = null, rmOcrEnCours = false;
   // ---- Lecture automatique du reçu (OCR, Tesseract.js chargé seulement quand on en a besoin) ----
@@ -2378,7 +2403,7 @@
         new Promise((_, rej) => setTimeout(() => rej(new Error("délai dépassé")), 60000))
       ]);
       rmOcr = lireRecu(res && res.data ? res.data.text : "");
-      if (rmOcr.montant && !$("#rm-montant").value) $("#rm-montant").value = rmOcr.montant;
+      if (rmOcr.montant) { $("#rm-montant").value = rmOcr.montant; majRmInfo(false); }
     } catch (err) {
       rmOcr = { lu: false, erreur: errMsg(err) };
     }
@@ -2492,11 +2517,13 @@
       if (dup) return toast("Ce reçu (n° " + ocr.tx + ") a déjà servi pour une remontée du " + fmtDate(dup.semaine) + " (" + money0(dup.montant) + ").");
     }
     const w = $("#rm-semaine").value;
-    // Contrôle : le montant remonté doit couvrir les ventes déclarées de la semaine
-    const du = Math.round(ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w)));
-    const manque = du - montant;
-    if (manque > 0 && !confirm("⚠ Montant inférieur aux ventes déclarées\n\nVentes déclarées de la semaine du " + fmtDate(w) + " (reste dû) : " + money0(du) +
-      "\nMontant que vous remontez : " + money0(montant) + "\nIl manquera : " + money0(manque) + "\n\nLe reste devra être remonté. Confirmer quand même ?")) return;
+    // Contrôle : boutique avec frigo = le bénéfice ; sinon les ventes déclarées de la semaine
+    const frigoRm = db.fgCourses.some((c) => c.boutique === bq);
+    const du = frigoRm ? Math.round(Math.max(0, soldesOf(bq).benefice) * 100) / 100 : Math.round(ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w)));
+    if (frigoRm && montant > du + 0.5) return toast("Le montant (" + money2(montant) + ") dépasse le solde bénéfice à remonter (" + money2(du) + ").");
+    const manque = Math.round((du - montant) * 100) / 100;
+    if (manque > 0 && !confirm("⚠ Montant inférieur " + (frigoRm ? "au solde bénéfice" : "aux ventes déclarées") + "\n\n" + (frigoRm ? "Solde bénéfice à remonter" : "Ventes déclarées de la semaine du " + fmtDate(w) + " (reste dû)") + " : " + money2(du) +
+      "\nMontant que vous remontez : " + money2(montant) + "\nReste à remonter : " + money2(manque) + "\n\nLe reste devra être remonté. Confirmer quand même ?")) return;
     const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: "", saisi_par: me.nom || me.email || "" };
     if (receveur) row.cc_receveur = receveur;
     if (ocr) {
@@ -2513,7 +2540,7 @@
       }
       chk(await sb.from("remontees").insert(row));
       $("#rm-montant").value = ""; rmPhotoBlob = null; rmOcr = null; syncRmNote();
-    }, (manque > 0 ? "Remontée enregistrée. ⚠ Il reste " + money0(manque) + " à remonter pour cette semaine." : "Remontée déclarée : " + money(montant) + ".") +
+    }, (manque > 0 ? "Remontée enregistrée. ⚠ Il reste " + money2(manque) + " à remonter." : "Remontée déclarée : " + money2(montant) + ".") +
       (receveur ? " " + ccName(receveur) + " doit confirmer la réception de l'argent." : " L'admin la validera après avoir vérifié la réception de l'argent."), btn).then(() => { btn.textContent = "Déclarer la remontée"; });
   });
   $("#fd-rem").addEventListener("click", (e) => {
@@ -3113,13 +3140,14 @@
     const ca = sumBy(sorties, (x) => x.montant); // argent encaissé (prix de vente)
     const derniere = courses[0] || null;
     const retire = sumBy(db.fgRetraits.filter((r) => r.boutique === bq), (r) => r.montant);
+    const remonte = sumBy(db.remontees.filter((r) => r.boutique === bq), (r) => r.montant); // bénéfice déjà remonté (Fonds & dépenses)
     const sMois = sorties.filter((x) => x.date.slice(0, 7) === mois), venduMois = sumBy(sMois, (x) => x.montant), articlesMois = sumBy(sMois, (x) => x.qte);
     const sJour = sorties.filter((x) => x.date === today());
     // Estimation des ventes et bénéfice estimé du mois : d'après les produits des courses du mois (prix de vente × quantité)
     const cMois = courses.filter((c) => c.date.slice(0, 7) === mois), estimationMois = sumBy(cMois, (c) => c.valeur), benefMois = sumBy(cMois, (c) => c.valeur - c.cout);
     // base de la barre : restant + consommé depuis la dernière course
     const base = derniere ? restant + sumBy(sorties.filter((x) => String(x.createdAt) >= String(derniere.createdAt)), (x) => x.consomme) : 0;
-    return { courses, sorties, credit, consomme, restant, ca, derniere, retire, benefVentes: ca - consomme, aRetirer: ca - consomme - retire, venduMois, articlesMois,
+    return { courses, sorties, credit, consomme, restant, ca, derniere, retire, benefVentes: ca - consomme, remonte, aRetirer: ca - consomme - retire - remonte, venduMois, articlesMois,
       venteJour: sumBy(sJour, (x) => x.montant), consJour: sumBy(sJour, (x) => x.consomme), articlesJour: sumBy(sJour, (x) => x.qte),
       estimationMois, benefMois, taux: estimationMois > 0 ? benefMois / estimationMois : null, base, seuilAtteint: !courses.length || restant <= db.settings.frigoSeuil };
   }

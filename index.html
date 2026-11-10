@@ -446,19 +446,11 @@
         <div class="actions"><button class="btn primary" id="rt-save">Enregistrer le retrait</button></div>
       </div>
 
-      <div class="card admin-only">
-        <h2 id="fd-journal-title">Journal des mouvements</h2>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Date</th><th>Boutique</th><th>Opération</th><th class="num">Ventes</th><th class="num">Solde bénéfice</th><th></th></tr></thead>
-          <tbody id="fd-journal"></tbody><tfoot id="fd-journal-foot"></tfoot>
-        </table></div>
-      </div>
-
       <div class="card" id="fd-remonter">
         <h2>Remonter les fonds</h2>
         <div class="form form-inline">
           <label>Semaine<select id="rm-semaine"></select></label>
-          <label>Montant remis<input type="number" id="rm-montant" min="1" placeholder="Ex. : 85000"></label>
+          <label>Montant à remettre<input type="number" id="rm-montant" min="1" step="any" placeholder="Ex. : 85000"></label>
           <label>Mode<select id="rm-mode"><option>Espèces</option><option>Mobile money</option></select></label>
           <label id="rm-receveur-wrap">CC qui reçoit l'argent <span class="req">*</span><select id="rm-receveur"></select></label>
         </div>
@@ -508,6 +500,13 @@
         </table></div>
       </div>
 
+      <div class="card admin-only">
+        <h2 id="fd-journal-title">Journal des mouvements</h2>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Date</th><th>Boutique</th><th>Opération</th><th class="num">Ventes</th><th class="num">Solde bénéfice</th><th></th></tr></thead>
+          <tbody id="fd-journal"></tbody><tfoot id="fd-journal-foot"></tfoot>
+        </table></div>
+      </div>
     </section>
 
     <!-- CRÉDIT TÉLÉCOM (YAS / MOOV) -->
