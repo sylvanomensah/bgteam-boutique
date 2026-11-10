@@ -102,6 +102,7 @@
       <button data-view="entrees"><svg viewBox="0 0 24 24"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg><span>Entrées stock</span></button>
       <button data-view="fonds" class="need-fonds"><svg viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span>Fonds &amp; dépenses</span></button>
       <button data-view="credit" class="need-credit"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/><path d="M10 7h4M10 11h4"/></svg><span>Crédit télécom</span></button>
+      <button data-view="frigo" class="need-frigo"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 10h14"/><path d="M9 5v2M9 13v3"/></svg><span>Frigo</span></button>
       <button data-view="bobines" class="need-bobines"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg><span>Bobines</span></button>
       <button data-view="facture"><svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span>Facturation</span></button>
       <button data-view="rh" class="need-rh"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>RH</span></button>
@@ -662,6 +663,149 @@
           <button class="btn" id="cr-set-save" style="align-self:flex-end">Enregistrer les taux</button>
         </div>
       </details>
+      </div>
+    </section>
+
+    <!-- FRIGO -->
+    <section id="view-frigo" class="view">
+      <div class="title-filter">
+        <h1 id="fg-titre">Frigo</h1>
+        <div class="tabs cr-tabs" id="fg-tabs">
+          <button data-fg-tab="ops" class="active">🧊 Opérations</button>
+          <button data-fg-tab="recap">📊 Récap</button>
+        </div>
+        <label>Boutique<select id="fg-boutique"></select></label>
+      </div>
+
+      <!-- Récap d'un mois -->
+      <div id="fg-recap" class="hidden">
+        <div class="card recap-head">
+          <div><h2 id="fr-titre">Récap</h2><p class="hint" id="fr-sous" style="margin:0"></p></div>
+          <div class="recap-actions">
+            <label>Mois<input type="month" id="fg-mois"></label>
+            <button class="btn" id="fr-print">🖨 Imprimer</button>
+          </div>
+        </div>
+        <div class="kpis" id="fr-kpis"></div>
+        <div class="card" id="fr-bq-card">
+          <h2>Par boutique</h2>
+          <div class="table-wrap"><table class="table">
+            <thead id="fr-bq-head"></thead>
+            <tbody id="fr-bq"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2>Ventes déclarées</h2>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vente</th><th>Déclaré par</th></tr></thead>
+            <tbody id="fr-ventes"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <h2>Courses</h2>
+          <div class="table-wrap"><table class="table">
+            <thead id="fr-courses-head"></thead>
+            <tbody id="fr-courses"></tbody>
+          </table></div>
+        </div>
+        <div class="card admin-only">
+          <h2>Retraits</h2>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Date</th><th>Boutique</th><th class="num">Montant</th><th>Note</th><th>Saisi par</th></tr></thead>
+            <tbody id="fr-retraits"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="fg-main">
+        <div class="frigo-cards" id="fg-cards"></div>
+        <div class="card hidden" id="fg-table-card">
+          <h2>Frigo par boutique</h2>
+          <div class="table-wrap"><table class="table">
+            <thead id="fg-table-head"></thead>
+            <tbody id="fg-table"></tbody>
+          </table></div>
+        </div>
+
+        <!-- Vente du jour (tous les CC de la boutique) -->
+        <div class="card need-frigo-vente" id="fv-card">
+          <h2 id="fv-titre">🧊 Vente du frigo</h2>
+          <div class="form form-inline" id="fv-form">
+            <label>Montant vendu<input type="number" id="fv-montant" min="0" inputmode="numeric" placeholder="0 si rien"></label>
+            <button class="btn success" id="fv-save" style="align-self:flex-end">Déclarer la vente</button>
+          </div>
+          <p class="hint" style="margin:0" id="fv-info"></p>
+        </div>
+
+        <!-- Course (admin) -->
+        <div class="card admin-only" id="fc-card">
+          <h2>🛒 Nouvelle course pour le frigo</h2>
+          <div id="fc-etat" class="cv-ferme" style="margin:0 0 12px"></div>
+          <div id="fc-zone">
+            <div class="form form-inline"><label>Date<input type="date" id="fc-date"></label></div>
+            <h3 class="sub-title">Produits achetés</h3>
+            <div class="table-wrap">
+              <table class="table course-lines">
+                <thead><tr><th>Produit</th><th class="num">Quantité</th><th class="num">Prix d'achat unitaire</th><th class="num">Prix de vente unitaire</th><th class="num">Total achat</th><th class="num">Total vente</th><th></th></tr></thead>
+                <tbody id="fc-lines"></tbody>
+              </table>
+            </div>
+            <datalist id="fc-produits"></datalist>
+            <button class="btn" id="fc-add">+ Ajouter un produit</button>
+            <div class="grid2 course-bottom">
+              <div>
+                <h3 class="sub-title">Frais de la course</h3>
+                <div class="form">
+                  <label>Déplacement<input type="number" min="0" id="fc-deplacement" value="0"></label>
+                  <label>Sachet<input type="number" min="0" id="fc-sachet" value="0"></label>
+                  <label>Autres frais (libellé)<input id="fc-autres-lib" placeholder="Ex. : glace"></label>
+                  <label>Autres frais (montant)<input type="number" min="0" id="fc-autres" value="0"></label>
+                </div>
+              </div>
+              <div class="course-summary" id="fc-summary"></div>
+            </div>
+            <div class="actions"><button class="btn success" id="fc-save">Enregistrer la course</button></div>
+          </div>
+        </div>
+
+        <!-- Retrait (admin) -->
+        <div class="card admin-only">
+          <h2>💵 Retrait de l'argent des ventes</h2>
+          <div class="form form-inline">
+            <label>Montant<input type="number" id="fx-montant" min="1"></label>
+            <label>Note<input id="fx-note" placeholder="Facultatif"></label>
+            <button class="btn primary" id="fx-save" style="align-self:flex-end">Enregistrer le retrait</button>
+          </div>
+          <p class="hint" style="margin:0" id="fx-info"></p>
+        </div>
+
+        <!-- Historique du mois -->
+        <details class="card cr-details">
+          <summary><b>Historique du mois en cours</b> — ventes, courses et retraits</summary>
+          <h3 class="sub-title">Ventes déclarées</h3>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vente</th><th>Déclaré par</th><th></th></tr></thead>
+            <tbody id="fh-ventes"></tbody>
+          </table></div>
+          <h3 class="sub-title">Courses</h3>
+          <div id="fh-courses"></div>
+          <div class="admin-only">
+            <h3 class="sub-title">Retraits</h3>
+            <div class="table-wrap"><table class="table">
+              <thead><tr><th>Date</th><th>Boutique</th><th class="num">Montant</th><th>Note</th><th>Saisi par</th><th></th></tr></thead>
+              <tbody id="fh-retraits"></tbody>
+            </table></div>
+          </div>
+        </details>
+
+        <!-- Réglages (admin) -->
+        <details class="card cr-details admin-only">
+          <summary><b>Réglages</b> — seuil de nouvelle course</summary>
+          <div class="form form-inline" style="margin-top:10px">
+            <label>Nouvelle course possible quand le crédit vente restant atteint (FCFA)<input type="number" id="fg-seuil" min="0"></label>
+            <button class="btn" id="fg-seuil-save" style="align-self:flex-end">Enregistrer</button>
+          </div>
+        </details>
       </div>
     </section>
 

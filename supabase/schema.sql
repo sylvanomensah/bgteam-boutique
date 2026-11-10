@@ -1267,6 +1267,128 @@ begin
 end $$;
 drop trigger if exists credit_achats_hier on public.credit_achats;
 create trigger credit_achats_hier before insert on public.credit_achats for each row execute function public.credit_achats_hier();
+
+-- ===================== FRIGO (boissons) =====================
+-- L'admin fait une course pour le frigo d'une boutique : sa valeur de vente devient le « crédit vente ».
+-- Les CC déclarent chaque jour la vente du frigo, qui est déduite du crédit vente restant.
+-- Quand le restant atteint le seuil (5 000 par défaut), une nouvelle course peut être faite.
+alter table public.settings add column if not exists frigo_seuil numeric not null default 5000;
+create table if not exists public.frigo_courses (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  valeur_vente numeric not null check (valeur_vente > 0),
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table public.frigo_courses enable row level security;
+drop policy if exists frigo_courses_select on public.frigo_courses;
+create policy frigo_courses_select on public.frigo_courses for select to authenticated
+  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+drop policy if exists frigo_courses_admin on public.frigo_courses;
+create policy frigo_courses_admin on public.frigo_courses for all to authenticated using (public.is_admin()) with check (public.is_admin());
+-- Détail (prix d'achat, frais) : administrateur uniquement
+create table if not exists public.frigo_courses_details (
+  course_id uuid primary key references public.frigo_courses(id) on delete cascade,
+  lignes jsonb not null default '[]',
+  total_achats numeric not null default 0,
+  frais_deplacement numeric not null default 0,
+  frais_sachet numeric not null default 0,
+  frais_autres numeric not null default 0,
+  frais_autres_lib text not null default '',
+  total_course numeric not null default 0
+);
+alter table public.frigo_courses_details enable row level security;
+drop policy if exists frigo_details_admin on public.frigo_courses_details;
+create policy frigo_details_admin on public.frigo_courses_details for all to authenticated using (public.is_admin()) with check (public.is_admin());
+-- Enregistrement d'une course (calculs faits par le serveur)
+create or replace function public.frigo_ajouter_course(p_boutique text, p_date date, p_lignes jsonb, p_deplacement numeric, p_sachet numeric, p_autres numeric, p_autres_lib text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid; v_achats numeric := 0; v_vente numeric := 0; l jsonb; prof public.profiles%rowtype;
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if jsonb_typeof(p_lignes) <> 'array' or jsonb_array_length(p_lignes) = 0 then raise exception 'Ajoutez au moins un produit'; end if;
+  for l in select * from jsonb_array_elements(p_lignes) loop
+    if coalesce((l->>'qte')::numeric, 0) <= 0 or coalesce((l->>'achat')::numeric, -1) < 0 or coalesce((l->>'vente')::numeric, -1) < 0 or coalesce(trim(l->>'nom'), '') = '' then
+      raise exception 'Ligne de produit incomplète';
+    end if;
+    v_achats := v_achats + (l->>'qte')::numeric * (l->>'achat')::numeric;
+    v_vente := v_vente + (l->>'qte')::numeric * (l->>'vente')::numeric;
+  end loop;
+  if v_vente <= 0 then raise exception 'La valeur de vente doit être positive'; end if;
+  select * into prof from public.profiles where id = auth.uid();
+  insert into public.frigo_courses (boutique, date, valeur_vente, saisi_par) values (p_boutique, coalesce(p_date, current_date), v_vente, coalesce(nullif(prof.nom, ''), prof.email, ''))
+    returning id into v_id;
+  insert into public.frigo_courses_details (course_id, lignes, total_achats, frais_deplacement, frais_sachet, frais_autres, frais_autres_lib, total_course)
+    values (v_id, p_lignes, v_achats, greatest(coalesce(p_deplacement, 0), 0), greatest(coalesce(p_sachet, 0), 0), greatest(coalesce(p_autres, 0), 0), coalesce(p_autres_lib, ''),
+            v_achats + greatest(coalesce(p_deplacement, 0), 0) + greatest(coalesce(p_sachet, 0), 0) + greatest(coalesce(p_autres, 0), 0));
+  return v_id;
+end $$;
+revoke all on function public.frigo_ajouter_course(text, date, jsonb, numeric, numeric, numeric, text) from public, anon;
+grant execute on function public.frigo_ajouter_course(text, date, jsonb, numeric, numeric, numeric, text) to authenticated;
+
+-- Vente du frigo déclarée chaque jour par un CC de la boutique (une par jour ; l'admin corrige)
+create table if not exists public.frigo_ventes (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  montant numeric not null check (montant >= 0),
+  cc text,
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (boutique, date)
+);
+alter table public.frigo_ventes enable row level security;
+drop policy if exists frigo_ventes_select on public.frigo_ventes;
+create policy frigo_ventes_select on public.frigo_ventes for select to authenticated
+  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+drop policy if exists frigo_ventes_insert on public.frigo_ventes;
+create policy frigo_ventes_insert on public.frigo_ventes for insert to authenticated
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date and created_by = auth.uid()));
+drop policy if exists frigo_ventes_update on public.frigo_ventes;
+create policy frigo_ventes_update on public.frigo_ventes for update to authenticated using (public.is_admin()) with check (public.is_admin());
+drop policy if exists frigo_ventes_delete on public.frigo_ventes;
+create policy frigo_ventes_delete on public.frigo_ventes for delete to authenticated using (public.is_admin());
+-- La vente d'hier doit être déclarée (si le frigo avait déjà une course hier ; règle active à partir du 10/11/2026)
+create or replace function public.frigo_hier_manquant(p_boutique text) returns boolean
+language plpgsql security definer set search_path = public as $$
+begin
+  return current_date - 1 >= date '2026-11-10'
+    and exists (select 1 from public.frigo_courses where boutique = p_boutique and date <= current_date - 1)
+    and not exists (select 1 from public.frigo_ventes where boutique = p_boutique and date = current_date - 1);
+end $$;
+create or replace function public.frigo_ventes_before() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_restant numeric;
+begin
+  if public.is_admin() then return new; end if;
+  if new.date = current_date and public.frigo_hier_manquant(new.boutique) then
+    raise exception 'Déclarez d''abord la vente du frigo d''hier (oubli) avant celle d''aujourd''hui';
+  end if;
+  select coalesce((select sum(valeur_vente) from public.frigo_courses where boutique = new.boutique), 0)
+       - coalesce((select sum(montant) from public.frigo_ventes where boutique = new.boutique), 0) into v_restant;
+  if new.montant > v_restant then raise exception 'La vente (% F) dépasse le crédit vente restant du frigo (% F)', new.montant, greatest(v_restant, 0); end if;
+  return new;
+end $$;
+drop trigger if exists frigo_ventes_before on public.frigo_ventes;
+create trigger frigo_ventes_before before insert on public.frigo_ventes for each row execute function public.frigo_ventes_before();
+
+-- Retraits de l'argent des ventes du frigo : administrateur uniquement
+create table if not exists public.frigo_retraits (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  montant numeric not null check (montant > 0),
+  note text not null default '',
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table public.frigo_retraits enable row level security;
+drop policy if exists frigo_retraits_admin on public.frigo_retraits;
+create policy frigo_retraits_admin on public.frigo_retraits for all to authenticated using (public.is_admin()) with check (public.is_admin());
 drop policy if exists credit_achats_select on public.credit_achats;
 create policy credit_achats_select on public.credit_achats for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
@@ -1395,7 +1517,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

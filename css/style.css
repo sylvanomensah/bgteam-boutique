@@ -658,8 +658,8 @@ details.help .hint { margin: 8px 0 0; }
   #view-facture { display: block !important; }
   .receipt { border: 0; max-width: 80mm; padding: 0; }
   body.print-recap #view-facture { display: none !important; }
-  body.print-recap #view-credit { display: block !important; }
-  body.print-recap #view-credit .title-filter, body.print-recap .recap-actions { display: none !important; }
+  body.print-recap .view.active { display: block !important; }
+  body.print-recap .view.active .title-filter, body.print-recap .recap-actions { display: none !important; }
   body.print-recap .card, body.print-recap .kpi { box-shadow: none; border: 1px solid #ddd; break-inside: avoid; }
 }
 /* Crédit : titre du mois + onglets Opérations / Récap */
@@ -672,3 +672,19 @@ details.help .hint { margin: 8px 0 0; }
 .recap-actions label { display: flex; flex-direction: column; gap: 4px; font-size: .8rem; font-weight: 650; color: var(--muted); }
 .kpi .value small { display: block; font-size: .78rem; font-weight: 600; color: var(--muted); margin-top: 2px; }
 .kpi .label img.logo-op.sm { margin-right: 6px; }
+/* Frigo */
+body.no-frigo .need-frigo, body.no-frigo-vente .need-frigo-vente { display: none !important; }
+.frigo-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 18px; }
+.fg-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; border-top: 5px solid #0ea5e9; display: flex; flex-direction: column; gap: 6px; }
+.fg-card.vert { border-top-color: #16a34a; } .fg-card.orange { border-top-color: #f59e0b; } .fg-card.violet { border-top-color: #7c3aed; }
+.fg-card > span { font-size: .78rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.fg-card > b { font-size: 2rem; letter-spacing: -.02em; }
+.fg-card > small { color: var(--muted); font-size: .85rem; }
+.fg-bar { height: 10px; background: #e9edf4; border-radius: 99px; overflow: hidden; margin-top: 4px; }
+.fg-bar > i { display: block; height: 100%; background: #0ea5e9; border-radius: 99px; }
+.fg-bar.bas > i { background: #f59e0b; }
+#fv-card.a-faire { border: 2px solid #f59e0b; background: #fffbeb; }
+#fv-card.fait { border-left: 5px solid #16a34a; }
+.course-lines input.fc-in { width: 100%; min-width: 80px; }
+.fh-course { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: #fff; }
+.fh-course summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
