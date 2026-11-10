@@ -1103,6 +1103,138 @@ end $$;
 drop trigger if exists remontees_before_insert on public.remontees;
 create trigger remontees_before_insert before insert on public.remontees for each row execute function public.remontees_before_insert();
 
+-- =====================================================================
+-- Crédit télécom (YAS / MOOV) : dotation par boutique, achats de crédit, commissions
+--   Chaque boutique reçoit une dotation (20 000 F YAS + 10 000 F MOOV par défaut).
+--   Chaque achat de crédit rapporte une commission (5 % par défaut) que le CC verse en fin de mois.
+-- =====================================================================
+alter table public.boutiques add column if not exists dotation_yas numeric not null default 20000;
+alter table public.boutiques add column if not exists dotation_moov numeric not null default 10000;
+alter table public.settings add column if not exists taux_yas numeric not null default 5;
+alter table public.settings add column if not exists taux_moov numeric not null default 5;
+alter table public.ccs add column if not exists credit boolean not null default false;
+create or replace function public.can_credit() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or coalesce((public.my_cc()).credit, false);
+$$;
+
+create table if not exists public.credit_achats (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  cc text references public.ccs(code) on update cascade on delete set null,
+  date date not null default current_date,
+  operateur text not null check (operateur in ('YAS', 'MOOV')),
+  montant numeric not null check (montant > 0),
+  commission numeric not null default 0,
+  reference text not null default '',
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create index if not exists credit_achats_idx on public.credit_achats (boutique, date);
+-- Commission calculée par le serveur selon le taux de l'opérateur
+create or replace function public.credit_achats_before() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_taux numeric;
+begin
+  select case when new.operateur = 'YAS' then taux_yas else taux_moov end into v_taux from public.settings where id = 1;
+  new.commission := round(new.montant * coalesce(v_taux, 5) / 100);
+  if not public.is_admin() then
+    new.date := least(new.date, current_date);
+    if new.date < current_date - 2 then raise exception 'Un achat ne peut pas être saisi plus de 2 jours après'; end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists credit_achats_before on public.credit_achats;
+create trigger credit_achats_before before insert or update on public.credit_achats for each row execute function public.credit_achats_before();
+alter table public.credit_achats enable row level security;
+drop policy if exists credit_achats_select on public.credit_achats;
+create policy credit_achats_select on public.credit_achats for select to authenticated
+  using (public.is_global() or (public.can_credit() and boutique = public.my_boutique()));
+drop policy if exists credit_achats_insert on public.credit_achats;
+create policy credit_achats_insert on public.credit_achats for insert to authenticated
+  with check (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and cc = (public.my_cc()).code and created_by = auth.uid()));
+drop policy if exists credit_achats_delete on public.credit_achats;
+create policy credit_achats_delete on public.credit_achats for delete to authenticated
+  using (public.is_admin() or (created_by = auth.uid() and created_at > now() - interval '2 hours'));
+
+create table if not exists public.credit_versements (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  cc text references public.ccs(code) on update cascade on delete set null,
+  mois date not null,                      -- 1er jour du mois de la commission
+  montant numeric not null check (montant > 0),
+  mode text not null default 'Espèces' check (mode in ('Espèces', 'Mobile money')),
+  note text not null default '',
+  statut text not null default 'Déclarée' check (statut in ('Déclarée', 'Reçue')),
+  recu_par text not null default '',
+  recu_le timestamptz,
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (extract(day from mois) = 1)
+);
+alter table public.credit_versements enable row level security;
+drop policy if exists credit_vers_select on public.credit_versements;
+create policy credit_vers_select on public.credit_versements for select to authenticated
+  using (public.is_global() or (public.can_credit() and boutique = public.my_boutique()));
+drop policy if exists credit_vers_insert on public.credit_versements;
+create policy credit_vers_insert on public.credit_versements for insert to authenticated
+  with check (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and cc = (public.my_cc()).code
+    and created_by = auth.uid() and statut = 'Déclarée'));
+drop policy if exists credit_vers_delete on public.credit_versements;
+create policy credit_vers_delete on public.credit_versements for delete to authenticated
+  using (public.is_admin() or (created_by = auth.uid() and statut = 'Déclarée' and created_at > now() - interval '2 hours'));
+-- Clôture du soir : crédit restant sur chaque puce (YAS / MOOV) ; le crédit vendu du jour en est déduit
+create table if not exists public.credit_soldes (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  operateur text not null check (operateur in ('YAS', 'MOOV')),
+  solde numeric not null check (solde >= 0),
+  cc text,
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  updated_at timestamptz not null default now(),
+  unique (boutique, date, operateur)
+);
+alter table public.credit_soldes enable row level security;
+-- Tous les CC de la boutique voient le crédit (achats, soldes, commissions) ; seuls les CC autorisés saisissent
+drop policy if exists credit_soldes_select on public.credit_soldes;
+create policy credit_soldes_select on public.credit_soldes for select to authenticated
+  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+drop policy if exists credit_soldes_insert on public.credit_soldes;
+create policy credit_soldes_insert on public.credit_soldes for insert to authenticated
+  with check (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and date between current_date - 1 and current_date));
+drop policy if exists credit_soldes_update on public.credit_soldes;
+create policy credit_soldes_update on public.credit_soldes for update to authenticated
+  using (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and date between current_date - 1 and current_date))
+  with check (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and date between current_date - 1 and current_date));
+drop policy if exists credit_soldes_delete on public.credit_soldes;
+create policy credit_soldes_delete on public.credit_soldes for delete to authenticated using (public.is_admin());
+drop policy if exists credit_achats_select on public.credit_achats;
+create policy credit_achats_select on public.credit_achats for select to authenticated
+  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+drop policy if exists credit_vers_select on public.credit_versements;
+create policy credit_vers_select on public.credit_versements for select to authenticated
+  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+
+-- Réception de la commission : administrateur uniquement
+create or replace function public.set_versement_recu(p_id uuid, p_recu boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare prof public.profiles%rowtype;
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  select * into prof from public.profiles where id = auth.uid();
+  update public.credit_versements set statut = case when p_recu then 'Reçue' else 'Déclarée' end,
+    recu_par = case when p_recu then coalesce(nullif(prof.nom, ''), prof.email, '') else '' end,
+    recu_le = case when p_recu then now() else null end
+  where id = p_id;
+  if not found then raise exception 'Versement introuvable'; end if;
+end $$;
+revoke all on function public.set_versement_recu(uuid, boolean) from public, anon;
+grant execute on function public.set_versement_recu(uuid, boolean) to authenticated;
+
 -- Retraits de l'administrateur sur le solde bénéfice d'une boutique
 create table if not exists public.retraits (
   id uuid primary key default gen_random_uuid(),
@@ -1172,7 +1304,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;
