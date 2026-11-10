@@ -691,10 +691,11 @@
     let lastBk = ""; try { lastBk = localStorage.getItem("lastBackup") || ""; } catch (e) {}
     const joursBk = lastBk ? Math.round((parse(today()) - parse(lastBk)) / 86400000) : null;
     if (joursBk === null || joursBk >= 7) add("warning", "💾", "Pensez à sauvegarder vos données", (joursBk === null ? "Aucune sauvegarde téléchargée depuis cet appareil." : "Dernière sauvegarde il y a " + joursBk + " jours.") + " Paramètres → Télécharger une sauvegarde.");
-    // Crédit télécom : commissions du mois écoulé non versées
-    const moisPrec = addMonths(premierDuMois(today()), -1).slice(0, 7);
-    const crNonVerse = db.boutiques.map((b) => ({ b, c: creditMois(b.code, moisPrec) })).filter((x) => x.c.reste > 0);
-    if (crNonVerse.length) add("warning", "📱", "Commissions de crédit de " + fmtMonth(moisPrec + "-01") + " non versées", crNonVerse.map((x) => esc(x.b.nom) + " (" + money0(x.c.reste) + ")").join(", ") + " (rubrique Crédit télécom).");
+    // Crédit télécom : commissions des mois passés non reversées + recharges non déclarées (anti-fraude)
+    const crNonVerse = db.boutiques.map((b) => ({ b, c: commissionInfo(b.code) })).filter((x) => x.c.duAncien > 0);
+    if (crNonVerse.length) add("warning", "📱", "Commissions de crédit des mois passés non reversées", crNonVerse.map((x) => esc(x.b.nom) + " (" + money0(x.c.duAncien) + ")").join(", ") + " (rubrique Crédit télécom).");
+    const crAnom = anomaliesCredit(db.boutiques.map((b) => b.code), addDays(today(), -30));
+    if (crAnom.length) add("critical", "📱", "Recharge de crédit possiblement non déclarée", crAnom.slice(0, 5).map((a) => esc(boutiqueName(a.bq)) + " " + a.op + " le " + fmtDate(a.date) + " (+" + money0(a.ecart) + ")").join(", ") + " (rubrique Crédit télécom).");
     const crAValider = db.crVers.filter((v) => v.statut !== "Reçue");
     if (crAValider.length) add("warning", "📱", crAValider.length + " versement(s) de commission à valider", "Total " + money0(crAValider.reduce((a, v) => a + v.montant, 0)) + " (rubrique Crédit télécom).");
     // Bobines et remontées de fonds
@@ -2237,10 +2238,10 @@
         recus.map((x) => money0(x.montant) + " de " + esc(x.cc ? ccName(x.cc) : "l'admin") + " (" + esc(boutiqueName(x.boutique)) + ")").join(" · ") +
         '</span> <button class="btn small success" data-view-link="compte">Voir et confirmer</button></div>';
     }
-    // Commission de crédit du mois écoulé pas encore versée (CC autorisé aux achats de crédit)
+    // Commission de crédit des mois passés pas encore reversée (CC autorisé aux achats de crédit)
     if (me && !isAdmin() && canCreditSaisie() && myBoutiqueCode()) {
-      const mp = addMonths(premierDuMois(today()), -1).slice(0, 7), c = creditMois(myBoutiqueCode(), mp);
-      if (c.reste > 0) h += '<div class="alert-line">📱 <span><b>Commission de crédit à verser : ' + money0(c.reste) + "</b> — " + esc(fmtMonth(mp + "-01")) + " (YAS " + money0(c.comYas) + ", MOOV " + money0(c.comMoov) + ")</span>" +
+      const c = commissionInfo(myBoutiqueCode());
+      if (c.duAncien > 0) h += '<div class="alert-line">📱 <span><b>Commission de crédit à reverser : ' + money0(c.duAncien) + "</b> (mois passés)</span>" +
         '<button class="btn small" data-view-link="credit">Verser la commission</button></div>';
     }
     if (r.total) {
@@ -2626,31 +2627,60 @@
   });
 
   // ---------- Crédit télécom (YAS / MOOV) ----------
-  // Droit de saisie : admin, ou CC autorisé (ccs.credit) pour sa boutique ; les CC « toutes boutiques » consultent.
+  // Saisie : admin, ou CC autorisé (ccs.credit) pour sa boutique. Consultation : tous les CC de la boutique.
   function canCreditSaisie() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.credit); }
   let crOp = "YAS";
+  const OPS = ["YAS", "MOOV"];
+  const logoOp = (op, sm) => op === "YAS" ? '<span class="logo-op yas' + (sm ? " sm" : "") + '">yas</span>' : '<span class="logo-op moov' + (sm ? " sm" : "") + '">moov' + (sm ? "" : "<small>africa</small>") + "</span>";
   function premierDuMois(d) { return d.slice(0, 7) + "-01"; }
-  // Totaux d'une boutique pour un mois (achats, commissions, versements)
+  function tauxOp(op) { return op === "YAS" ? db.settings.tauxYas : db.settings.tauxMoov; }
+  function montantDefaut(op, bq) { const b = boutiqueByCode(bq); return op === "YAS" ? (b ? b.dotYas : 20000) : (b ? b.dotMoov : 10000); }
+  // Totaux d'une boutique pour un mois (utilisé aussi par les alertes)
   function creditMois(bq, mois) {
     const a = db.crAchats.filter((x) => x.boutique === bq && x.date.slice(0, 7) === mois);
-    const v = db.crVers.filter((x) => x.boutique === bq && x.mois.slice(0, 7) === mois);
     const s = (l, f) => l.reduce((t, x) => t + f(x), 0);
     const yas = a.filter((x) => x.op === "YAS"), moov = a.filter((x) => x.op === "MOOV");
-    const commission = s(a, (x) => x.commission), verse = s(v, (x) => x.montant);
-    return {
-      achatsYas: s(yas, (x) => x.montant), achatsMoov: s(moov, (x) => x.montant),
-      comYas: s(yas, (x) => x.commission), comMoov: s(moov, (x) => x.commission), commission,
-      verse, verseRecu: s(v.filter((x) => x.statut === "Reçue"), (x) => x.montant), reste: Math.max(0, commission - verse)
-    };
+    return { nbYas: yas.length, nbMoov: moov.length, achatsYas: s(yas, (x) => x.montant), achatsMoov: s(moov, (x) => x.montant),
+      comYas: s(yas, (x) => x.commission), comMoov: s(moov, (x) => x.commission), commission: s(a, (x) => x.commission) };
+  }
+  // Commission à reverser (toutes périodes) : baisse seulement quand l'admin valide le versement
+  function commissionInfo(bq) {
+    const s = (l, f) => l.reduce((t, x) => t + f(x), 0);
+    const com = db.crAchats.filter((x) => x.boutique === bq), vers = db.crVers.filter((x) => x.boutique === bq);
+    const total = s(com, (x) => x.commission), recu = s(vers.filter((v) => v.statut === "Reçue"), (v) => v.montant), attente = s(vers.filter((v) => v.statut !== "Reçue"), (v) => v.montant);
+    const avantMois = s(com.filter((x) => x.date < premierDuMois(today())), (x) => x.commission);
+    return { total, recu, attente, du: Math.max(0, total - recu), aDeclarer: Math.max(0, total - recu - attente), duAncien: Math.max(0, avantMois - recu - attente) };
+  }
+  // Clôtures du soir
+  function soldeLe(bq, op, d) { const r = db.crSoldes.find((x) => x.boutique === bq && x.op === op && x.date === d); return r ? r.solde : null; }
+  function dernierSolde(bq, op) { return db.crSoldes.filter((x) => x.boutique === bq && x.op === op && x.date <= today()).sort((a, b) => b.date.localeCompare(a.date))[0] || null; }
+  function acheteEntre(bq, op, apres, jusqua) { return db.crAchats.filter((x) => x.boutique === bq && x.op === op && x.date > apres && x.date <= jusqua).reduce((a, x) => a + x.montant, 0); }
+  // Anti-fraude : crédit restant plus élevé que (restant précédent + recharges déclarées) => recharge non déclarée
+  function anomaliesCredit(bqs, depuis) {
+    const out = [];
+    bqs.forEach((bq) => OPS.forEach((op) => {
+      const l = db.crSoldes.filter((x) => x.boutique === bq && x.op === op).sort((a, b) => a.date.localeCompare(b.date));
+      for (let i = 1; i < l.length; i++) {
+        if (l[i].date < depuis) continue;
+        const attendu = l[i - 1].solde + acheteEntre(bq, op, l[i - 1].date, l[i].date);
+        if (l[i].solde > attendu + 1) out.push({ bq, op, date: l[i].date, ecart: l[i].solde - attendu });
+      }
+    }));
+    return out;
+  }
+  function quandSolde(r) {
+    if (!r) return "aucune clôture";
+    const j = Math.round((parse(today()) - parse(r.date)) / 86400000);
+    return j === 0 ? "clôture de ce soir" : j === 1 ? "clôture d'hier soir" : "clôture du " + fmtDate(r.date);
   }
   function creditScope() {
-    const glob = isGlobal();
-    if (glob) { const f = $("#cr-boutique").value; return f && f !== "ALL" ? db.boutiques.filter((b) => b.code === f) : db.boutiques; }
+    if (isGlobal()) { const f = $("#cr-boutique").value; return f && f !== "ALL" ? db.boutiques.filter((b) => b.code === f) : db.boutiques; }
     return db.boutiques.filter((b) => b.code === myBoutiqueCode());
   }
+  function creditSaisieBq() { return isAdmin() ? ($("#cr-boutique").value !== "ALL" ? $("#cr-boutique").value : "") : myBoutiqueCode(); }
+
   function renderCredit() {
     const glob = isGlobal(), admin = isAdmin(), t = today();
-    // Filtres
     const bcur = $("#cr-boutique").value || "ALL";
     if (glob) {
       $("#cr-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
@@ -2662,251 +2692,157 @@
       $("#cr-boutique").disabled = true;
     }
     if (!$("#cr-mois").value) $("#cr-mois").value = t.slice(0, 7);
-    const mois = $("#cr-mois").value;
-    $("#cr-taux-yas").textContent = num(db.settings.tauxYas); $("#cr-taux-moov").textContent = num(db.settings.tauxMoov);
-    const scope = creditScope(), codes = scope.map((b) => b.code);
-    const tot = scope.map((b) => ({ b, ...creditMois(b.code, mois) }));
-    const T = (f) => tot.reduce((a, x) => a + x[f], 0);
+    const mois = $("#cr-mois").value, scope = creditScope(), codes = scope.map((b) => b.code);
 
-    // Cases du mois
-    $("#cr-kpis").innerHTML = kpiHtml([
-      ["Achats YAS", money0(T("achatsYas")), "", 'style="--kc:#f6c400"'],
-      ["Achats MOOV", money0(T("achatsMoov")), "", 'style="--kc:#0067b1"'],
-      ["Commission YAS", money0(T("comYas"))],
-      ["Commission MOOV", money0(T("comMoov"))],
-      ["Commission du mois", money0(T("commission")), "hero-good"],
-      ["Commission versée", money0(T("verse")) + (T("verse") > T("verseRecu") ? '<span class="sub">dont ' + money0(T("verse") - T("verseRecu")) + " à valider</span>" : "")],
-      ["Reste à verser", money0(T("reste")), T("reste") > 0 ? "danger" : ""]
-    ]);
+    // Alertes anti-fraude (admin / toutes boutiques) : recharges non déclarées des 30 derniers jours
+    const anom = glob ? anomaliesCredit(codes, addDays(t, -30)) : [];
+    $("#cr-alertes").innerHTML = anom.length ? '<div class="v-alert danger"><b>⚠ Recharge possiblement non déclarée</b> — le crédit restant a augmenté sans recharge enregistrée :<ul style="margin:6px 0 0 18px;padding:0">' +
+      anom.slice(0, 8).map((a) => "<li>" + esc(boutiqueName(a.bq)) + " · " + a.op + " · " + fmtDate(a.date) + " : <b>+" + money0(a.ecart) + "</b> inexpliqués</li>").join("") + "</ul></div>" : "";
 
-    // Utilisation de la dotation (boutique choisie, ou somme des boutiques)
-    const dotY = scope.reduce((a, b) => a + b.dotYas, 0), dotM = scope.reduce((a, b) => a + b.dotMoov, 0);
-    const barre = (lib, cls, fait, dot) => {
-      const p = dot > 0 ? Math.min(100, Math.round((fait / dot) * 100)) : 0;
-      return '<div class="dot-row"><div class="dot-lib"><span class="op-tag ' + cls + '">' + lib + "</span><b>" + money0(fait) + "</b> / " + money0(dot) +
-        ' <span class="muted">(' + (dot > 0 ? Math.round((fait / dot) * 100) : 0) + " %)</span></div>" +
-        '<div class="dot-bar"><div class="dot-fill ' + cls + '" style="width:' + p + '%"></div></div>' +
-        (fait > dot && dot > 0 ? '<span class="sub neg">Dépassement de ' + money0(fait - dot) + "</span>" : "") + "</div>";
-    };
-    $("#cr-dotation").innerHTML = scope.length ? barre("YAS", "yas", T("achatsYas"), dotY) + barre("MOOV", "moov", T("achatsMoov"), dotM)
-      : '<p class="hint" style="margin:0">Vous n\'êtes affecté à aucune boutique.</p>';
+    // Une boutique : une carte par réseau ; plusieurs : tableau
+    const une = scope.length === 1;
+    $("#cr-table-card").classList.toggle("hidden", une || !scope.length);
+    if (une) {
+      const bq = scope[0].code, m = creditMois(bq, mois);
+      $("#cr-cards").innerHTML = OPS.map((op) => {
+        const r = dernierSolde(bq, op), nb = op === "YAS" ? m.nbYas : m.nbMoov, com = op === "YAS" ? m.comYas : m.comMoov;
+        return '<div class="op-card ' + op.toLowerCase() + '">' + logoOp(op) +
+          '<div class="op-main"><span>Crédit restant</span><b>' + (r ? money0(r.solde) : "—") + "</b><small>" + quandSolde(r) + "</small></div>" +
+          '<div class="op-stats"><div><b>' + nb + "</b><span>recharge" + (nb > 1 ? "s" : "") + " ce mois</span></div>" +
+          "<div><b>" + money0(com) + "</b><span>commission du mois</span></div></div></div>";
+      }).join("");
+    } else {
+      $("#cr-cards").innerHTML = "";
+      $("#cr-table").innerHTML = scope.map((b) => {
+        const ry = dernierSolde(b.code, "YAS"), rm = dernierSolde(b.code, "MOOV"), m = creditMois(b.code, mois), ci = commissionInfo(b.code);
+        const der = [ry, rm].filter(Boolean).map((r) => r.date).sort().pop();
+        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (ry ? money0(ry.solde) : "—") + '</td><td class="num">' + (rm ? money0(rm.solde) : "—") +
+          '</td><td class="num">' + logoOp("YAS", true) + " " + m.nbYas + " &nbsp; " + logoOp("MOOV", true) + " " + m.nbMoov +
+          '</td><td class="num">' + (ci.du > 0 ? "<b>" + money0(ci.du) + "</b>" : '<span class="pos">0</span>') + "</td><td>" + (der ? fmtDate(der) : '<span class="muted">Jamais</span>') + "</td></tr>";
+      }).join("");
+    }
 
-    // Formulaires (CC autorisé : sa boutique ; admin : boutique du filtre)
-    const saisieBq = admin ? ($("#cr-boutique").value !== "ALL" ? $("#cr-boutique").value : "") : myBoutiqueCode();
-    if (!$("#cr-date").value) $("#cr-date").value = t;
-    $("#cr-date").disabled = !admin;
+    // Commission à reverser
+    const ci = codes.reduce((a, c) => { const x = commissionInfo(c); Object.keys(x).forEach((k) => { a[k] = (a[k] || 0) + x[k]; }); return a; }, {});
+    const mAll = codes.reduce((a, c) => { const x = creditMois(c, mois); a.y += x.comYas; a.m += x.comMoov; return a; }, { y: 0, m: 0 });
+    $("#cv-solde").innerHTML = '<div class="com-big ' + (ci.du > 0 ? "due" : "ok") + '"><span>Solde à reverser</span><b>' + money0(ci.du || 0) + "</b></div>" +
+      (ci.attente ? '<div class="info-row"><span>dont versé, en attente de validation</span><span>' + money0(ci.attente) + "</span></div>" : "") +
+      '<div class="info-row"><span>' + logoOp("YAS", true) + " commission de " + esc(fmtMonth(mois + "-01")) + "</span><b>" + money0(mAll.y) + "</b></div>" +
+      '<div class="info-row"><span>' + logoOp("MOOV", true) + " commission de " + esc(fmtMonth(mois + "-01")) + "</span><b>" + money0(mAll.m) + "</b></div>";
+    const sbq = creditSaisieBq();
+    const reste = sbq ? commissionInfo(sbq).aDeclarer : 0;
+    if (document.activeElement !== $("#cv-montant")) $("#cv-montant").value = reste > 0 ? reste : "";
+    $("#cv-save").disabled = !sbq || reste <= 0;
+
+    // Recharge : montant proposé automatiquement (dotation du réseau)
     document.querySelectorAll("#cr-op [data-op]").forEach((b) => b.classList.toggle("active", b.dataset.op === crOp));
-    majPreviewCredit(saisieBq);
-    // Mois de commission à verser : mois en cours et 3 mois précédents
-    const mcur = $("#cv-mois").value, ms = [0, 1, 2, 3].map((i) => addMonths(premierDuMois(t), -i));
-    $("#cv-mois").innerHTML = ms.map((m) => '<option value="' + m + '">' + cap(fmtMonth(m)) + "</option>").join("");
-    $("#cv-mois").value = ms.includes(mcur) ? mcur : ms[1];
-    majInfoVersement(saisieBq);
+    if (document.activeElement !== $("#cr-montant") && !$("#cr-montant").dataset.touche) $("#cr-montant").value = montantDefaut(crOp, sbq);
+    majPreviewCredit(sbq);
 
-    // Bilan par boutique (admin)
+    // Clôture du soir (pré-remplie si déjà saisie)
+    OPS.forEach((op) => { const el = $(op === "YAS" ? "#cs-yas" : "#cs-moov"); if (document.activeElement !== el) { const v = sbq ? soldeLe(sbq, op, t) : null; el.value = v == null ? "" : v; } });
+    $("#cs-save").disabled = !sbq;
+    $("#cs-info").textContent = sbq && (soldeLe(sbq, "YAS", t) != null || soldeLe(sbq, "MOOV", t) != null) ? "✓ Clôture de ce soir déjà enregistrée (vous pouvez la corriger)." : "À faire chaque soir : notez le crédit restant lu sur chaque puce.";
+
+    // Historique du mois
+    const achats = db.crAchats.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
+    $("#cr-rows").innerHTML = achats.length ? achats.map((x) => "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) +
+      '</td><td class="num">' + money0(x.montant) + '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + esc(x.reference || "—") + "</td><td>" + esc(x.saisiPar || "—") +
+      "</td><td>" + (admin ? '<button class="btn small danger" data-cr-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("")
+      : '<tr><td colspan="8" class="empty">Aucune recharge ce mois-ci.</td></tr>';
+    const vers = db.crVers.filter((v) => codes.includes(v.boutique)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30);
+    $("#cv-rows").innerHTML = vers.length ? vers.map((v) => {
+      const canDel = admin || (v.createdBy === me.id && v.statut === "Déclarée" && Date.now() - new Date(v.createdAt).getTime() < EDIT_WINDOW_MS);
+      return "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
+        '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode) + "</td><td>" +
+        (v.statut === "Reçue" ? '<span class="badge ok">✓ Reçu par l\'admin</span>' : '<span class="badge warn">⏳ En attente</span>') + "</td><td>" +
+        (admin ? '<button class="btn small' + (v.statut === "Reçue" ? "" : " success") + '" data-cv-recu="' + v.id + '" data-v="' + (v.statut === "Reçue" ? "0" : "1") + '">' + (v.statut === "Reçue" ? "Annuler" : "✓ Argent reçu") + "</button> " : "") +
+        (canDel ? '<button class="btn small danger" data-cv-del="' + v.id + '">✕</button>' : "") + "</td></tr>";
+    }).join("") : '<tr><td colspan="7" class="empty">Aucun versement.</td></tr>';
+
+    // Réglages (admin)
     if (admin) {
-      $("#cr-bilan-title").textContent = "Bilan par boutique — " + fmtMonth(mois + "-01");
-      $("#cr-bilan").innerHTML = tot.map((x) => "<tr><td><b>" + esc(x.b.nom) + '</b></td><td class="num">' + money0(x.achatsYas) + '</td><td class="num">' + money0(x.achatsMoov) +
-        '</td><td class="num"><b>' + money0(x.commission) + '</b></td><td class="num">' + money0(x.verse) + '</td><td class="num">' + (x.reste > 0 ? '<b class="neg">' + money0(x.reste) + "</b>" : '<span class="pos">0</span>') +
-        '</td><td class="num">' + delaiHtml(delaiRecharge(x.b.code, "YAS")) + '</td><td class="num">' + delaiHtml(delaiRecharge(x.b.code, "MOOV")) + "</td><td>" + derniereRecharge(x.b.code) +
-        '</td><td><input type="number" class="inline-input dot-input" data-dot-yas="' + esc(x.b.code) + '" value="' + x.b.dotYas + '"></td>' +
-        '<td><input type="number" class="inline-input dot-input" data-dot-moov="' + esc(x.b.code) + '" value="' + x.b.dotMoov + '"></td></tr>').join("");
-      $("#cr-bilan-foot").innerHTML = '<tr><td>TOTAL</td><td class="num">' + money0(T("achatsYas")) + '</td><td class="num">' + money0(T("achatsMoov")) + '</td><td class="num">' + money0(T("commission")) +
-        '</td><td class="num">' + money0(T("verse")) + '</td><td class="num">' + money0(T("reste")) + '</td><td class="num">' + delaiHtml(delaiRecharge(null, "YAS")) +
-        '</td><td class="num">' + delaiHtml(delaiRecharge(null, "MOOV")) + "</td><td></td><td>" + money0(dotY) + "</td><td>" + money0(dotM) + "</td></tr>";
-      $("#cr-bilan-hint").textContent = "Recharge YAS / MOOV : nombre moyen de jours entre deux achats de crédit, calculé sur les 90 derniers jours (moyenne générale en bas).";
+      $("#cr-bilan").innerHTML = db.boutiques.map((b) => "<tr><td><b>" + esc(b.nom) + "</b></td>" +
+        '<td><input type="number" class="inline-input dot-input" data-dot-yas="' + esc(b.code) + '" value="' + b.dotYas + '"></td>' +
+        '<td><input type="number" class="inline-input dot-input" data-dot-moov="' + esc(b.code) + '" value="' + b.dotMoov + '"></td>' +
+        '<td class="num">' + delaiHtml(delaiRecharge(b.code, "YAS")) + '</td><td class="num">' + delaiHtml(delaiRecharge(b.code, "MOOV")) + "</td></tr>").join("");
       if (document.activeElement !== $("#cr-set-yas")) $("#cr-set-yas").value = db.settings.tauxYas;
       if (document.activeElement !== $("#cr-set-moov")) $("#cr-set-moov").value = db.settings.tauxMoov;
     }
-
-    // Versements de commission (mois choisi)
-    const vers = db.crVers.filter((v) => codes.includes(v.boutique) && v.mois.slice(0, 7) === mois).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    $("#cv-rows").innerHTML = vers.length ? vers.map((v) => {
-      const canDel = admin || (v.createdBy === me.id && v.statut === "Déclarée" && Date.now() - new Date(v.createdAt).getTime() < EDIT_WINDOW_MS);
-      return "<tr><td>" + cap(fmtMonth(v.mois)) + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") + '</td><td class="num"><b>' + money0(v.montant) +
-        "</b></td><td>" + esc(v.mode) + (v.note ? '<span class="sub">' + esc(v.note) + "</span>" : "") + "</td><td>" + new Date(v.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) +
-        "</td><td>" + (v.statut === "Reçue" ? '<span class="badge ok">✓ Reçue</span><span class="sub">par ' + esc(v.recuPar) + "</span>" : '<span class="badge warn">⏳ À valider</span>') + "</td><td>" +
-        (admin ? '<button class="btn small' + (v.statut === "Reçue" ? "" : " success") + '" data-cv-recu="' + v.id + '" data-v="' + (v.statut === "Reçue" ? "0" : "1") + '">' + (v.statut === "Reçue" ? "Annuler" : "✓ Reçue") + "</button> " : "") +
-        (canDel ? '<button class="btn small danger" data-cv-del="' + v.id + '">✕</button>' : "") + "</td></tr>";
-    }).join("") : '<tr><td colspan="8" class="empty">Aucun versement pour ce mois.</td></tr>';
-
-    // Historique des achats (mois choisi)
-    const fop = $("#cr-f-op").value;
-    const achats = db.crAchats.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois && (!fop || x.op === fop))
-      .sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
-    $("#cr-rows").innerHTML = achats.length ? achats.map((x) => {
-      const canDel = admin || (x.createdBy === me.id && Date.now() - new Date(x.createdAt).getTime() < EDIT_WINDOW_MS);
-      return "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + (x.cc ? esc(ccName(x.cc)) : "Admin") + '</td><td><span class="op-tag ' + x.op.toLowerCase() + '">' + x.op +
-        '</span></td><td class="num">' + money0(x.montant) + '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + esc(x.reference || "—") + "</td><td>" + esc(x.saisiPar || "—") +
-        "</td><td>" + (canDel ? '<button class="btn small danger" data-cr-del="' + x.id + '">✕</button>' : "") + "</td></tr>";
-    }).join("") : '<tr><td colspan="9" class="empty">Aucun achat de crédit sur ce mois.</td></tr>';
-    const sa = achats.reduce((a, x) => a + x.montant, 0), sc = achats.reduce((a, x) => a + x.commission, 0);
-    renderCreditJour(scope);
-    renderCreditJournal(scope, mois);
-    $("#cr-foot").innerHTML = achats.length ? '<tr><td colspan="4">TOTAL (' + achats.length + " achat" + (achats.length > 1 ? "s" : "") + ')</td><td class="num">' + money0(sa) + '</td><td class="num">' + money0(sc) + "</td><td colspan=3></td></tr>" : "";
-  }
-  function tauxOp(op) { return op === "YAS" ? db.settings.tauxYas : db.settings.tauxMoov; }
-  // ---- Crédit du jour : restant (clôture du soir) et vendu ----
-  let crJour = "";
-  function soldeLe(bq, op, d) { const r = db.crSoldes.find((x) => x.boutique === bq && x.op === op && x.date === d); return r ? r.solde : null; }
-  function acheteEntre(bq, op, apres, jusqua) { return db.crAchats.filter((x) => x.boutique === bq && x.op === op && x.date > apres && x.date <= jusqua).reduce((a, x) => a + x.montant, 0); }
-  // Vendu le jour d = dernier restant connu avant d + achats depuis − restant du jour d (null si pas calculable)
-  function venduLe(bq, op, d) {
-    const fin = soldeLe(bq, op, d);
-    if (fin == null) return null;
-    const prev = db.crSoldes.filter((x) => x.boutique === bq && x.op === op && x.date < d).sort((a, b) => b.date.localeCompare(a.date))[0];
-    if (!prev) return null;
-    return Math.max(0, prev.solde + acheteEntre(bq, op, prev.date, d) - fin);
-  }
-  function renderCreditJour(scope) {
-    if (!crJour) crJour = today();
-    $("#cr-jour").value = crJour;
-    const d = crJour, ecart = Math.round((parse(d) - parse(today())) / 86400000);
-    $("#cr-jour-title").textContent = (ecart === 0 ? "Crédit du jour" : ecart === -1 ? "Crédit d'hier" : "Crédit du " + fmtDate(d)) + (scope.length === 1 ? " — " + scope[0].nom : "");
-    const somme = (f) => { let t = 0, n = 0; scope.forEach((b) => { const v = f(b.code); if (v != null) { t += v; n++; } }); return n ? t : null; };
-    const val = (v) => (v == null ? '<span class="muted">—</span>' : money0(v));
-    const ops = ["YAS", "MOOV"].map((op) => ({
-      op, restant: somme((bq) => soldeLe(bq, op, d)), vendu: somme((bq) => venduLe(bq, op, d)),
-      achete: scope.reduce((a, b) => a + acheteEntre(b.code, op, addDays(d, -1), d), 0)
-    }));
-    $("#cr-jour-kpis").innerHTML = kpiHtml(ops.flatMap((o) => [
-      ['<span class="op-tag ' + o.op.toLowerCase() + '">' + o.op + "</span> Crédit vendu", val(o.vendu), o.vendu != null ? "hero-good" : ""],
-      ['<span class="op-tag ' + o.op.toLowerCase() + '">' + o.op + "</span> Crédit restant (soir)", val(o.restant) + (o.restant == null ? '<span class="sub">clôture non saisie</span>' : "")],
-      ['<span class="op-tag ' + o.op.toLowerCase() + '">' + o.op + "</span> Crédit acheté", money0(o.achete)]
-    ]));
-    // Formulaire de clôture : pré-rempli si déjà saisi
-    const bq = creditSaisieBq();
-    ["YAS", "MOOV"].forEach((op) => {
-      const el = $(op === "YAS" ? "#cs-yas" : "#cs-moov");
-      if (document.activeElement !== el) { const s = bq ? soldeLe(bq, op, d) : null; el.value = s == null ? "" : s; }
-    });
-    $("#cs-save").disabled = !bq;
-  }
-  function renderCreditJournal(scope, mois) {
-    $("#cr-journal-title").textContent = "Journal quotidien du crédit — " + fmtMonth(mois + "-01");
-    const du = mois + "-01", au = lastDayOfMonth(du) < today() ? lastDayOfMonth(du) : today();
-    const rows = [], tot = { ya: 0, yv: 0, ma: 0, mv: 0 };
-    for (let d = au; d >= du; d = addDays(d, -1)) {
-      scope.forEach((b) => {
-        const ya = acheteEntre(b.code, "YAS", addDays(d, -1), d), ma = acheteEntre(b.code, "MOOV", addDays(d, -1), d);
-        const yr = soldeLe(b.code, "YAS", d), mr = soldeLe(b.code, "MOOV", d), yv = venduLe(b.code, "YAS", d), mv = venduLe(b.code, "MOOV", d);
-        if (!ya && !ma && yr == null && mr == null) return;
-        tot.ya += ya; tot.ma += ma; tot.yv += yv || 0; tot.mv += mv || 0;
-        const c = (v) => (v == null ? '<span class="muted">—</span>' : money0(v));
-        rows.push("<tr><td>" + cap(parse(d).toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit" })) + "</td><td>" + esc(b.nom) +
-          '</td><td class="num">' + (ya ? money0(ya) : '<span class="muted">—</span>') + '</td><td class="num"><b>' + c(yv) + '</b></td><td class="num">' + c(yr) +
-          '</td><td class="num">' + (ma ? money0(ma) : '<span class="muted">—</span>') + '</td><td class="num"><b>' + c(mv) + '</b></td><td class="num">' + c(mr) + "</td></tr>");
-      });
-    }
-    $("#cr-journal").innerHTML = rows.length ? rows.join("") : '<tr><td colspan="8" class="empty">Aucune clôture ni achat ce mois-ci.</td></tr>';
-    $("#cr-journal-foot").innerHTML = rows.length ? '<tr><td colspan="2">TOTAL DU MOIS</td><td class="num">' + money0(tot.ya) + '</td><td class="num">' + money0(tot.yv) +
-      '</td><td></td><td class="num">' + money0(tot.ma) + '</td><td class="num">' + money0(tot.mv) + "</td><td></td></tr>" : "";
-  }
-  $("#view-credit").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-crj]");
-    if (!b) return;
-    crJour = addDays(crJour || today(), Number(b.dataset.crj));
-    renderCredit();
-  });
-  $("#cr-jour").addEventListener("change", (e) => { if (e.target.value) { crJour = e.target.value; renderCredit(); } });
-  $("#cs-save").addEventListener("click", (e) => {
-    const bq = creditSaisieBq(), d = crJour || today();
-    const y = $("#cs-yas").value, m = $("#cs-moov").value;
-    if (!bq) return toast("Choisissez une boutique.");
-    if (y === "" && m === "") return toast("Indiquez le crédit restant YAS et/ou MOOV.");
-    if (!isAdmin() && d < addDays(today(), -1)) return toast("La clôture ne peut être saisie que pour aujourd'hui ou hier.");
-    const rows = [];
-    if (y !== "") rows.push({ boutique: bq, date: d, operateur: "YAS", solde: Number(y), cc: me.cc || null, saisi_par: me.nom || me.email || "", updated_at: new Date().toISOString() });
-    if (m !== "") rows.push({ boutique: bq, date: d, operateur: "MOOV", solde: Number(m), cc: me.cc || null, saisi_par: me.nom || me.email || "", updated_at: new Date().toISOString() });
-    if (rows.some((r) => !(r.solde >= 0))) return toast("Montant invalide.");
-    act(async () => chk(await sb.from("credit_soldes").upsert(rows, { onConflict: "boutique,date,operateur" })), "Clôture du " + fmtDate(d) + " enregistrée.", e.target);
-  });
-  // Nombre moyen de jours entre deux recharges (90 derniers jours) ; bq = null : moyenne de toutes les boutiques
-  function delaiRecharge(bq, op) {
-    const depuis = addDays(today(), -90);
-    const bqs = bq ? [bq] : db.boutiques.map((b) => b.code);
-    const ecarts = [];
-    bqs.forEach((code) => {
-      const jours = Array.from(new Set(db.crAchats.filter((x) => x.boutique === code && x.op === op && x.date >= depuis).map((x) => x.date))).sort();
-      for (let i = 1; i < jours.length; i++) ecarts.push(Math.round((parse(jours[i]) - parse(jours[i - 1])) / 86400000));
-    });
-    return ecarts.length ? ecarts.reduce((a, n) => a + n, 0) / ecarts.length : null;
-  }
-  function delaiHtml(j) {
-    if (j == null) return '<span class="muted" title="Il faut au moins 2 recharges pour calculer une moyenne">—</span>';
-    return "<b>" + j.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + "</b> j";
-  }
-  function derniereRecharge(bq) {
-    const l = db.crAchats.filter((x) => x.boutique === bq).sort((a, b) => b.date.localeCompare(a.date))[0];
-    if (!l) return '<span class="muted">Jamais</span>';
-    const j = Math.round((parse(today()) - parse(l.date)) / 86400000);
-    return fmtDate(l.date) + ' <span class="op-tag ' + l.op.toLowerCase() + '">' + l.op + '</span><span class="sub">' + (j === 0 ? "aujourd'hui" : "il y a " + j + " j") + "</span>";
   }
   function majPreviewCredit(bq) {
     const m = Number($("#cr-montant").value) || 0;
-    $("#cr-preview").innerHTML = !bq ? '<p class="hint" style="margin:0">' + (isAdmin() ? "Choisissez une boutique dans le filtre pour enregistrer un achat." : "Vous n'êtes affecté à aucune boutique.") + "</p>"
-      : '<div class="info-row"><span>Boutique</span><b>' + esc(boutiqueName(bq)) + "</b></div>" +
-        '<div class="info-row"><span>Commission ' + crOp + " (" + num(tauxOp(crOp)) + ' %)</span><b class="pos">+' + money0(Math.round(m * tauxOp(crOp) / 100)) + "</b></div>";
+    $("#cr-preview").innerHTML = !bq ? (isAdmin() ? "Choisissez une boutique dans le filtre pour enregistrer une recharge." : "Vous n'êtes affecté à aucune boutique.")
+      : "Commission " + crOp + " : <b class=\"pos\">+" + money0(Math.round(m * tauxOp(crOp) / 100)) + "</b> (" + num(tauxOp(crOp)) + " %)";
     $("#cr-save").disabled = !bq;
   }
-  function majInfoVersement(bq) {
-    if (!bq) { $("#cv-info").innerHTML = ""; $("#cv-save").disabled = true; return; }
-    const m = $("#cv-mois").value, c = creditMois(bq, m.slice(0, 7));
-    $("#cv-info").innerHTML = '<div class="info-row"><span>Commission de ' + esc(fmtMonth(m)) + "</span><b>" + money0(c.commission) + "</b></div>" +
-      '<div class="info-row"><span>Déjà versé</span><span>' + money0(c.verse) + "</span></div>" +
-      '<div class="info-row"><span>Reste à verser</span><b class="' + (c.reste > 0 ? "neg" : "pos") + '">' + money0(c.reste) + "</b></div>";
-    if (!$("#cv-montant").value && c.reste > 0) $("#cv-montant").placeholder = String(c.reste);
-    $("#cv-save").disabled = false;
+  // Nombre moyen de jours entre deux recharges (90 derniers jours)
+  function delaiRecharge(bq, op) {
+    const depuis = addDays(today(), -90), ecarts = [];
+    const jours = Array.from(new Set(db.crAchats.filter((x) => x.boutique === bq && x.op === op && x.date >= depuis).map((x) => x.date))).sort();
+    for (let i = 1; i < jours.length; i++) ecarts.push(Math.round((parse(jours[i]) - parse(jours[i - 1])) / 86400000));
+    return ecarts.length ? ecarts.reduce((a, n) => a + n, 0) / ecarts.length : null;
   }
-  function creditSaisieBq() { return isAdmin() ? ($("#cr-boutique").value !== "ALL" ? $("#cr-boutique").value : "") : myBoutiqueCode(); }
-  ["#cr-boutique", "#cr-mois", "#cr-f-op"].forEach((id) => $(id).addEventListener("change", renderCredit));
+  function delaiHtml(j) { return j == null ? '<span class="muted">—</span>' : "<b>" + j.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) + "</b> j"; }
+
+  ["#cr-boutique", "#cr-mois"].forEach((id) => $(id).addEventListener("change", () => { $("#cr-montant").dataset.touche = ""; renderCredit(); }));
   $("#cr-op").addEventListener("click", (e) => {
     const b = e.target.closest("[data-op]"); if (!b) return;
     crOp = b.dataset.op;
     document.querySelectorAll("#cr-op [data-op]").forEach((x) => x.classList.toggle("active", x === b));
+    $("#cr-montant").value = montantDefaut(crOp, creditSaisieBq()); $("#cr-montant").dataset.touche = "";
     majPreviewCredit(creditSaisieBq());
   });
-  $("#cr-montant").addEventListener("input", () => majPreviewCredit(creditSaisieBq()));
-  $("#cv-mois").addEventListener("change", () => { $("#cv-montant").value = ""; majInfoVersement(creditSaisieBq()); });
+  $("#cr-montant").addEventListener("input", () => { $("#cr-montant").dataset.touche = "1"; majPreviewCredit(creditSaisieBq()); });
   $("#cr-save").addEventListener("click", (e) => {
-    const bq = creditSaisieBq(), montant = Number($("#cr-montant").value);
+    const bq = creditSaisieBq(), montant = Number($("#cr-montant").value), ref = $("#cr-ref").value.trim();
     if (!bq) return toast("Choisissez une boutique.");
-    if (!(montant > 0)) return toast("Indiquez le montant du crédit acheté.");
-    const row = { boutique: bq, cc: isAdmin() ? null : me.cc, date: $("#cr-date").value || today(), operateur: crOp, montant, reference: $("#cr-ref").value.trim(), saisi_par: me.nom || me.email || "" };
+    if (!(montant > 0)) return toast("Indiquez le montant de la recharge.");
+    if (!isAdmin() && ref.length < 4) return toast("Indiquez la référence de la transaction (n° de recharge).");
+    if (db.crAchats.some((x) => ref && x.reference.toLowerCase() === ref.toLowerCase())) return toast("Cette référence a déjà été enregistrée.");
+    const row = { boutique: bq, cc: isAdmin() ? null : me.cc, date: today(), operateur: crOp, montant, reference: ref, saisi_par: me.nom || me.email || "" };
     act(async () => {
       chk(await sb.from("credit_achats").insert(row));
-      $("#cr-montant").value = ""; $("#cr-ref").value = "";
-    }, "Achat " + crOp + " de " + money0(montant) + " enregistré : commission +" + money0(Math.round(montant * tauxOp(crOp) / 100)) + ".", e.target);
+      $("#cr-ref").value = ""; $("#cr-montant").dataset.touche = "";
+    }, "Recharge " + crOp + " de " + money0(montant) + " enregistrée : commission +" + money0(Math.round(montant * tauxOp(crOp) / 100)) + ".", e.target);
   });
   $("#cv-save").addEventListener("click", (e) => {
-    const bq = creditSaisieBq(), montant = Number($("#cv-montant").value || $("#cv-montant").placeholder);
+    const bq = creditSaisieBq(), montant = Number($("#cv-montant").value);
     if (!bq) return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant versé.");
-    const m = $("#cv-mois").value, c = creditMois(bq, m.slice(0, 7));
-    if (montant > c.reste && !confirm("Vous versez " + money0(montant) + " alors que le reste à verser est de " + money0(c.reste) + ". Confirmer ?")) return;
-    const row = { boutique: bq, cc: isAdmin() ? null : me.cc, mois: m, montant, mode: $("#cv-mode").value, note: $("#cv-note").value.trim(), saisi_par: me.nom || me.email || "" };
-    act(async () => {
-      chk(await sb.from("credit_versements").insert(row));
-      $("#cv-montant").value = ""; $("#cv-note").value = "";
-    }, "Versement de " + money0(montant) + " déclaré pour " + fmtMonth(m) + ". L'admin le validera à réception.", e.target);
+    const reste = commissionInfo(bq).aDeclarer;
+    if (montant > reste) return toast("Le versement dépasse la commission à reverser (" + money0(reste) + ").");
+    const row = { boutique: bq, cc: isAdmin() ? null : me.cc, mois: premierDuMois(today()), montant, mode: $("#cv-mode").value, note: "", saisi_par: me.nom || me.email || "" };
+    act(async () => chk(await sb.from("credit_versements").insert(row)), "Versement de " + money0(montant) + " déclaré. Le solde diminuera quand l'admin confirmera la réception.", e.target);
+  });
+  $("#cs-save").addEventListener("click", (e) => {
+    const bq = creditSaisieBq(), d = today(), y = $("#cs-yas").value, m = $("#cs-moov").value;
+    if (!bq) return toast("Choisissez une boutique.");
+    if (y === "" && m === "") return toast("Indiquez le crédit restant YAS et/ou MOOV.");
+    const rows = [];
+    if (y !== "") rows.push({ boutique: bq, date: d, operateur: "YAS", solde: Number(y), cc: me.cc || null, saisi_par: me.nom || me.email || "", updated_at: new Date().toISOString() });
+    if (m !== "") rows.push({ boutique: bq, date: d, operateur: "MOOV", solde: Number(m), cc: me.cc || null, saisi_par: me.nom || me.email || "", updated_at: new Date().toISOString() });
+    if (rows.some((r) => !(r.solde >= 0))) return toast("Montant invalide.");
+    act(async () => chk(await sb.from("credit_soldes").upsert(rows, { onConflict: "boutique,date,operateur" })), "Clôture du soir enregistrée.", e.target);
   });
   $("#cr-rows").addEventListener("click", (e) => {
     const d = e.target.closest("[data-cr-del]");
-    if (d && confirm("Supprimer cet achat de crédit ?")) act(async () => chk(await sb.from("credit_achats").delete().eq("id", d.dataset.crDel)), "Achat supprimé.", d);
+    if (d && confirm("Supprimer cette recharge ? (la commission correspondante sera retirée)")) act(async () => chk(await sb.from("credit_achats").delete().eq("id", d.dataset.crDel)), "Recharge supprimée.", d);
   });
   $("#cv-rows").addEventListener("click", (e) => {
     const r = e.target.closest("[data-cv-recu]");
-    if (r) return act(async () => chk(await sb.rpc("set_versement_recu", { p_id: r.dataset.cvRecu, p_recu: r.dataset.v === "1" })), r.dataset.v === "1" ? "Versement validé." : "Validation annulée.", r);
+    if (r) {
+      if (r.dataset.v === "1" && !confirm("Confirmez-vous avoir bien reçu cet argent ? Le solde à reverser va diminuer.")) return;
+      return act(async () => chk(await sb.rpc("set_versement_recu", { p_id: r.dataset.cvRecu, p_recu: r.dataset.v === "1" })), r.dataset.v === "1" ? "Réception confirmée : le solde à reverser diminue." : "Validation annulée.", r);
+    }
     const d = e.target.closest("[data-cv-del]");
     if (d && confirm("Supprimer ce versement ?")) act(async () => chk(await sb.from("credit_versements").delete().eq("id", d.dataset.cvDel)), "Versement supprimé.", d);
   });
-  // Admin : dotations par boutique et taux de commission
   $("#cr-bilan").addEventListener("change", (e) => {
     const y = e.target.closest("[data-dot-yas]"), m = e.target.closest("[data-dot-moov]");
     const el = y || m; if (!el) return;
     const v = Number(el.value); if (!(v >= 0)) return toast("Montant invalide.");
-    const patch = y ? { dotation_yas: v } : { dotation_moov: v };
-    act(async () => chk(await sb.from("boutiques").update(patch).eq("code", y ? y.dataset.dotYas : m.dataset.dotMoov)), "Dotation " + (y ? "YAS" : "MOOV") + " enregistrée : " + money0(v) + ".");
+    act(async () => chk(await sb.from("boutiques").update(y ? { dotation_yas: v } : { dotation_moov: v }).eq("code", y ? y.dataset.dotYas : m.dataset.dotMoov)), "Dotation " + (y ? "YAS" : "MOOV") + " enregistrée : " + money0(v) + ".");
   });
   $("#cr-set-save").addEventListener("click", (e) => {
     const ty = Number($("#cr-set-yas").value), tm = Number($("#cr-set-moov").value);

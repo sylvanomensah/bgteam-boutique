@@ -1219,6 +1219,38 @@ drop policy if exists credit_vers_select on public.credit_versements;
 create policy credit_vers_select on public.credit_versements for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
 
+-- ---- Anti-fraude crédit ----
+-- 1. Référence de transaction obligatoire (CC) et unique pour chaque recharge
+create unique index if not exists credit_achats_ref_unique on public.credit_achats (lower(trim(reference))) where trim(reference) <> '';
+create or replace function public.credit_achats_ref() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  new.reference := trim(coalesce(new.reference, ''));
+  if not public.is_admin() and length(new.reference) < 4 then
+    raise exception 'Indiquez la référence de la transaction (n° de recharge)';
+  end if;
+  return new;
+end $$;
+drop trigger if exists credit_achats_ref on public.credit_achats;
+create trigger credit_achats_ref before insert on public.credit_achats for each row execute function public.credit_achats_ref();
+-- 2. Seul l'admin supprime une recharge (sinon la commission due pourrait être réduite)
+drop policy if exists credit_achats_delete on public.credit_achats;
+create policy credit_achats_delete on public.credit_achats for delete to authenticated using (public.is_admin());
+-- 3. Un versement ne peut pas dépasser la commission encore due par la boutique
+create or replace function public.credit_vers_before() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_du numeric;
+begin
+  new.mois := date_trunc('month', coalesce(new.mois, current_date))::date;
+  if public.is_admin() then return new; end if;
+  select coalesce((select sum(commission) from public.credit_achats where boutique = new.boutique), 0)
+       - coalesce((select sum(montant) from public.credit_versements where boutique = new.boutique), 0) into v_du;
+  if new.montant > v_du then raise exception 'Le versement (% F) dépasse la commission encore due (% F)', new.montant, greatest(v_du, 0); end if;
+  return new;
+end $$;
+drop trigger if exists credit_vers_before on public.credit_versements;
+create trigger credit_vers_before before insert on public.credit_versements for each row execute function public.credit_vers_before();
+
 -- Réception de la commission : administrateur uniquement
 create or replace function public.set_versement_recu(p_id uuid, p_recu boolean) returns void
 language plpgsql security definer set search_path = public as $$

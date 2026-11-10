@@ -511,98 +511,92 @@
 
     <!-- CRÉDIT TÉLÉCOM (YAS / MOOV) -->
     <section id="view-credit" class="view">
-      <h1>Crédit télécom</h1>
-      <div class="card filterbar">
+      <div class="title-filter">
+        <h1>Crédit télécom</h1>
         <label>Boutique<select id="cr-boutique"></select></label>
         <label>Mois<input type="month" id="cr-mois"></label>
-        <p class="hint" style="margin:0">Chaque achat de crédit rapporte une commission (YAS <b id="cr-taux-yas">5</b> %, MOOV <b id="cr-taux-moov">5</b> %), à verser en fin de mois.</p>
       </div>
-      <div class="card cr-jour-card">
-        <div class="jour-nav"><h2 style="margin:0 auto 0 0" id="cr-jour-title">Crédit du jour</h2>
-          <button class="btn small" data-crj="-1">◀ Veille</button><input type="date" id="cr-jour"><button class="btn small" data-crj="1">Lendemain ▶</button></div>
-        <div class="kpis" id="cr-jour-kpis" style="margin-bottom:0"></div>
-        <div class="need-credit-saisie cr-cloture">
-          <h3 class="sub-title" style="margin-top:14px">🌙 Clôture du soir — crédit restant sur les puces</h3>
-          <div class="form form-inline">
-            <label><span class="op-tag yas">YAS</span> Crédit restant<input type="number" id="cs-yas" min="0" placeholder="Solde lu sur la puce"></label>
-            <label><span class="op-tag moov">MOOV</span> Crédit restant<input type="number" id="cs-moov" min="0" placeholder="Solde lu sur la puce"></label>
-            <button class="btn success" id="cs-save" style="align-self:flex-end">Enregistrer la clôture</button>
-          </div>
-          <p class="hint" style="margin:0">Chaque soir, notez le crédit restant lu sur chaque puce. Crédit vendu du jour = restant de la veille + crédit acheté dans la journée − restant de ce soir.</p>
-        </div>
-      </div>
-      <div class="kpis" id="cr-kpis"></div>
-      <div class="card" id="cr-dotation-card">
-        <h2>Utilisation de la dotation du mois</h2>
-        <div id="cr-dotation"></div>
+      <div id="cr-alertes"></div>
+
+      <!-- Une carte par réseau (une boutique) ou un tableau (toutes les boutiques) -->
+      <div class="op-cards" id="cr-cards"></div>
+      <div class="card hidden" id="cr-table-card">
+        <h2>Crédit restant par boutique</h2>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th class="num">Recharges du mois</th><th class="num">Commission à reverser</th><th>Dernière clôture</th></tr></thead>
+          <tbody id="cr-table"></tbody>
+        </table></div>
       </div>
 
       <div class="grid2">
+        <!-- Recharge -->
         <div class="card need-credit-saisie">
-          <h2>Nouvel achat de crédit</h2>
+          <h2>Nouvelle recharge</h2>
           <div class="op-choice" id="cr-op">
-            <button type="button" class="op yas active" data-op="YAS">YAS</button>
-            <button type="button" class="op moov" data-op="MOOV">MOOV</button>
+            <button type="button" class="op yas active" data-op="YAS"><span class="logo-op yas">yas</span></button>
+            <button type="button" class="op moov" data-op="MOOV"><span class="logo-op moov">moov<small>africa</small></span></button>
           </div>
           <div class="form">
-            <label>Montant acheté<input type="number" id="cr-montant" min="1" placeholder="Ex. : 20000"></label>
-            <label>Date<input type="date" id="cr-date"></label>
-            <label class="full">Référence (facultatif)<input id="cr-ref" placeholder="N° de transaction"></label>
+            <label>Montant<input type="number" id="cr-montant" min="1"></label>
+            <label>Référence de la transaction <span class="req">*</span><input id="cr-ref" placeholder="N° de recharge"></label>
           </div>
-          <div class="cr-preview" id="cr-preview"></div>
-          <div class="actions"><button class="btn success" id="cr-save">Enregistrer l'achat</button></div>
+          <p class="hint" id="cr-preview" style="margin-top:0"></p>
+          <div class="actions"><button class="btn success" id="cr-save">Enregistrer la recharge</button></div>
         </div>
-        <div class="card need-credit-saisie">
-          <h2>Verser la commission</h2>
-          <div class="form">
-            <label>Commission du mois<select id="cv-mois"></select></label>
-            <label>Montant versé<input type="number" id="cv-montant" min="1"></label>
-            <label>Mode<select id="cv-mode"><option>Espèces</option><option>Mobile money</option></select></label>
-            <label>Note<input id="cv-note" placeholder="Facultatif (référence…)"></label>
+        <!-- Commission à reverser -->
+        <div class="card need-credit">
+          <h2>Commission à reverser</h2>
+          <div class="com-solde" id="cv-solde"></div>
+          <div class="need-credit-saisie">
+            <div class="form">
+              <label>Montant versé<input type="number" id="cv-montant" min="1"></label>
+              <label>Mode<select id="cv-mode"><option>Espèces</option><option>Mobile money</option></select></label>
+            </div>
+            <div class="actions"><button class="btn primary" id="cv-save">Déclarer le versement</button></div>
+            <p class="hint" style="margin:8px 0 0">Le solde diminue quand l'administrateur confirme avoir reçu l'argent.</p>
           </div>
-          <div class="cr-preview" id="cv-info"></div>
-          <div class="actions"><button class="btn primary" id="cv-save">Déclarer le versement</button></div>
         </div>
       </div>
 
-      <div class="card admin-only">
-        <h2 id="cr-bilan-title">Bilan par boutique</h2>
+      <!-- Clôture du soir -->
+      <div class="card need-credit-saisie">
+        <h2>🌙 Clôture du soir — crédit restant sur les puces</h2>
+        <div class="form form-inline">
+          <label><span class="logo-op yas sm">yas</span> Crédit restant<input type="number" id="cs-yas" min="0"></label>
+          <label><span class="logo-op moov sm">moov</span> Crédit restant<input type="number" id="cs-moov" min="0"></label>
+          <button class="btn success" id="cs-save" style="align-self:flex-end">Enregistrer</button>
+        </div>
+        <p class="hint" style="margin:0" id="cs-info">À faire chaque soir : notez le crédit restant lu sur chaque puce.</p>
+      </div>
+
+      <!-- Historique (replié) -->
+      <details class="card cr-details">
+        <summary><b>Historique du mois</b> — recharges et versements</summary>
+        <h3 class="sub-title">Recharges</h3>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Boutique</th><th class="num">Achats YAS</th><th class="num">Achats MOOV</th><th class="num">Commission</th><th class="num">Versée</th><th class="num">Reste à verser</th><th class="num" title="Nombre moyen de jours entre deux recharges">Recharge YAS</th><th class="num" title="Nombre moyen de jours entre deux recharges">Recharge MOOV</th><th>Dernière recharge</th><th>Dotation YAS</th><th>Dotation MOOV</th></tr></thead>
-          <tbody id="cr-bilan"></tbody><tfoot id="cr-bilan-foot"></tfoot>
+          <thead><tr><th>Date</th><th>Boutique</th><th>Réseau</th><th class="num">Montant</th><th class="num">Commission</th><th>Référence</th><th>Saisi par</th><th></th></tr></thead>
+          <tbody id="cr-rows"></tbody>
         </table></div>
-        <p class="hint" id="cr-bilan-hint" style="margin-top:8px"></p>
+        <h3 class="sub-title">Versements de commission</h3>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Date</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Statut</th><th></th></tr></thead>
+          <tbody id="cv-rows"></tbody>
+        </table></div>
+      </details>
+
+      <!-- Réglages (admin) -->
+      <details class="card cr-details admin-only">
+        <summary><b>Réglages</b> — dotations et taux de commission</summary>
+        <div class="table-wrap" style="margin-top:10px"><table class="table">
+          <thead><tr><th>Boutique</th><th>Dotation YAS</th><th>Dotation MOOV</th><th class="num">Recharge YAS tous les</th><th class="num">Recharge MOOV tous les</th></tr></thead>
+          <tbody id="cr-bilan"></tbody>
+        </table></div>
         <div class="form form-inline" style="margin-top:12px">
           <label>Taux de commission YAS (%)<input type="number" id="cr-set-yas" min="0" step="0.1"></label>
           <label>Taux de commission MOOV (%)<input type="number" id="cr-set-moov" min="0" step="0.1"></label>
-          <button class="btn" id="cr-set-save">Enregistrer les taux</button>
+          <button class="btn" id="cr-set-save" style="align-self:flex-end">Enregistrer les taux</button>
         </div>
-      </div>
-
-      <div class="card">
-        <h2>Versements de commission</h2>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Mois</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Déclaré le</th><th>Statut</th><th></th></tr></thead>
-          <tbody id="cv-rows"></tbody>
-        </table></div>
-      </div>
-
-      <div class="card">
-        <h2 id="cr-journal-title">Journal quotidien du crédit</h2>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Jour</th><th>Boutique</th><th class="num">YAS acheté</th><th class="num">YAS vendu</th><th class="num">YAS restant</th><th class="num">MOOV acheté</th><th class="num">MOOV vendu</th><th class="num">MOOV restant</th></tr></thead>
-          <tbody id="cr-journal"></tbody><tfoot id="cr-journal-foot"></tfoot>
-        </table></div>
-      </div>
-
-      <div class="card">
-        <div class="toolbar"><h2 style="margin-right:auto">Historique des achats</h2>
-          <select id="cr-f-op" style="width:auto"><option value="">YAS et MOOV</option><option>YAS</option><option>MOOV</option></select></div>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Date</th><th>Boutique</th><th>CC</th><th>Opérateur</th><th class="num">Montant</th><th class="num">Commission</th><th>Référence</th><th>Saisi par</th><th></th></tr></thead>
-          <tbody id="cr-rows"></tbody><tfoot id="cr-foot"></tfoot>
-        </table></div>
-      </div>
+      </details>
     </section>
 
     <!-- BOBINES -->

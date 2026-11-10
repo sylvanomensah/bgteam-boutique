@@ -208,6 +208,35 @@ body.role-vendeur .admin-only { display: none !important; }
 body.no-entrees .only-entrees { display: none !important; }
 body.no-rh .need-rh,
 body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-tab="planning"]) { display: none !important; }
+/* Crédit télécom : badges aux couleurs des réseaux */
+.logo-op { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 900; letter-spacing: -.02em; border-radius: 12px; line-height: 1; padding: 8px 14px; font-size: 1.5rem; font-family: "Arial Rounded MT Bold", "Segoe UI", sans-serif; }
+.logo-op small { font-size: .55rem; font-weight: 700; letter-spacing: .12em; margin-top: 2px; }
+.logo-op.yas { background: #ffd100; color: #111; }
+.logo-op.moov { background: #005ca9; color: #fff; }
+.logo-op.moov small { color: #f7941d; }
+.logo-op.sm { font-size: .78rem; padding: 3px 8px; border-radius: 6px; vertical-align: middle; display: inline-flex; }
+.op-choice .op { padding: 6px; }
+.op-choice .op .logo-op { width: 100%; }
+.op-choice .op:not(.active) .logo-op { filter: grayscale(.85); opacity: .6; }
+.op-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 18px; }
+.op-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; display: flex; flex-direction: column; gap: 14px; border-top: 5px solid; }
+.op-card.yas { border-top-color: #ffd100; }
+.op-card.moov { border-top-color: #005ca9; }
+.op-card > .logo-op { align-self: flex-start; }
+.op-main span { display: block; font-size: .78rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.op-main b { display: block; font-size: 2.1rem; letter-spacing: -.02em; }
+.op-main small { color: var(--muted); }
+.op-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.op-stats div { background: #f7f9fc; border-radius: 10px; padding: 10px 12px; }
+.op-stats b { display: block; font-size: 1.2rem; }
+.op-stats span { font-size: .78rem; color: var(--muted); }
+.com-solde { margin-bottom: 12px; }
+.com-big { border-radius: 12px; padding: 14px 16px; margin-bottom: 8px; }
+.com-big span { display: block; font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.com-big b { font-size: 1.9rem; }
+.com-big.due { background: var(--warn-soft); color: #7a4a00; }
+.com-big.ok { background: var(--success-soft); color: var(--success); }
+details.cr-details summary { cursor: pointer; }
 /* Crédit télécom (YAS / MOOV) */
 body.no-credit .need-credit, body.no-credit-saisie .need-credit-saisie { display: none !important; }
 .kpi[style*="--kc"]::before { background: var(--kc); }
