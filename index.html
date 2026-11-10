@@ -660,7 +660,10 @@
           <button class="btn primary" id="bq-new">+ Nouvelle boutique</button>
         </div>
         <p class="hint">Jusqu'à 10 boutiques. Tapez le nom puis Entrée pour le modifier. Chaque vente est rattachée à la boutique de son CC au moment de la vente.</p>
-        <div class="bq-grid" id="bq-rows"></div>
+        <div class="table-wrap"><table class="table bq-list">
+          <thead><tr><th>Boutique</th><th>Code</th><th>CC affectés</th><th class="num">En service</th><th>Statut</th><th></th></tr></thead>
+          <tbody id="bq-rows"></tbody>
+        </table></div>
       </div>
       </div>
 

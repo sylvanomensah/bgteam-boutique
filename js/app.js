@@ -2572,14 +2572,15 @@
     $("#bq-rows").innerHTML = db.boutiques.length ? db.boutiques.map((b) => {
       const ccs = db.settings.ccList.filter((c) => c.boutique === b.code && c.actif);
       const enService = ccs.filter((c) => ccStatusOn(c.code, today()).k === "service").length;
-      return '<div class="bq-card' + (b.actif ? "" : " off") + '"><div class="bq-head"><span class="bq-ico">🏬</span>' +
-        '<input class="inline-input bq-name" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '" title="Tapez le nom puis Entrée">' +
-        (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + "</div>" +
-        '<div class="bq-meta"><span>' + esc(b.code) + "</span><span>" + ccs.length + " CC</span><span>" + enService + " en service aujourd'hui</span></div>" +
-        '<div class="chips">' + (ccs.length ? ccs.map((c) => '<button class="chip" data-open-fiche="' + esc(c.code) + '" title="Ouvrir la fiche">' + avatarHtml(c.code, "xs") + esc(ccName(c.code)) + "</button>").join("") : '<span class="muted">Aucun CC affecté</span>') + "</div>" +
-        '<div class="bq-actions"><button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button>" +
-        '<button class="btn small danger" data-bq-del="' + esc(b.code) + '">🗑 Supprimer</button></div></div>';
-    }).join("") : '<p class="empty">Aucune boutique.</p>';
+      // Une ligne par boutique (liste compacte)
+      return '<tr class="' + (b.actif ? "" : "off-row") + '"><td><input class="inline-input bq-name" data-bq-nom="' + esc(b.code) + '" value="' + esc(b.nom) + '" title="Tapez le nom puis Entrée"></td>' +
+        '<td class="muted">' + esc(b.code) + '</td><td class="wrap"><div class="chips">' +
+        (ccs.length ? ccs.map((c) => '<button class="chip" data-open-fiche="' + esc(c.code) + '" title="Ouvrir la fiche">' + avatarHtml(c.code, "xs") + esc(ccName(c.code)) + "</button>").join("") : '<span class="muted">Aucun CC</span>') +
+        '</div></td><td class="num"><b>' + enService + "</b> / " + ccs.length + "</td><td>" +
+        (b.actif ? '<span class="badge ok">Active</span>' : '<span class="badge mute">Inactive</span>') + '</td><td style="white-space:nowrap">' +
+        '<button class="btn small" data-bq-actif="' + esc(b.code) + '">' + (b.actif ? "Désactiver" : "Activer") + "</button> " +
+        '<button class="btn small danger" data-bq-del="' + esc(b.code) + '" title="Supprimer la boutique">🗑</button></td></tr>';
+    }).join("") : '<tr><td colspan="6" class="empty">Aucune boutique.</td></tr>';
     renderCcTable();
     renderRhKpis();
   }

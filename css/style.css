@@ -208,6 +208,12 @@ body.role-vendeur .admin-only { display: none !important; }
 body.no-entrees .only-entrees { display: none !important; }
 body.no-rh .need-rh, body.rh-limite #rh-kpis,
 body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-tab="planning"]) { display: none !important; }
+/* RH : boutiques en liste compacte */
+.bq-list td { vertical-align: middle; }
+.bq-list .bq-name { min-width: 170px; max-width: 240px; font-weight: 650; }
+.bq-list .chips { gap: 4px; }
+.bq-list .chip { font-size: .78rem; padding: 2px 8px 2px 2px; }
+.bq-list tr.off-row td { opacity: .6; }
 /* RH : navigation par jour (hier / demain) */
 .jour-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
 .jour-nav input[type=date] { width: auto; min-height: 36px; padding: 6px 10px; }
