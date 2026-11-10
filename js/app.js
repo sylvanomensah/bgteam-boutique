@@ -2861,7 +2861,20 @@
     majPreviewCredit(sbq);
 
     // Crédit vendu du jour : l'oubli d'hier d'abord, puis aujourd'hui (une seule déclaration par jour)
+    // L'admin peut choisir le jour (ex. : déclarer la vente d'hier)
+    if (admin && !$("#cs-date").value) $("#cs-date").value = venteCible(sbq);
+    $("#cs-date").max = t;
+    if (admin && sbq) {
+      const d = venteJourChoisi(sbq), faitD = venteFaite(sbq, d);
+      $("#cs-titre").innerHTML = (faitD ? "✅" : "🌙") + " Crédit vendu " + (d === t ? "ce " : "le ") + esc(jourLong(d)) + ' <span class="badge">admin</span>';
+      $("#cs-form").classList.remove("hidden");
+      $("#cs-save").disabled = faitD;
+      $("#cs-card").classList.toggle("a-faire", false); $("#cs-card").classList.toggle("fait", faitD);
+      $("#cs-info").innerHTML = faitD ? "Déjà déclaré pour ce jour : " + OPS.map((op) => logoOp(op, true) + " <b>" + money0(venteLe(sbq, op, d) || 0) + "</b>").join(" &nbsp; ") + " — pour corriger, supprimez la ligne dans l'historique puis redéclarez."
+        : "Choisissez le jour puis indiquez le crédit vendu YAS et MOOV (0 si rien)." + (d < t ? " Une vente d'un jour passé est enregistrée dans l'historique." : "");
+    }
     const cj = venteCible(sbq), oubli = cj !== t, faitAuj = !!sbq && venteFaite(sbq, t);
+    if (!(admin && sbq)) {
     $("#cs-titre").innerHTML = !sbq ? "🌙 Crédit vendu du jour" : faitAuj ? "✅ Crédit vendu " + (oubli ? "" : "ce ") + esc(jourLong(t)) : "🌙 Crédit vendu " + (oubli ? "hier, " : "ce ") + esc(jourLong(cj)) + (oubli ? ' <span class="badge warn">oubli à rattraper</span>' : "");
     $("#cs-form").classList.toggle("hidden", !sbq || faitAuj);
     if (faitAuj) { $("#cs-yas").value = ""; $("#cs-moov").value = ""; }
@@ -2872,6 +2885,7 @@
       : faitAuj ? "Déclaré : " + OPS.map((op) => logoOp(op, true) + " <b>" + money0(venteLe(sbq, op, t) || 0) + "</b>").join(" &nbsp; ") + " — déduit du crédit restant. Pour une correction, voyez l'administrateur."
       : oubli ? '<b class="neg">Le crédit vendu hier n\'a pas été déclaré.</b> Déclarez-le d\'abord : sans cela, la vente d\'aujourd\'hui et les nouvelles recharges sont bloquées.'
       : "⏰ <b>À faire chaque soir</b> : notez le crédit vendu aujourd'hui sur chaque puce (0 si rien). Il sera déduit du crédit restant.";
+    }
 
     // Historique du mois
     const achats = db.crAchats.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -2908,6 +2922,8 @@
   }
   // Jour à déclarer : hier s'il manque (oubli), sinon aujourd'hui
   function venteCible(bq) { return hierManquant(bq) ? addDays(today(), -1) : today(); }
+  // Jour choisi : l'admin peut prendre n'importe quel jour passé ; un CC suit la règle (hier d'abord)
+  function venteJourChoisi(bq) { return isAdmin() && $("#cs-date").value ? $("#cs-date").value : venteCible(bq); }
   // Récap d'un mois : crédits achetés YAS / MOOV, commission générée, historiques
   function renderRecapCredit(scope) {
     const mois = $("#cr-mois").value || today().slice(0, 7), codes = scope.map((b) => b.code), s = (l, f) => l.reduce((a, x) => a + f(x), 0);
@@ -3036,22 +3052,23 @@
   });
   // Déclaration du crédit vendu (hier d'abord si oublié), confirmée par « Oui »
   $("#cs-save").addEventListener("click", (e) => {
-    const bq = creditSaisieBq(), d = venteCible(bq), btn = e.target, y = $("#cs-yas").value.trim(), m = $("#cs-moov").value.trim();
+    const bq = creditSaisieBq(), d = venteJourChoisi(bq), btn = e.target, y = $("#cs-yas").value.trim(), m = $("#cs-moov").value.trim();
+    if (d > today()) return toast("Impossible de déclarer une vente pour un jour à venir.");
     if (!bq) return toast("Choisissez une boutique.");
     if (venteFaite(bq, d)) return toast("La vente de ce jour est déjà déclarée.");
     if (y === "" || m === "") return toast("Indiquez le crédit vendu YAS et MOOV (0 si rien n'a été vendu).");
     const v = { YAS: Number(y), MOOV: Number(m) };
     if (!(v.YAS >= 0 && v.MOOV >= 0)) return toast("Montant invalide.");
-    for (const op of OPS) {
+    for (const op of (d === today() ? OPS : [])) { // un jour passé (admin) n'est pas comparé au crédit restant actuel
       const cr = creditRestant(bq, op);
       if (cr.connu && v[op] > cr.total) return toast("Le crédit " + op + " vendu (" + money0(v[op]) + ") dépasse le crédit restant (" + money0(Math.max(0, cr.total)) + "). Vérifiez, ou faites d'abord enregistrer la recharge.");
     }
     const dlg = $("#crconf-dialog"), oubli = d !== today();
-    $("#crconf-titre").textContent = "Confirmer la vente " + (oubli ? "d'hier" : "du jour");
+    $("#crconf-titre").textContent = "Confirmer la vente " + (oubli ? "du " + fmtDate(d) : "du jour");
     $("#crconf-oui").textContent = "Oui, je déclare";
     $("#crconf-logo").innerHTML = OPS.map((op) => '<div class="crconf-ligne">' + logoOp(op) + "<b>" + money0(v[op]) + "</b></div>").join("");
     $("#crconf-montant").textContent = "";
-    $("#crconf-text").innerHTML = "Vous déclarez le crédit vendu <b>" + (oubli ? "hier, " : "ce ") + esc(jourLong(d)) + "</b> pour <b>" + esc(boutiqueName(bq)) +
+    $("#crconf-text").innerHTML = "Vous déclarez le crédit vendu <b>" + (oubli ? "le " : "ce ") + esc(jourLong(d)) + "</b> pour <b>" + esc(boutiqueName(bq)) +
       "</b>.<br>Ce montant sera <b>déduit du crédit restant</b> et ne pourra plus être modifié (sauf par l'administrateur).<br>Confirmez-vous ?";
     dlg.returnValue = "";
     dlg.onclose = () => {
@@ -3060,10 +3077,11 @@
       act(async () => {
         chk(await sb.from("credit_ventes").insert(rows));
         $("#cs-yas").value = ""; $("#cs-moov").value = "";
-      }, "Crédit vendu " + (oubli ? "d'hier" : "du jour") + " déclaré : déduit du crédit restant." + (oubli ? " Vous pouvez maintenant déclarer celui d'aujourd'hui." : ""), btn);
+      }, "Crédit vendu " + (oubli ? "du " + fmtDate(d) : "du jour") + " déclaré" + (oubli ? "." + (isAdmin() ? "" : " Vous pouvez maintenant déclarer celui d'aujourd'hui.") : " : déduit du crédit restant."), btn);
     };
     dlg.showModal();
   });
+  $("#cs-date").addEventListener("change", () => { $("#cs-yas").value = ""; $("#cs-moov").value = ""; renderCredit(); });
   // Contrôle réel du crédit (admin)
   $("#ck-save").addEventListener("click", (e) => {
     const bq = creditSaisieBq(), y = $("#ck-yas").value.trim(), m = $("#ck-moov").value.trim();
