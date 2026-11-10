@@ -1205,13 +1205,14 @@ alter table public.credit_soldes enable row level security;
 drop policy if exists credit_soldes_select on public.credit_soldes;
 create policy credit_soldes_select on public.credit_soldes for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+-- Clôture du soir : tout CC actif de la boutique (pas seulement ceux autorisés aux achats de crédit)
 drop policy if exists credit_soldes_insert on public.credit_soldes;
 create policy credit_soldes_insert on public.credit_soldes for insert to authenticated
-  with check (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and date between current_date - 1 and current_date));
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date));
 drop policy if exists credit_soldes_update on public.credit_soldes;
 create policy credit_soldes_update on public.credit_soldes for update to authenticated
-  using (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and date between current_date - 1 and current_date))
-  with check (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and date between current_date - 1 and current_date));
+  using (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date))
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date));
 drop policy if exists credit_soldes_delete on public.credit_soldes;
 create policy credit_soldes_delete on public.credit_soldes for delete to authenticated using (public.is_admin());
 drop policy if exists credit_achats_select on public.credit_achats;

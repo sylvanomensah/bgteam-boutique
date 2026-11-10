@@ -241,7 +241,9 @@ body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-ta
 .com-big.ok { background: var(--success-soft); color: var(--success); }
 details.cr-details summary { cursor: pointer; }
 /* Crédit télécom (YAS / MOOV) */
-body.no-credit .need-credit, body.no-credit-saisie .need-credit-saisie { display: none !important; }
+body.no-credit .need-credit, body.no-credit-saisie .need-credit-saisie, body.no-cloture .need-cloture { display: none !important; }
+#cs-card.a-faire { border: 2px solid #f59e0b; background: #fffbeb; }
+#cs-card.fait { border-left: 5px solid #16a34a; }
 .kpi[style*="--kc"]::before { background: var(--kc); }
 .op-choice { display: flex; gap: 8px; margin-bottom: 12px; }
 .op-choice .op { flex: 1; font: inherit; font-weight: 800; font-size: 1.05rem; letter-spacing: .04em; padding: 12px; border-radius: 12px; border: 2px solid var(--border); background: #fff; cursor: pointer; color: var(--muted); transition: all .15s; }

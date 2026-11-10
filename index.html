@@ -576,6 +576,18 @@
         </table></div>
       </div>
 
+      <!-- Clôture du soir : tous les CC de la boutique, chaque soir -->
+      <div class="card need-cloture" id="cs-card">
+        <h2>🌙 Clôture du soir — crédit restant sur les puces</h2>
+        <div class="form form-inline">
+          <label>Jour<select id="cs-jour"><option value="0">Ce soir</option><option value="1">Hier soir (oubli)</option></select></label>
+          <label><span><img class="logo-op yas sm" src="icons/yas.png" alt="YAS"> Crédit restant</span><input type="number" id="cs-yas" min="0" inputmode="numeric"></label>
+          <label><span><img class="logo-op moov sm" src="icons/moov.png" alt="MOOV"> Crédit restant</span><input type="number" id="cs-moov" min="0" inputmode="numeric"></label>
+          <button class="btn success" id="cs-save" style="align-self:flex-end">Enregistrer</button>
+        </div>
+        <p class="hint" style="margin:0" id="cs-info">À faire chaque soir : notez le crédit restant lu sur chaque puce.</p>
+      </div>
+
       <div class="grid2">
         <!-- Recharge -->
         <div class="card need-credit-saisie">
@@ -606,16 +618,6 @@
         </div>
       </div>
 
-      <!-- Clôture du soir -->
-      <div class="card need-credit-saisie">
-        <h2>🌙 Clôture du soir — crédit restant sur les puces</h2>
-        <div class="form form-inline">
-          <label><span><img class="logo-op yas sm" src="icons/yas.png" alt="YAS"> Crédit restant</span><input type="number" id="cs-yas" min="0"></label>
-          <label><span><img class="logo-op moov sm" src="icons/moov.png" alt="MOOV"> Crédit restant</span><input type="number" id="cs-moov" min="0"></label>
-          <button class="btn success" id="cs-save" style="align-self:flex-end">Enregistrer</button>
-        </div>
-        <p class="hint" style="margin:0" id="cs-info">À faire chaque soir : notez le crédit restant lu sur chaque puce.</p>
-      </div>
 
       <!-- Historique (replié) -->
       <details class="card cr-details">
