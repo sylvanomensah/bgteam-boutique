@@ -1401,7 +1401,7 @@ drop policy if exists frigo_retraits_admin on public.frigo_retraits;
 create policy frigo_retraits_admin on public.frigo_retraits for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 -- Sorties du frigo = ventes faites en CAISSE des produits achetés dans une course du frigo de la boutique.
--- Chaque vente fait baisser le crédit vente restant de son prix d'achat (frais de la course compris),
+-- Chaque vente fait baisser le crédit vente restant de son prix d'achat unitaire (hors frais de la course),
 -- pris dans la dernière course de la boutique contenant ce produit, faite avant la vente.
 create or replace function public.frigo_sorties() returns table (
   sale_id uuid, boutique text, date date, created_at timestamptz, ticket integer, code text, nom text, qte numeric, pu numeric, consomme numeric)
@@ -1409,7 +1409,7 @@ language sql stable security definer set search_path = public as $$
   select s.id, s.boutique, s.date, s.created_at, s.ticket, s.code, s.nom, s.qte, s.pu, round(s.qte * x.cu, 2)
   from public.sales s
   cross join lateral (
-    select (l ->> 'achat')::numeric * d.total_course / nullif(d.total_achats, 0) as cu
+    select (l ->> 'achat')::numeric as cu  -- prix d'achat unitaire de la course (total payé ÷ quantité), sans les frais
     from public.frigo_courses c
     join public.frigo_courses_details d on d.course_id = c.id
     cross join lateral jsonb_array_elements(d.lignes) l

@@ -3071,6 +3071,8 @@
   // Quand le restant atteint le seuil (5 000 par défaut), une nouvelle course est possible.
   let fgTab = "ops", fcLignes = [{ code: "", qte: "", total: "" }];
   const FRIGO_DEBUT = "2026-11-10";
+  // Montants du frigo au centime près (prix unitaires = total ÷ quantité)
+  const money2 = (n) => money(Math.round(Number(n || 0) * 100) / 100);
   const sumBy = (l, f) => l.reduce((a, x) => a + (Number(f(x)) || 0), 0);
   function canFrigo() { return isAdmin() || isGlobal() || !!myBoutiqueCode(); }
   function frigoScope() {
@@ -3128,16 +3130,16 @@
     if (une) {
       const bq = scope[0].code, f = frigoInfo(bq, mois);
       const pct = f.base > 0 ? Math.max(0, Math.min(100, Math.round((f.restant / f.base) * 100))) : 0;
-      let h = '<div class="fg-card' + (f.courses.length && f.seuilAtteint ? " orange" : "") + '"><span>Crédit vente restant</span><b>' + (f.courses.length ? money0(Math.max(0, f.restant)) : "—") + "</b>" + (f.restant < 0 ? '<small class="pos">✅ Course remboursée · <b>+' + money0(-f.restant) + "</b> de bénéfice déjà vendu</small>" : "") +
+      let h = '<div class="fg-card' + (f.courses.length && f.seuilAtteint ? " orange" : "") + '"><span>Crédit vente restant</span><b>' + (f.courses.length ? money2(Math.max(0, f.restant)) : "—") + "</b>" + (f.restant < 0 ? '<small class="pos">✅ Course remboursée · <b>+' + money2(-f.restant) + "</b> de bénéfice déjà vendu</small>" : "") +
         (f.courses.length ? '<div class="fg-bar' + (f.seuilAtteint ? " bas" : "") + '"><i style="width:' + pct + '%"></i></div><small>' +
-          (f.seuilAtteint ? "🛒 <b>Seuil atteint</b> : nouvelle course possible" : "Dernière course du " + fmtDate(f.derniere.date) + " : " + money0(f.derniere.cout)) + "</small>"
+          (f.seuilAtteint ? "🛒 <b>Seuil atteint</b> : nouvelle course possible" : "Dernière course du " + fmtDate(f.derniere.date) + " : " + money2(f.derniere.cout)) + "</small>"
           : "<small>Aucune course enregistrée pour ce frigo</small>") + "</div>";
-      h += '<div class="fg-card vert"><span>Estimation des ventes du mois</span><b>' + money0(f.estimationMois) + "</b><small>prix de vente des produits des courses · vendu en caisse ce mois : <b>" + money0(f.venduMois) +
-        "</b> (" + num(f.articlesMois) + " article" + (f.articlesMois > 1 ? "s" : "") + ") · aujourd'hui : " + money0(f.venteJour) + "</small></div>";
+      h += '<div class="fg-card vert"><span>Estimation des ventes du mois</span><b>' + money2(f.estimationMois) + "</b><small>prix de vente des produits des courses · vendu en caisse ce mois : <b>" + money2(f.venduMois) +
+        "</b> (" + num(f.articlesMois) + " article" + (f.articlesMois > 1 ? "s" : "") + ") · aujourd'hui : " + money2(f.venteJour) + "</small></div>";
       if (admin) {
-        h += '<div class="fg-card violet"><span>Bénéfice estimé du mois</span><b>' + money0(f.benefMois) + "</b><small>" +
+        h += '<div class="fg-card violet"><span>Bénéfice estimé du mois</span><b>' + money2(f.benefMois) + "</b><small>" +
           (f.taux == null ? "aucune course ce mois-ci" : "somme des marges des produits achetés : " + Math.round(f.taux * 100) + " %") + "</small></div>";
-        h += '<div class="fg-card"><span>Bénéfice des ventes (retirable)</span><b>' + money0(f.aRetirer) + "</b><small>bénéfice des ventes en caisse : " + money0(f.benefVentes) + " · déjà retiré : " + money0(f.retire) + "</small></div>";
+        h += '<div class="fg-card"><span>Bénéfice des ventes (retirable)</span><b>' + money2(f.aRetirer) + "</b><small>bénéfice des ventes en caisse : " + money2(f.benefVentes) + " · déjà retiré : " + money2(f.retire) + "</small></div>";
       }
       $("#fg-cards").innerHTML = h;
     } else {
@@ -3147,9 +3149,9 @@
       const avec = scope.filter((b) => db.fgCourses.some((c) => c.boutique === b.code));
       $("#fg-table").innerHTML = avec.length ? avec.map((b) => {
         const f = frigoInfo(b.code, mois);
-        const etat = '<span class="num">' + money0(f.venteJour) + "</span>";
-        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (f.seuilAtteint ? '<b class="neg">' + money0(Math.max(0, f.restant)) + "</b> 🛒" : money0(Math.max(0, f.restant))) + '</td><td class="num">' + money0(f.estimationMois) + '</td><td class="num">' + money0(f.venduMois) + "</td><td>" + etat + "</td>" +
-          (admin ? '<td class="num">' + money0(f.benefMois) + '</td><td class="num">' + money0(f.aRetirer) + "</td>" : "") + "</tr>";
+        const etat = '<span class="num">' + money2(f.venteJour) + "</span>";
+        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (f.seuilAtteint ? '<b class="neg">' + money2(Math.max(0, f.restant)) + "</b> 🛒" : money2(Math.max(0, f.restant))) + '</td><td class="num">' + money2(f.estimationMois) + '</td><td class="num">' + money2(f.venduMois) + "</td><td>" + etat + "</td>" +
+          (admin ? '<td class="num">' + money2(f.benefMois) + '</td><td class="num">' + money2(f.aRetirer) + "</td>" : "") + "</tr>";
       }).join("") : '<tr><td colspan="6" class="empty">Aucun frigo approvisionné : choisissez une boutique dans le filtre pour enregistrer sa première course.</td></tr>';
     }
 
@@ -3160,11 +3162,11 @@
     const sj = sbq ? fi.sorties.filter((x) => x.date === t).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) : [];
     $("#fv-info").innerHTML = !sbq ? (admin ? "Choisissez une boutique dans le filtre." : "Vous n'êtes affecté à aucune boutique.")
       : sansCourse ? "Le frigo n'a pas encore de course. Après la première course, chaque vente en <b>Caisse</b> d'un produit du frigo sera déduite automatiquement du crédit vente restant."
-      : (sj.length ? "<b>" + num(fi.articlesJour) + " article" + (fi.articlesJour > 1 ? "s" : "") + "</b> vendu" + (fi.articlesJour > 1 ? "s" : "") + " aujourd'hui pour <b>" + money0(fi.venteJour) + "</b> — " +
-          "crédit vente diminué de <b>" + money0(fi.consJour) + "</b> (prix d'achat). Reste <b>" + money0(Math.max(0, fi.restant)) + "</b>." +
+      : (sj.length ? "<b>" + num(fi.articlesJour) + " article" + (fi.articlesJour > 1 ? "s" : "") + "</b> vendu" + (fi.articlesJour > 1 ? "s" : "") + " aujourd'hui pour <b>" + money2(fi.venteJour) + "</b> — " +
+          "crédit vente diminué de <b>" + money2(fi.consJour) + "</b> (prix d'achat). Reste <b>" + money2(Math.max(0, fi.restant)) + "</b>." +
           '<div class="table-wrap" style="margin-top:8px"><table class="table"><thead><tr><th>Heure</th><th>Ticket</th><th>Produit</th><th class="num">Qté</th><th class="num">Montant</th>' + (admin ? '<th class="num">Déduit du crédit</th>' : "") + "</tr></thead><tbody>" +
           sj.map((x) => "<tr><td>" + new Date(x.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</td><td>" + x.ticket + "</td><td>" + esc(x.nom) + '</td><td class="num">' + num(x.qte) +
-            '</td><td class="num">' + money0(x.montant) + "</td>" + (admin ? '<td class="num">−' + money0(x.consomme) + "</td>" : "") + "</tr>").join("") + "</tbody></table></div>"
+            '</td><td class="num">' + money2(x.montant) + "</td>" + (admin ? '<td class="num">−' + money2(x.consomme) + "</td>" : "") + "</tr>").join("") + "</tbody></table></div>"
         : "Aucune vente de produit du frigo aujourd'hui. Les ventes faites en <b>Caisse</b> des produits du frigo sont déduites automatiquement du crédit vente restant (au prix d'achat).");
 
     // Course (admin) : possible seulement quand le seuil est atteint
@@ -3173,12 +3175,12 @@
       $("#fc-zone").classList.toggle("hidden", !ok);
       $("#fc-etat").innerHTML = !sbq ? "Choisissez une boutique dans le filtre pour enregistrer une course."
         : !fi.courses.length ? "🧊 Première course du frigo de <b>" + esc(boutiqueName(sbq)) + "</b>."
-        : fi.seuilAtteint ? "✅ Seuil atteint (restant <b>" + money0(Math.max(0, fi.restant)) + "</b> ≤ " + money0(db.settings.frigoSeuil) + ") : nouvelle course possible pour <b>" + esc(boutiqueName(sbq)) + "</b>."
-        : "🔒 Nouvelle course possible quand le crédit vente restant atteint <b>" + money0(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money0(Math.max(0, fi.restant)) + "</b>).";
+        : fi.seuilAtteint ? "✅ Seuil atteint (restant <b>" + money2(Math.max(0, fi.restant)) + "</b> ≤ " + money2(db.settings.frigoSeuil) + ") : nouvelle course possible pour <b>" + esc(boutiqueName(sbq)) + "</b>."
+        : "🔒 Nouvelle course possible quand le crédit vente restant atteint <b>" + money2(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money2(Math.max(0, fi.restant)) + "</b>).";
       if (!$("#fc-date").value) $("#fc-date").value = t;
       renderFcLignes();
       // Retrait
-      $("#fx-info").innerHTML = sbq ? "Bénéfice des ventes retirable pour " + esc(boutiqueName(sbq)) + " : <b>" + money0(fi.aRetirer) + "</b>." : "Choisissez une boutique dans le filtre.";
+      $("#fx-info").innerHTML = sbq ? "Bénéfice des ventes retirable pour " + esc(boutiqueName(sbq)) + " : <b>" + money2(fi.aRetirer) + "</b>." : "Choisissez une boutique dans le filtre.";
       $("#fx-save").disabled = !sbq;
       if (document.activeElement !== $("#fg-seuil")) $("#fg-seuil").value = db.settings.frigoSeuil;
     }
@@ -3191,7 +3193,7 @@
     $("#fh-courses").innerHTML = courses.length ? courses.map((c) => courseFrigoHtml(c, admin)).join("") : '<p class="empty">Aucune course ce mois-ci.</p>';
     if (admin) {
       const rt = db.fgRetraits.filter((r) => codes.includes(r.boutique) && r.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date));
-      $("#fh-retraits").innerHTML = rt.length ? rt.map((r) => "<tr><td>" + fmtDate(r.date) + "</td><td>" + esc(boutiqueName(r.boutique)) + '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.note || "—") +
+      $("#fh-retraits").innerHTML = rt.length ? rt.map((r) => "<tr><td>" + fmtDate(r.date) + "</td><td>" + esc(boutiqueName(r.boutique)) + '</td><td class="num"><b>' + money2(r.montant) + "</b></td><td>" + esc(r.note || "—") +
         "</td><td>" + esc(r.saisiPar || "—") + '</td><td><button class="btn small danger" data-fx-del="' + r.id + '">✕</button></td></tr>').join("") : '<tr><td colspan="6" class="empty">Aucun retrait ce mois-ci.</td></tr>';
     }
   }
@@ -3204,30 +3206,30 @@
       g[k].qte += x.qte; g[k].montant += x.montant; g[k].consomme += x.consomme;
     });
     const l = Object.values(g).sort((a, b) => b.date.localeCompare(a.date) || boutiqueName(a.bq).localeCompare(boutiqueName(b.bq)));
-    return l.length ? l.map((j) => "<tr><td>" + esc(jourLong(j.date)) + "</td><td>" + esc(boutiqueName(j.bq)) + '</td><td class="num">' + num(j.qte) + '</td><td class="num"><b>' + money0(j.montant) + "</b></td>" +
-      (admin ? '<td class="num">−' + money0(j.consomme) + "</td>" : "") + "</tr>").join("") : '<tr><td colspan="5" class="empty">Aucune vente de produit du frigo en ' + esc(fmtMonth(mois + "-01")) + ".</td></tr>";
+    return l.length ? l.map((j) => "<tr><td>" + esc(jourLong(j.date)) + "</td><td>" + esc(boutiqueName(j.bq)) + '</td><td class="num">' + num(j.qte) + '</td><td class="num"><b>' + money2(j.montant) + "</b></td>" +
+      (admin ? '<td class="num">−' + money2(j.consomme) + "</td>" : "") + "</tr>").join("") : '<tr><td colspan="5" class="empty">Aucune vente de produit du frigo en ' + esc(fmtMonth(mois + "-01")) + ".</td></tr>";
   }
   // Une course (historique) : l'admin voit le détail (prix d'achat, frais, bénéfice)
   function courseFrigoHtml(c, admin) {
     const d = c.detail;
-    const tete = "<b>" + fmtDate(c.date) + "</b> · " + esc(boutiqueName(c.boutique)) + " · crédit vente (total de la course) <b>" + money0(c.cout) + "</b> · estimation des ventes " + money0(c.valeur) +
-      (admin ? ' · bénéfice estimé <b class="pos">' + money0(c.valeur - c.cout) + "</b>" : "") + ' <span class="muted">par ' + esc(c.saisiPar || "—") + "</span>";
+    const tete = "<b>" + fmtDate(c.date) + "</b> · " + esc(boutiqueName(c.boutique)) + " · crédit vente (total de la course) <b>" + money2(c.cout) + "</b> · estimation des ventes " + money2(c.valeur) +
+      (admin ? ' · bénéfice estimé <b class="pos">' + money2(c.valeur - c.cout) + "</b>" : "") + ' <span class="muted">par ' + esc(c.saisiPar || "—") + "</span>";
     if (!admin || !d) return '<div class="fh-course">' + tete + "</div>";
     return '<details class="fh-course"><summary>' + tete + ' <button class="btn small danger" data-fc-del="' + c.id + '">✕</button></summary>' +
       '<div class="table-wrap" style="margin-top:8px"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix d\'achat</th><th class="num">Prix de vente</th><th class="num">Total achat</th><th class="num">Total vente</th></tr></thead><tbody>' +
-      d.lignes.map((l) => "<tr><td>" + esc(l.nom) + '</td><td class="num">' + num(l.qte) + '</td><td class="num">' + money0(l.achat) + '</td><td class="num">' + money0(l.vente) +
-        '</td><td class="num">' + money0(l.qte * l.achat) + '</td><td class="num">' + money0(l.qte * l.vente) + "</td></tr>").join("") + "</tbody></table></div>" +
+      d.lignes.map((l) => "<tr><td>" + esc(l.nom) + '</td><td class="num">' + num(l.qte) + '</td><td class="num">' + money2(l.achat) + '</td><td class="num">' + money2(l.vente) +
+        '</td><td class="num">' + money2(l.qte * l.achat) + '</td><td class="num">' + money2(l.qte * l.vente) + "</td></tr>").join("") + "</tbody></table></div>" +
       '<div class="course-summary" style="margin-top:8px">' + fcSummary({ achats: d.achats, deplacement: d.deplacement, sachet: d.sachet, autres: d.autres, autresLib: d.autresLib, vente: c.valeur }) + "</div></details>";
   }
   function fcSummary(s) {
     const frais = s.deplacement + s.sachet + s.autres, total = s.achats + frais, marge = s.vente - total;
-    return '<div class="sum-row"><span>Sous-total des achats</span><b>' + money0(s.achats) + "</b></div>" +
-      '<div class="sum-row"><span>Déplacement</span><span>' + money0(s.deplacement) + "</span></div>" +
-      '<div class="sum-row"><span>Sachet</span><span>' + money0(s.sachet) + "</span></div>" +
-      '<div class="sum-row"><span>' + esc(s.autresLib || "Autres frais") + "</span><span>" + money0(s.autres) + "</span></div>" +
-      '<div class="sum-row"><span>Total des frais</span><span>' + money0(frais) + "</span></div>" +
-      '<div class="sum-row big"><span>TOTAL DE LA COURSE = CRÉDIT VENTE</span><span>' + money0(total) + "</span></div>" +
-      '<div class="sum-row"><span>Estimation des ventes (prix de vente × quantité)</span><b>' + money0(s.vente) + "</b></div>" +
+    return '<div class="sum-row"><span>Sous-total des achats</span><b>' + money2(s.achats) + "</b></div>" +
+      '<div class="sum-row"><span>Déplacement</span><span>' + money2(s.deplacement) + "</span></div>" +
+      '<div class="sum-row"><span>Sachet</span><span>' + money2(s.sachet) + "</span></div>" +
+      '<div class="sum-row"><span>' + esc(s.autresLib || "Autres frais") + "</span><span>" + money2(s.autres) + "</span></div>" +
+      '<div class="sum-row"><span>Total des frais</span><span>' + money2(frais) + "</span></div>" +
+      '<div class="sum-row big"><span>TOTAL DE LA COURSE = CRÉDIT VENTE</span><span>' + money2(total) + "</span></div>" +
+      '<div class="sum-row"><span>Estimation des ventes (prix de vente × quantité)</span><b>' + money2(s.vente) + "</b></div>" +
       '<div class="sum-row"><span>Bénéfice estimé</span><b>' + margeHtml(marge, s.vente > 0 ? (marge / s.vente) * 100 : null) + "</b></div>";
   }
   // Lignes de course : même principe que « recopiez le reçu du marché » (Entrées de stock) :
@@ -3259,7 +3261,7 @@
       const tr = document.querySelector('#fc-lines tr[data-i="' + i + '"]'); if (!tr) return;
       const r = s.calc(l), set = (k, v) => { tr.querySelector('[data-c="' + k + '"]').innerHTML = v; };
       if (!r) return ["pu", "pv", "mu"].forEach((k) => set(k, '<span class="muted">—</span>'));
-      set("pu", money0(r.pu)); set("pv", r.pv > 0 ? money0(r.pv) : '<span class="neg">prix de vente manquant</span>'); set("mu", margeHtml(r.mu, r.pv > 0 ? (r.mu / r.pv) * 100 : null));
+      set("pu", money2(r.pu)); set("pv", r.pv > 0 ? money2(r.pv) : '<span class="neg">prix de vente manquant</span>'); set("mu", margeHtml(r.mu, r.pv > 0 ? (r.mu / r.pv) * 100 : null));
     });
     $("#fc-summary").innerHTML = fcSummary(s);
   }
@@ -3292,29 +3294,29 @@
     if (bad) return toast("Complétez chaque ligne : produit, quantité et prix total payé.");
     if (sansPv) return toast("« " + sansPv.nom + " » n'a pas de prix de vente : définissez-le d'abord dans Stock.");
     const total = s.achats + s.deplacement + s.sachet + s.autres;
-    if (!confirm("Enregistrer la course du frigo de " + boutiqueName(bq) + " ?\n\nTotal de la course (crédit vente ajouté) : " + money0(total) + "\nEstimation des ventes : " + money0(s.vente) + "\nBénéfice estimé : " + money0(s.vente - total))) return;
+    if (!confirm("Enregistrer la course du frigo de " + boutiqueName(bq) + " ?\n\nTotal de la course (crédit vente ajouté) : " + money2(total) + "\nEstimation des ventes : " + money2(s.vente) + "\nBénéfice estimé : " + money2(s.vente - total))) return;
     const lignes = s.ok.map(s.calc).map((r) => ({ nom: r.nom, code: r.code, qte: r.qte, achat: r.pu, vente: r.pv }));
     act(async () => {
       chk(await sb.rpc("frigo_ajouter_course", { p_boutique: bq, p_date: $("#fc-date").value || today(), p_lignes: lignes, p_deplacement: s.deplacement, p_sachet: s.sachet, p_autres: s.autres, p_autres_lib: s.autresLib }));
       fcLignes = [{ code: "", qte: "", total: "" }];
       ["#fc-deplacement", "#fc-sachet", "#fc-autres"].forEach((id) => { $(id).value = 0; }); $("#fc-autres-lib").value = "";
-    }, "Course enregistrée : " + money0(total) + " ajoutés au crédit vente du frigo (ventes estimées " + money0(s.vente) + ").", e.target);
+    }, "Course enregistrée : " + money2(total) + " ajoutés au crédit vente du frigo (ventes estimées " + money2(s.vente) + ").", e.target);
   });
   $("#fx-save").addEventListener("click", (e) => {
     const bq = frigoBq(), montant = Number($("#fx-montant").value);
     if (!bq) return toast("Choisissez une boutique dans le filtre.");
     if (!(montant > 0)) return toast("Indiquez le montant du retrait.");
     const dispo = frigoInfo(bq, today().slice(0, 7)).aRetirer;
-    if (montant > dispo && !confirm("Le bénéfice des ventes retirable n'est que de " + money0(dispo) + ". Retirer quand même " + money0(montant) + " ?")) return;
+    if (montant > dispo && !confirm("Le bénéfice des ventes retirable n'est que de " + money2(dispo) + ". Retirer quand même " + money2(montant) + " ?")) return;
     act(async () => {
       chk(await sb.from("frigo_retraits").insert({ boutique: bq, date: today(), montant, note: $("#fx-note").value.trim(), saisi_par: me.nom || me.email || "" }));
       $("#fx-montant").value = ""; $("#fx-note").value = "";
-    }, "Retrait de " + money0(montant) + " enregistré.", e.target);
+    }, "Retrait de " + money2(montant) + " enregistré.", e.target);
   });
   $("#fg-seuil-save").addEventListener("click", (e) => {
     const v = Number($("#fg-seuil").value);
     if (!(v >= 0)) return toast("Seuil invalide.");
-    act(async () => chk(await sb.from("settings").update({ frigo_seuil: v }).eq("id", 1)), "Seuil enregistré : nouvelle course possible à partir de " + money0(v) + " restants.", e.target);
+    act(async () => chk(await sb.from("settings").update({ frigo_seuil: v }).eq("id", 1)), "Seuil enregistré : nouvelle course possible à partir de " + money2(v) + " restants.", e.target);
   });
   $("#view-frigo").addEventListener("click", (e) => {
     const v = e.target.closest("[data-fv-del]"), c = e.target.closest("[data-fc-del]"), r = e.target.closest("[data-fx-del]");
@@ -3338,28 +3340,28 @@
     const courses = db.fgCourses.filter((c) => codes.includes(c.boutique) && c.date.slice(0, 7) === mois);
     const retraits = db.fgRetraits.filter((r) => codes.includes(r.boutique) && r.date.slice(0, 7) === mois);
     const k = (label, val, sub, cls) => '<div class="kpi ' + (cls || "") + '"><div class="label">' + label + '</div><div class="value">' + val + (sub ? "<small>" + sub + "</small>" : "") + "</div></div>";
-    $("#fr-kpis").innerHTML = k("Courses (crédit vente)", money0(sumBy(courses, (c) => c.cout)), courses.length + " course" + (courses.length > 1 ? "s" : "") + " · achats + déplacement + sachet") +
-      k("Estimation des ventes", money0(sumBy(courses, (c) => c.valeur)), "prix de vente × quantité achetée") +
-      k("Vendu en caisse", money0(sumBy(ventes, (x) => x.montant)), num(sumBy(ventes, (x) => x.qte)) + " article(s)" + (admin ? " · crédit consommé " + money0(sumBy(ventes, (x) => x.consomme)) : "")) +
-      (admin ? k("Bénéfice estimé", money0(sumBy(courses, (c) => c.valeur - c.cout)), "somme des marges des produits achetés", "hero") +
-        k("Retraits", money0(sumBy(retraits, (r) => r.montant)), retraits.length + " retrait" + (retraits.length > 1 ? "s" : "")) : "");
+    $("#fr-kpis").innerHTML = k("Courses (crédit vente)", money2(sumBy(courses, (c) => c.cout)), courses.length + " course" + (courses.length > 1 ? "s" : "") + " · achats + déplacement + sachet") +
+      k("Estimation des ventes", money2(sumBy(courses, (c) => c.valeur)), "prix de vente × quantité achetée") +
+      k("Vendu en caisse", money2(sumBy(ventes, (x) => x.montant)), num(sumBy(ventes, (x) => x.qte)) + " article(s)" + (admin ? " · crédit consommé " + money2(sumBy(ventes, (x) => x.consomme)) : "")) +
+      (admin ? k("Bénéfice estimé", money2(sumBy(courses, (c) => c.valeur - c.cout)), "somme des marges des produits achetés", "hero") +
+        k("Retraits", money2(sumBy(retraits, (r) => r.montant)), retraits.length + " retrait" + (retraits.length > 1 ? "s" : "")) : "");
     $("#fr-bq-card").classList.toggle("hidden", scope.length < 2);
     if (scope.length > 1) {
       $("#fr-bq-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Vendu en caisse</th><th class=\"num\">Estimation des ventes</th><th class=\"num\">Crédit vente restant</th>" + (admin ? '<th class="num">Bénéfice estimé</th><th class="num">Retraits</th>' : "") + "</tr>";
       $("#fr-bq").innerHTML = scope.filter((b) => db.fgCourses.some((c) => c.boutique === b.code)).map((b) => {
         const f = frigoInfo(b.code, mois);
-        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money0(f.venduMois) + '</td><td class="num">' + money0(f.estimationMois) + '</td><td class="num">' + money0(Math.max(0, f.restant)) + "</td>" +
-          (admin ? '<td class="num pos">' + money0(f.benefMois) + '</td><td class="num">' + money0(sumBy(retraits.filter((r) => r.boutique === b.code), (r) => r.montant)) + "</td>" : "") + "</tr>";
+        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money2(f.venduMois) + '</td><td class="num">' + money2(f.estimationMois) + '</td><td class="num">' + money2(Math.max(0, f.restant)) + "</td>" +
+          (admin ? '<td class="num pos">' + money2(f.benefMois) + '</td><td class="num">' + money2(sumBy(retraits.filter((r) => r.boutique === b.code), (r) => r.montant)) + "</td>" : "") + "</tr>";
       }).join("") || '<tr><td colspan="6" class="empty">Aucun frigo approvisionné.</td></tr>';
     }
     $("#fr-ventes-head").innerHTML = fgJoursHead(admin);
     $("#fr-ventes").innerHTML = fgJoursRows(codes, mois, admin);
     $("#fr-courses-head").innerHTML = "<tr><th>Date</th><th>Boutique</th><th class=\"num\">Total de la course (crédit vente)</th><th class=\"num\">Estimation des ventes</th>" + (admin ? '<th class="num">Bénéfice estimé</th>' : "") + "<th>Saisi par</th></tr>";
-    $("#fr-courses").innerHTML = courses.length ? courses.slice().sort((a, b) => b.date.localeCompare(a.date)).map((c) => "<tr><td>" + fmtDate(c.date) + "</td><td>" + esc(boutiqueName(c.boutique)) + '</td><td class="num"><b>' + money0(c.cout) + '</b></td><td class="num">' + money0(c.valeur) + "</td>" +
-      (admin ? '<td class="num pos">' + money0(c.valeur - c.cout) + "</td>" : "") + "<td>" + esc(c.saisiPar || "—") + "</td></tr>").join("")
+    $("#fr-courses").innerHTML = courses.length ? courses.slice().sort((a, b) => b.date.localeCompare(a.date)).map((c) => "<tr><td>" + fmtDate(c.date) + "</td><td>" + esc(boutiqueName(c.boutique)) + '</td><td class="num"><b>' + money2(c.cout) + '</b></td><td class="num">' + money2(c.valeur) + "</td>" +
+      (admin ? '<td class="num pos">' + money2(c.valeur - c.cout) + "</td>" : "") + "<td>" + esc(c.saisiPar || "—") + "</td></tr>").join("")
       : '<tr><td colspan="6" class="empty">Aucune course en ' + esc(nomMois) + ".</td></tr>";
     if (admin) $("#fr-retraits").innerHTML = retraits.length ? retraits.slice().sort((a, b) => b.date.localeCompare(a.date)).map((r) => "<tr><td>" + fmtDate(r.date) + "</td><td>" + esc(boutiqueName(r.boutique)) +
-      '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.note || "—") + "</td><td>" + esc(r.saisiPar || "—") + "</td></tr>").join("") : '<tr><td colspan="5" class="empty">Aucun retrait en ' + esc(nomMois) + ".</td></tr>";
+      '</td><td class="num"><b>' + money2(r.montant) + "</b></td><td>" + esc(r.note || "—") + "</td><td>" + esc(r.saisiPar || "—") + "</td></tr>").join("") : '<tr><td colspan="5" class="empty">Aucun retrait en ' + esc(nomMois) + ".</td></tr>";
   }
 
   // ---------- Paramètres ----------
