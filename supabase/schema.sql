@@ -983,13 +983,85 @@ alter table public.remontees add column if not exists recu_infos jsonb not null 
 alter table public.remontees add column if not exists alerte text not null default '';
 create unique index if not exists remontees_tx_unique on public.remontees (tx_id) where tx_id is not null and tx_id <> '';
 
+-- Remontée en espèces : remise à un CC autorisé par l'admin, qui confirme la réception
+alter table public.ccs add column if not exists recoit_especes boolean not null default false;
+alter table public.remontees add column if not exists cc_receveur text references public.ccs(code) on update cascade on delete set null;
+alter table public.remontees add column if not exists reception_confirmee_le timestamptz;
+alter table public.remontees add column if not exists reception_confirmee_par text not null default '';
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'remontees_mode_check') then
+    -- Nouvelles remontées : Espèces (avec le CC qui reçoit) ou Mobile money
+    alter table public.remontees add constraint remontees_mode_check
+      check (mode in ('Espèces', 'Mobile money') and (mode <> 'Espèces' or cc_receveur is not null)) not valid;
+  end if;
+end $$;
+-- Le CC qui reçoit voit les remontées qui lui ont été remises (même d'une autre boutique)
+drop policy if exists remontees_select on public.remontees;
+create policy remontees_select on public.remontees for select to authenticated
+  using (public.is_global() or (public.can_entrees() and boutique = public.my_boutique())
+    or (cc_receveur is not null and cc_receveur = (public.my_cc()).code));
+-- Le CC qui a reçu l'argent en espèces confirme la réception
+create or replace function public.confirmer_reception_especes(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare r public.remontees%rowtype; prof public.profiles%rowtype;
+begin
+  select * into r from public.remontees where id = p_id;
+  if not found then raise exception 'Remontée introuvable'; end if;
+  if r.cc_receveur is null or r.cc_receveur is distinct from (public.my_cc()).code then
+    raise exception 'Seul le CC qui a reçu l''argent peut confirmer la réception';
+  end if;
+  select * into prof from public.profiles where id = auth.uid();
+  update public.remontees set reception_confirmee_le = now(), reception_confirmee_par = coalesce(nullif(prof.nom, ''), prof.email, '')
+  where id = p_id and reception_confirmee_le is null;
+end $$;
+revoke all on function public.confirmer_reception_especes(uuid) from public, anon;
+grant execute on function public.confirmer_reception_especes(uuid) to authenticated;
+
+-- =====================================================================
+-- Autorisation « Gère les fiches RH » donnée par l'admin à un CC (révocable)
+--   Le CC voit l'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC.
+-- =====================================================================
+alter table public.ccs add column if not exists gere_rh boolean not null default false;
+create or replace function public.is_rh() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or coalesce((public.my_cc()).gere_rh, false);
+$$;
+drop policy if exists rh_fiches_admin on public.rh_fiches;
+drop policy if exists rh_fiches_rh on public.rh_fiches;
+create policy rh_fiches_rh on public.rh_fiches for all to authenticated using (public.is_rh()) with check (public.is_rh());
+drop policy if exists conges_select on public.conges;
+create policy conges_select on public.conges for select to authenticated
+  using (public.is_rh() or (public.is_member() and cc = (select p.cc from public.profiles p where p.id = auth.uid())));
+drop policy if exists conges_admin on public.conges;
+drop policy if exists conges_rh on public.conges;
+create policy conges_rh on public.conges for all to authenticated using (public.is_rh()) with check (public.is_rh());
+-- Jours de repos d'un CC : admin ou CC « RH »
+create or replace function public.set_repos(p_cc text, p_repos smallint[]) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_rh() then raise exception 'Réservé à l''administrateur et aux CC chargés des fiches RH'; end if;
+  update public.ccs set repos = coalesce(p_repos, '{}') where code = p_cc;
+  if not found then raise exception 'CC introuvable'; end if;
+end $$;
+revoke all on function public.set_repos(text, smallint[]) from public, anon;
+grant execute on function public.set_repos(text, smallint[]) to authenticated;
+
 -- Contrôles à l'enregistrement d'une remontée (CC) : n° de transaction, montant et destinataire du reçu
 create or replace function public.remontees_before_insert() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_num text; v_dest text; v_mt numeric; v_tel text; v_exp text;
 begin
   new.tx_id := nullif(regexp_replace(coalesce(new.tx_id, ''), '\D', '', 'g'), '');
-  if new.mode = 'Espèces' or public.is_admin() then return new; end if;
+  new.reception_confirmee_le := null; new.reception_confirmee_par := '';
+  if new.mode = 'Espèces' then
+    -- Le CC qui reçoit doit être autorisé par l'admin, actif, et différent de l'envoyeur
+    if not exists (select 1 from public.ccs where code = new.cc_receveur and actif and recoit_especes) then
+      raise exception 'Choisissez un CC autorisé à recevoir les remontées en espèces';
+    end if;
+    if new.cc_receveur = new.cc then raise exception 'Vous ne pouvez pas vous remettre l''argent à vous-même'; end if;
+    return new;
+  end if;
+  if public.is_admin() then return new; end if;
   v_mt := nullif(new.recu_infos ->> 'montant', '')::numeric;
   if v_mt is not null and v_mt <> new.montant then
     raise exception 'Le montant du reçu (% F) ne correspond pas au montant déclaré (% F)', v_mt, new.montant;

@@ -206,6 +206,16 @@ input[type=checkbox], input[type=radio] { min-height: 0; width: 18px; height: 18
 .hidden { display: none !important; }
 body.role-vendeur .admin-only { display: none !important; }
 body.no-entrees .only-entrees { display: none !important; }
+body.no-rh .need-rh, body.rh-limite #rh-kpis,
+body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-tab="planning"]) { display: none !important; }
+/* RH : qui travaille aujourd'hui */
+.today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.today-col { border-radius: 12px; padding: 12px 14px; border: 1px solid var(--border); background: #fff; }
+.today-col h3 { margin: 0 0 8px; font-size: .95rem; display: flex; justify-content: space-between; align-items: center; }
+.today-col.service { background: var(--success-soft); border-color: #b7e2c6; }
+.today-col.repos { background: #e8f0fc; border-color: #c9dbf6; }
+.today-col.conge { background: #fff1e0; border-color: #f3d2a6; }
+.today-col .chips { gap: 5px; }
 .title-filter { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
 .title-filter h1 { margin: 0; }
 .title-filter label { flex-direction: row; align-items: center; gap: 8px; min-width: 260px; }
@@ -478,6 +488,10 @@ a.btn { text-decoration: none; }
 /* Notification « fonds à remonter » en haut de l'application (CC) */
 .app-alert { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; background: var(--danger-soft); color: var(--danger); border: 1px solid #f5b5b5; border-left: 5px solid var(--danger); border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; font-size: .92rem; }
 .app-alert .btn { margin-left: auto; }
+.app-alert { flex-direction: column; align-items: stretch; }
+.app-alert .alert-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.app-alert .alert-line + .alert-line { border-top: 1px solid #f5b5b5; padding-top: 8px; }
+.app-alert .alert-line.ok { color: var(--success); }
 /* Deux cases de soldes à côté des filtres Boutique / Mois */
 .fd-mini { display: flex; gap: 12px; margin-left: auto; flex-wrap: wrap; }
 .fd-mini .mini { min-width: 200px; padding: 10px 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 2px; }

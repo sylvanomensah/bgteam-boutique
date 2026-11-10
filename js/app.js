@@ -116,7 +116,7 @@
       fetchAll("courses", "created_at"),
       fetchAll("boutiques", "code"),
       fetchAll("conges", "debut"),
-      isAdmin() ? fetchAll("rh_fiches", "cc") : Promise.resolve([]),
+      fetchAll("rh_fiches", "cc"), // la base ne renvoie les fiches qu'à l'admin et aux CC « RH »
       // Charges, remontées et bobines : la base ne renvoie que ce que l'utilisateur a le droit de voir.
       fetchAll("charges", "date"),
       fetchAll("remontees", "created_at"),
@@ -131,7 +131,7 @@
       settings: {
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA", numero_depot: st.numero_depot || "",
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -163,7 +163,8 @@
       remontees: remontees.map((r) => ({ id: r.id, boutique: r.boutique, cc: r.cc ? String(r.cc) : "", semaine: r.semaine, montant: Number(r.montant), mode: r.mode, note: r.note || "",
         statut: r.statut, recuPar: r.recu_par || "", recuLe: r.recu_le, saisiPar: r.saisi_par || "", createdBy: r.created_by, createdAt: r.created_at,
         partRoulement: Number(r.part_roulement) || 0, partBenefice: Number(r.part_benefice) || 0, recuPath: r.recu_path || "",
-        txId: r.tx_id || "", recuInfos: r.recu_infos || {}, alerte: r.alerte || "" })),
+        txId: r.tx_id || "", recuInfos: r.recu_infos || {}, alerte: r.alerte || "",
+        ccReceveur: r.cc_receveur ? String(r.cc_receveur) : "", confirmeLe: r.reception_confirmee_le, confirmePar: r.reception_confirmee_par || "" })),
       retraits: retraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "" })),
       stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
       bobines: bobines.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, type: x.type, qte: Number(x.qte), note: x.note || "", cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
@@ -443,7 +444,10 @@
     const c = me && me.cc ? ccByCode(me.cc) : null;
     return !!(c && c.actif && c.entrees);
   }
+  // CC autorisé par l'admin à gérer les fiches RH (onglet Fiche CC uniquement)
+  function isRhCc() { if (isAdmin()) return false; const c = me && me.cc ? ccByCode(me.cc) : null; return !!(c && c.actif && c.gereRh); }
   function canView(view) {
+    if (view === "rh" && isRhCc()) return true;
     if (!document.getElementById("view-" + view) || (!isAdmin() && ADMIN_VIEWS.includes(view))) return false;
     if (view === "fonds") return canFonds();
     if (view === "bobines") return bobinesDroit() !== "non";
@@ -474,6 +478,8 @@
     document.body.classList.toggle("no-entrees", !canEntrees());
     document.body.classList.toggle("no-fonds", !canFonds());
     document.body.classList.toggle("no-bobines", bobinesDroit() === "non");
+    document.body.classList.toggle("no-rh", !isAdmin() && !isRhCc());
+    document.body.classList.toggle("rh-limite", isRhCc());
     if (!canView(view)) return show(view); // droit retiré en direct : on quitte la page
     try { renderAppAlert(); } catch (e) { /* jamais bloquant */ }
     $("#brand-name").textContent = db.settings.nom;
@@ -1987,6 +1993,7 @@
           '<div class="info-row"><span>Reste à remonter</span><span><b>' + money0(Math.max(0, v - r)) + "</b></span></div>";
       }
       $("#rm-save").disabled = !remBq;
+      syncRmNote(); // liste des CC qui peuvent recevoir les espèces
     }
 
     // Rapprochement par semaine (lundis du mois)
@@ -2022,6 +2029,9 @@
       const canDel = admin || (r.createdBy === me.id && r.statut === "Déclarée" && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
       return "<tr><td>" + fmtDate(r.semaine) + " → " + fmtDate(weekEnd(r.semaine)) + "</td><td>" + esc(boutiqueName(r.boutique)) + "</td><td>" + (r.cc ? esc(ccName(r.cc)) : "Admin") +
         '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" + esc(r.mode) + (r.note ? '<span class="sub">' + esc(r.note) + "</span>" : "") +
+        (r.ccReceveur ? '<span class="sub">💵 Remis à ' + esc(ccName(r.ccReceveur)) + "</span>" +
+          (r.confirmeLe ? '<span class="sub" style="color:var(--success)">✓ Réception confirmée le ' + new Date(r.confirmeLe).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</span>"
+            : '<span class="sub neg">⏳ Réception pas encore confirmée</span>') : "") +
         (r.txId ? '<span class="sub">N° ' + esc(r.txId) + (r.recuInfos && r.recuInfos.expediteur ? " · de ****" + esc(r.recuInfos.expediteur) : "") + "</span>" : "") +
         (r.alerte && admin ? '<span class="sub neg">⚠ ' + esc(r.alerte) + "</span>" : "") +
         (r.recuPath ? '<button class="btn small" data-rm-photo="' + esc(r.recuPath) + '" style="margin-top:4px">📷 Voir le reçu</button>' : r.mode !== "Espèces" ? '<span class="sub">Sans reçu</span>' : "") + "</td><td>" +
@@ -2145,15 +2155,29 @@
     return { total, semaines: total ? semaines : [] };
   }
   // Notification permanente en haut de l'application pour le CC qui doit remonter des fonds
+  // Remontées en espèces remises à mon CC et pas encore confirmées
+  function especesAConfirmer() {
+    if (!me || isAdmin() || !me.cc) return [];
+    return db.remontees.filter((r) => r.ccReceveur === String(me.cc) && !r.confirmeLe);
+  }
   function renderAppAlert() {
     const el = $("#app-alert");
     const bq = !isAdmin() && canEntrees() ? myBoutiqueCode() : "";
     const r = bq ? resteARemonter(bq) : { total: 0 };
-    if (!r.total) { el.classList.add("hidden"); return; }
-    el.innerHTML = "⚠ <b>Fonds à remonter : " + money0(r.total) + "</b> — " +
-      r.semaines.map((x) => "semaine du " + fmtDate(x.w) + " : " + money0(x.manque)).join(" · ") +
-      ' <button class="btn small" data-view-link="fonds">Remonter les fonds</button>';
-    el.classList.remove("hidden");
+    const recus = especesAConfirmer();
+    let h = "";
+    if (recus.length) {
+      h += '<div class="alert-line ok">💵 <span><b>Vous avez reçu en espèces ' + money0(sumMontant(recus)) + "</b> — " +
+        recus.map((x) => money0(x.montant) + " de " + esc(x.cc ? ccName(x.cc) : "l'admin") + " (" + esc(boutiqueName(x.boutique)) + ")").join(" · ") +
+        '</span> <button class="btn small success" data-view-link="compte">Voir et confirmer</button></div>';
+    }
+    if (r.total) {
+      h += '<div class="alert-line">⚠ <span><b>Fonds à remonter : ' + money0(r.total) + "</b> — " +
+        r.semaines.map((x) => "semaine du " + fmtDate(x.w) + " : " + money0(x.manque)).join(" · ") +
+        '</span> <button class="btn small" data-view-link="fonds">Remonter les fonds</button></div>';
+    }
+    el.innerHTML = h;
+    el.classList.toggle("hidden", !h);
   }
   $("#rt-boutique").addEventListener("change", () => { $("#rt-info").textContent = "Solde bénéfice disponible : " + money0(soldesOf($("#rt-boutique").value).benefice) + "."; });
   $("#rt-save").addEventListener("click", (e) => {
@@ -2234,10 +2258,17 @@
     if (n.length < 6) return null;
     return db.remontees.find((r) => r.id !== exceptId && (r.txId === n || String(r.note || "").replace(/\D/g, "") === n)) || null;
   }
+  // CC autorisés par l'admin à recevoir les remontées en espèces (sauf soi-même)
+  function receveursEspeces() { const moi = me && !isAdmin() ? me.cc : ""; return db.settings.ccList.filter((c) => c.actif && c.recoitEspeces && c.code !== moi); }
   function syncRmNote() {
     const ref = $("#rm-mode").value !== "Espèces";
-    $("#rm-note-label").textContent = "Note";
-    $("#rm-note").placeholder = "Facultatif";
+    // Espèces : on choisit le CC qui reçoit l'argent ; Mobile money : on joint le reçu
+    $("#rm-receveur-wrap").classList.toggle("hidden", ref);
+    const cur = $("#rm-receveur").value, rec = receveursEspeces();
+    $("#rm-receveur").innerHTML = rec.length
+      ? '<option value="">— Choisir le CC —</option>' + rec.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + (c.boutique ? " — " + esc(boutiqueName(c.boutique)) : "") + "</option>").join("")
+      : '<option value="">Aucun CC autorisé (voir l\'admin)</option>';
+    if (rec.some((c) => c.code === cur)) $("#rm-receveur").value = cur;
     $("#rm-photo-zone").classList.toggle("hidden", !ref);
     let lecture = "";
     if (rmPhotoBlob && rmOcrEnCours) lecture = '<span class="ocr-info">🔎 Lecture automatique du reçu…</span>';
@@ -2312,6 +2343,8 @@
     if (!(montant > 0)) return toast("Indiquez le montant remis.");
     // Mobile money / virement : la photo du reçu de dépôt est obligatoire (vérification par l'admin)
     const avecRecu = $("#rm-mode").value !== "Espèces";
+    const receveur = avecRecu ? "" : $("#rm-receveur").value;
+    if (!avecRecu && !receveur) return toast("Choisissez le CC qui reçoit l'argent en espèces.");
     if (avecRecu && !rmPhotoBlob) return toast("Ajoutez la capture d'écran du reçu de dépôt.");
     if (avecRecu && rmOcrEnCours) return toast("Lecture du reçu en cours, patientez quelques secondes…");
     // Deux vérifications obligatoires : la référence ET le montant doivent être lus sur la photo
@@ -2332,7 +2365,8 @@
     const manque = du - montant;
     if (manque > 0 && !confirm("⚠ Montant inférieur aux ventes déclarées\n\nVentes déclarées de la semaine du " + fmtDate(w) + " (reste dû) : " + money0(du) +
       "\nMontant que vous remontez : " + money0(montant) + "\nIl manquera : " + money0(manque) + "\n\nLe reste devra être remonté. Confirmer quand même ?")) return;
-    const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: $("#rm-note").value.trim(), saisi_par: me.nom || me.email || "" };
+    const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: "", saisi_par: me.nom || me.email || "" };
+    if (receveur) row.cc_receveur = receveur;
     if (ocr) {
       row.tx_id = ocr.tx || null;
       row.recu_infos = { montant: ocr.montant, expediteur: ocr.expediteur, destinataire: ocr.destinataire, tx: ocr.tx };
@@ -2346,9 +2380,9 @@
         row.recu_path = path;
       }
       chk(await sb.from("remontees").insert(row));
-      $("#rm-montant").value = ""; $("#rm-note").value = ""; rmPhotoBlob = null; rmOcr = null; syncRmNote();
+      $("#rm-montant").value = ""; rmPhotoBlob = null; rmOcr = null; syncRmNote();
     }, (manque > 0 ? "Remontée enregistrée. ⚠ Il reste " + money0(manque) + " à remonter pour cette semaine." : "Remontée déclarée : " + money(montant) + ".") +
-      " L'admin la validera après avoir vérifié la réception de l'argent.", btn).then(() => { btn.textContent = "Déclarer la remontée"; });
+      (receveur ? " " + ccName(receveur) + " doit confirmer la réception de l'argent." : " L'admin la validera après avoir vérifié la réception de l'argent."), btn).then(() => { btn.textContent = "Déclarer la remontée"; });
   });
   $("#fd-rem").addEventListener("click", (e) => {
     const ph = e.target.closest("[data-rm-photo]");
@@ -2363,6 +2397,7 @@
         (rm.alerte ? "\n\n⚠ " + rm.alerte : "") +
         (refDejaUtilisee(rm.txId || rm.note, rm.id) ? "\n\n⚠ ATTENTION : ce n° de transaction est déjà utilisé par une autre remontée !" : "") +
         (rm.mode !== "Espèces" ? "\n\nVérifiez dans votre historique Mixx que ce n° de transaction et ce montant sont bien arrivés." : "") +
+        (rm.ccReceveur ? "\n\nEspèces remises à : " + ccName(rm.ccReceveur) + "\n" + (rm.confirmeLe ? "✓ Réception confirmée par " + (rm.confirmePar || ccName(rm.ccReceveur)) + " le " + new Date(rm.confirmeLe).toLocaleString("fr-FR") : "⚠ Le CC n'a PAS encore confirmé avoir reçu l'argent.") : "") +
         "\nBoutique : " + boutiqueName(rm.boutique) + (rm.cc ? " — " + ccName(rm.cc) : "") +
         "\n\nAvez-vous vérifié que ce montant est bien arrivé sur votre compte (ou reçu en espèces) ?")) return;
     }
@@ -2642,7 +2677,7 @@
       "<span>🏬 " + esc(boutiqueName(c.boutique)) + "</span>" + (c.actif ? "" : '<span class="badge mute">CC inactif</span>') + "</div>" +
       '<div class="fiche-grid">' +
       // Identité & contacts (admin uniquement)
-      "<div><h3>Identité & contacts <span class=\"muted\">(admin)</span></h3>" +
+      "<div><h3>Identité & contacts <span class=\"muted\">(confidentiel)</span></h3>" +
       '<div class="form">' +
       '<label>Téléphone<input id="rf-tel" type="tel" value="' + esc(f.telephone || "") + '" placeholder="Ex. : 90 12 34 56"></label>' +
       '<label>Contact d\'urgence<input id="rf-urg" value="' + esc(f.contact_urgence || "") + '" placeholder="Nom et téléphone"></label>' +
@@ -2650,7 +2685,7 @@
       "<label>Ancienneté<input readonly value=\"" + esc(anciennete(f.date_embauche) || "—") + '"></label>' +
       '<label class="full">Notes RH (confidentielles)<textarea id="rf-notes" rows="3" placeholder="Remarques, avertissements, objectifs…">' + esc(f.notes || "") + "</textarea></label>" +
       "</div>" +
-      '<div class="info-row"><span>Compte de connexion</span><span>' + (user ? esc(user.email) + (user.actif ? "" : " (en attente)") : "Aucun compte lié") + "</span></div>" +
+      (isAdmin() ? '<div class="info-row"><span>Compte de connexion</span><span>' + (user ? esc(user.email) + (user.actif ? "" : " (en attente)") : "Aucun compte lié") + "</span></div>" : "") +
       '<div class="info-row"><span>Vendeur actuel depuis</span><span>' + (agentDebut(c) ? fmtDate(agentDebut(c)) : "—") + "</span></div>" +
       '<div class="info-row"><span>Jours d\'activité ce mois</span><span>' + joursActivite(code, mois) + " jour(s) avec au moins une vente</span></div>" +
       '<div class="actions" style="margin-top:10px"><button class="btn primary" id="rf-save">Enregistrer la fiche</button></div></div>' +
@@ -2664,8 +2699,8 @@
       (aVenir.length ? "<b>À venir</b>" + aVenir.map(congeRow).join("") : "") +
       (passes.length ? '<details><summary class="muted">Congés passés (' + passes.length + ")</summary>" + passes.map(congeRow).join("") + "</details>" : "") +
       (!conges.length ? '<p class="muted">Aucun congé enregistré.</p>' : "") + "</div>" +
-      // Autorisations
-      "<div><h3>Autorisations</h3>" + permsHtml(c) + "</div>" +
+      // Autorisations (admin uniquement)
+      (isAdmin() ? "<div><h3>Autorisations</h3>" + permsHtml(c) + "</div>" : "") +
       // Historique
       '<div><h3>Historique des vendeurs du CC</h3><p class="hist" style="margin:0">' + hist + "</p></div>" +
       "</div></div>";
@@ -2696,7 +2731,7 @@
     if (!e.target.closest("[data-repos]")) return;
     const code = $("#rh-cc").value;
     const repos = Array.from(document.querySelectorAll("#rh-fiche [data-repos]:checked")).map((x) => Number(x.dataset.repos));
-    act(async () => chk(await sb.from("ccs").update({ repos }).eq("code", code)), "Jours de repos : " + (repos.length ? repos.map((j) => JOURS_LONG[j - 1]).join(", ") : "aucun") + ".");
+    act(async () => chk(await sb.rpc("set_repos", { p_cc: code, p_repos: repos })), "Jours de repos : " + (repos.length ? repos.map((j) => JOURS_LONG[j - 1]).join(", ") : "aucun") + ".");
   });
 
   // Congé : 1 semaine par défaut, prolongeable
@@ -2743,6 +2778,14 @@
     const lundi = mondayOf($("#rh-week").value || today());
     const days = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(lundi, i));
     const list = db.settings.ccList.filter((c) => c.actif && (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)));
+    // Aujourd'hui : qui travaille, qui est de repos, qui est en congé (boutique filtrée)
+    const auj = today(), groupes = { service: [], repos: [], conge: [] };
+    list.forEach((c) => { const st = ccStatusOn(c.code, auj); groupes[st.k].push({ c, st }); });
+    const col = (k, titre) => '<div class="today-col ' + k + '"><h3>' + titre + ' <span class="badge ' + k + '">' + groupes[k].length + "</span></h3>" +
+      '<div class="chips">' + (groupes[k].length ? groupes[k].map((x) => '<button class="chip" data-plan-cc="' + esc(x.c.code) + '" title="' + esc(x.st.label) + '">' + avatarHtml(x.c.code, "xs") + esc(ccName(x.c.code)) +
+        (b === "ALL" ? ' <small class="muted">· ' + esc(boutiqueName(x.c.boutique)) + "</small>" : "") + "</button>").join("") : '<span class="muted">Personne</span>') + "</div></div>";
+    $("#rh-today").innerHTML = '<div class="card"><h2>Aujourd\'hui, ' + esc(fmtLong(auj)) + " — " + esc(b === "ALL" ? "toutes les boutiques" : b === "NONE" ? "CC non affectés" : boutiqueName(b)) + "</h2>" +
+      '<div class="today-grid">' + col("service", "✓ Au travail") + col("repos", "🛌 De repos") + col("conge", "🏖 En congé") + "</div></div>";
     $("#rh-planning-title").textContent = "Planning de la semaine du " + fmtDate(lundi) + " au " + fmtDate(days[6]) + " — " + (b === "ALL" ? "toutes les boutiques" : b === "NONE" ? "CC non affectés" : boutiqueName(b));
     const t = today();
     $("#rh-planning").innerHTML = "<thead><tr><th>CC</th>" + (b === "ALL" ? "<th>Boutique</th>" : "") +
@@ -2759,6 +2802,7 @@
     if (!tr) return;
     openFiche(tr.dataset.planCc);
   });
+  $("#rh-today").addEventListener("click", (e) => { const c = e.target.closest("[data-plan-cc]"); if (c) openFiche(c.dataset.planCc); });
 
   // ---------- Mon compte (chaque utilisateur) ----------
   function renderCompte() {
@@ -2798,8 +2842,27 @@
         "<div><span>Aujourd'hui</span><strong>" + money(jour.ca) + "</strong></div><div><span>Tickets aujourd'hui</span><strong>" + num(jour.tickets) + "</strong></div>" +
         "<div><span>Ce mois</span><strong>" + money(m.ca) + "</strong></div><div><span>Jours d'activité ce mois</span><strong>" + joursActivite(code, mois) + "</strong></div></div></div>";
     }
+    // Remontées en espèces reçues par mon CC : historique et confirmation de réception
+    const recues = code ? db.remontees.filter((r) => r.ccReceveur === String(code)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) : [];
+    if (recues.length || (c && c.recoitEspeces)) {
+      h += '<div class="card" id="compte-especes" style="grid-column:1/-1"><h2>💵 Fonds reçus en espèces</h2>' +
+        '<p class="hint">Confirmez chaque remise d\'argent dès que vous l\'avez reçue en main. L\'admin voit votre confirmation avant de valider.</p>' +
+        (recues.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Déclarée le</th><th>De</th><th>Boutique</th><th>Semaine</th><th class="num">Montant</th><th>Réception</th></tr></thead><tbody>' +
+          recues.map((r) => "<tr><td>" + new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</td><td>" +
+            esc(r.cc ? ccName(r.cc) : "Admin") + "</td><td>" + esc(boutiqueName(r.boutique)) + "</td><td>du " + fmtDate(r.semaine) + '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" +
+            (r.confirmeLe ? '<span class="badge ok">✓ Confirmée le ' + new Date(r.confirmeLe).toLocaleDateString("fr-FR") + "</span>" + (r.statut === "Reçue" ? ' <span class="badge ok">Validée par l\'admin</span>' : "")
+              : '<button class="btn small success" data-esp-ok="' + r.id + '">✓ J\'ai bien reçu ' + money0(r.montant) + "</button>") + "</td></tr>").join("") + "</tbody></table></div>"
+          : '<p class="muted">Aucune remise d\'argent pour l\'instant.</p>') + "</div>";
+    }
     $("#compte-body").innerHTML = h + "</div>";
   }
+  $("#compte-body").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-esp-ok]");
+    if (!b) return;
+    const r = db.remontees.find((x) => x.id === b.dataset.espOk);
+    if (!r || !confirm("Confirmer avoir reçu en main " + money0(r.montant) + " de " + (r.cc ? ccName(r.cc) : "l'admin") + " (" + boutiqueName(r.boutique) + ") ?")) return;
+    act(async () => chk(await sb.rpc("confirmer_reception_especes", { p_id: r.id })), "Réception confirmée : " + money0(r.montant) + ".", b);
+  });
 
   // Création / suppression de boutique : confirmation par le mot de passe de l'admin (vérifié par la base).
   let cpAction = null;
@@ -3009,6 +3072,10 @@
       '<input type="checkbox" class="switch" data-cc-entrees="' + esc(c.code) + '"' + (c.entrees ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🌍 Toutes boutiques</b><small>Voit le stock, les fonds et les dépenses de toutes les boutiques</small></span>' +
       '<input type="checkbox" class="switch" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "></label>" +
+      '<label class="perm"><span><b>🗂 Gère les fiches RH</b><small>Voit l\'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC</small></span>' +
+      '<input type="checkbox" class="switch" data-cc-rh="' + esc(c.code) + '"' + (c.gereRh ? " checked" : "") + "></label>" +
+      '<label class="perm"><span><b>💵 Reçoit les fonds en espèces</b><small>Peut recevoir les remontées en espèces des autres CC et doit confirmer chaque réception</small></span>' +
+      '<input type="checkbox" class="switch" data-cc-recoit="' + esc(c.code) + '"' + (c.recoitEspeces ? " checked" : "") + "></label>" +
       '<label class="perm col"><span><b>🧻 Bobines</b><small>Accès au menu Bobines</small></span>' +
       '<select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
       [["boutique", "Consultation (sa boutique)"], ["saisie", "Saisie utilisation (sa boutique)"], ["gestion", "Toutes + approvisionnement (sans saisie)"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
@@ -3039,6 +3106,9 @@
   let rhTab = "perms";
   try { rhTab = localStorage.getItem("rhTab") || "perms"; } catch (e) {}
   function setRhTab(t) {
+    // CC « RH » : seulement Fiche CC et Planning
+    if (isRhCc() && !["fiche", "planning"].includes(t)) t = "fiche";
+    $("#rh-filters").classList.toggle("hidden", !["fiche", "planning"].includes(t));
     rhTab = t;
     try { localStorage.setItem("rhTab", t); } catch (e) {}
     document.querySelectorAll("#rh-tabs [data-rh-tab]").forEach((b) => b.classList.toggle("active", b.dataset.rhTab === t));
@@ -3137,6 +3207,18 @@
   }
   // Changement d'une autorisation (onglet Autorisations, fiche CC)
   function onPermChange(e) {
+    const grh = e.target.closest("[data-cc-rh]");
+    if (grh) {
+      const code = grh.dataset.ccRh, on = grh.checked;
+      return act(async () => chk(await sb.from("ccs").update({ gere_rh: on }).eq("code", code)),
+        ccName(code) + (on ? " peut maintenant remplir les fiches RH des CC." : " ne gère plus les fiches RH."));
+    }
+    const rec = e.target.closest("[data-cc-recoit]");
+    if (rec) {
+      const code = rec.dataset.ccRecoit, on = rec.checked;
+      return act(async () => chk(await sb.from("ccs").update({ recoit_especes: on }).eq("code", code)),
+        ccName(code) + (on ? " peut recevoir les remontées en espèces." : " ne reçoit plus les remontées en espèces."));
+    }
     const bbs = e.target.closest("[data-cc-bobines]");
     if (bbs) {
       const code = bbs.dataset.ccBobines, v = bbs.value;

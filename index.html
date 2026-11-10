@@ -103,7 +103,7 @@
       <button data-view="fonds" class="need-fonds"><svg viewBox="0 0 24 24"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg><span>Fonds &amp; dépenses</span></button>
       <button data-view="bobines" class="need-bobines"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg><span>Bobines</span></button>
       <button data-view="facture"><svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span>Facturation</span></button>
-      <button data-view="rh" class="admin-only"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>RH</span></button>
+      <button data-view="rh" class="need-rh"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>RH</span></button>
       <button data-view="compte"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg><span>Mon compte</span></button>
       <button data-view="parametres" class="admin-only"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg><span>Paramètres</span></button>
     </nav>
@@ -457,8 +457,8 @@
         <div class="form form-inline">
           <label>Semaine<select id="rm-semaine"></select></label>
           <label>Montant remis<input type="number" id="rm-montant" min="1" placeholder="Ex. : 85000"></label>
-          <label>Mode<select id="rm-mode"><option>Espèces</option><option>Mobile money</option><option>Virement</option><option>Autre</option></select></label>
-          <label><span id="rm-note-label">Note</span><input id="rm-note" placeholder="Facultatif"></label>
+          <label>Mode<select id="rm-mode"><option>Espèces</option><option>Mobile money</option></select></label>
+          <label id="rm-receveur-wrap">CC qui reçoit l'argent <span class="req">*</span><select id="rm-receveur"></select></label>
         </div>
         <div class="photo-zone" id="rm-photo-zone">
           <label class="btn" for="rm-photo">📷 Reçu du dépôt <span class="req">*</span></label>
@@ -636,20 +636,22 @@
         <div class="perm-grid" id="rh-perms"></div>
       </div>
 
+      <!-- Filtre commun aux onglets Fiche CC et Planning -->
+      <div class="card filterbar" id="rh-filters">
+        <label>Boutique<select id="rh-boutique"></select></label>
+        <label class="cc-filter">Code commercial<select id="rh-cc"></select></label>
+      </div>
+
       <!-- Onglet : fiche d'un CC -->
       <div class="rh-pane" data-pane="fiche">
-        <div class="card filterbar">
-          <label>Boutique<select id="rh-boutique"></select></label>
-          <label class="cc-filter">Code commercial<select id="rh-cc"></select></label>
-        </div>
         <div id="rh-fiche"></div>
       </div>
 
       <!-- Onglet : planning -->
       <div class="rh-pane" data-pane="planning">
+        <div id="rh-today"></div>
         <div class="card filterbar">
           <label>Semaine du<input type="date" id="rh-week"></label>
-          <p class="hint" style="margin:0">Le filtre Boutique de l'onglet « Fiche CC » s'applique aussi au planning.</p>
         </div>
         <div class="card">
           <h2 id="rh-planning-title">Planning de la semaine</h2>
