@@ -29,7 +29,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -129,11 +129,12 @@
       fetchAll("credit_ventes", "date")
     ]);
     // Frigo : courses et ventes visibles par la boutique ; détail des courses (prix d'achat) et retraits : admin
-    const [fgCourses, fgDetails, fgVentes, fgRetraits] = await Promise.all([
+    const [fgCourses, fgDetails, fgVentes, fgRetraits, fgDotations] = await Promise.all([
       fetchAll("frigo_courses", "created_at"),
       isAdmin() ? fetchAll("frigo_courses_details", "course_id") : Promise.resolve([]),
       fetchAll("frigo_ventes", "date"),
-      isAdmin() ? fetchAll("frigo_retraits", "created_at") : Promise.resolve([])
+      isAdmin() ? fetchAll("frigo_retraits", "created_at") : Promise.resolve([]),
+      fetchAll("frigo_dotations", "created_at")
     ]);
     // Ventes en caisse des produits du frigo (calculées par la base : prix d'achat de la dernière course)
     let fgSorties = [];
@@ -150,7 +151,7 @@
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA", numero_depot: st.numero_depot || "",
         tauxYas: st.taux_yas == null ? 5 : Number(st.taux_yas), tauxMoov: st.taux_moov == null ? 5 : Number(st.taux_moov),
         frigoSeuil: st.frigo_seuil == null ? 5000 : Number(st.frigo_seuil),
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, creditVers: !!c.credit_vers, colCreditVers: "credit_vers" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, frigoDotation: !!c.frigo_dotation, creditVers: !!c.credit_vers, colCreditVers: "credit_vers" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -197,6 +198,7 @@
           detail: d ? { lignes: Array.isArray(d.lignes) ? d.lignes : [], achats: Number(d.total_achats), deplacement: Number(d.frais_deplacement), sachet: Number(d.frais_sachet),
             autres: Number(d.frais_autres), autresLib: d.frais_autres_lib || "", total: Number(d.total_course) } : null };
       }),
+      fgDotations: fgDotations.map((x) => ({ id: x.id, boutique: x.boutique, montant: Number(x.montant), statut: x.statut, courseId: x.course_id, saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgSorties: fgSorties.map((x) => ({ id: x.sale_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, ticket: x.ticket, code: x.code, nom: x.nom || x.code,
         qte: Number(x.qte), pu: Number(x.pu), montant: Number(x.qte) * Number(x.pu), consomme: Number(x.consomme) })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
@@ -549,6 +551,8 @@
     document.body.classList.toggle("no-cloture", !canCloture());
     document.body.classList.toggle("no-frigo", !canFrigo());
     document.body.classList.toggle("no-frigo-vente", !canCloture());
+    document.body.classList.toggle("no-frigo-dot", !canFrigoDotation());
+    document.body.classList.toggle("no-frigo-course", !canFrigoCourse());
     document.body.classList.toggle("rh-limite", isRhCc());
     if (!canView(view)) return show(view); // droit retiré en direct : on quitte la page
     try { renderAppAlert(); } catch (e) { /* jamais bloquant */ }
@@ -730,8 +734,8 @@
     if (crAnom.length) add("critical", "📱", "Écart au contrôle du crédit", crAnom.slice(0, 5).map((a) => esc(boutiqueName(a.bq)) + " " + a.op + " le " + fmtDate(a.date) + " (" + ecartTxt(a) + ")").join(", ") + " (rubrique Crédit télécom).");
     const crSansClot = boutiquesCredit().filter((b) => hierManquant(b.code));
     if (crSansClot.length) add("warning", "🌙", "Crédit vendu d'hier non déclaré", crSansClot.map((b) => esc(b.nom)).join(", ") + " — recharges bloquées pour ces boutiques (rubrique Crédit télécom).");
-    const fgSeuil = boutiquesFrigo().filter((b) => frigoInfo(b.code, today().slice(0, 7)).seuilAtteint);
-    if (fgSeuil.length) add("warning", "🧊", "Frigo à réapprovisionner", fgSeuil.map((b) => esc(b.nom) + " (reste " + money0(frigoInfo(b.code, today().slice(0, 7)).restant) + ")").join(", ") + " — nouvelle course possible (rubrique Frigo).");
+    const fgSeuil = boutiquesFrigo().filter((b) => frigoInfo(b.code, today().slice(0, 7)).seuilAtteint && !dotOuverte(b.code));
+    if (fgSeuil.length) add("warning", "🧊", "Frigo à réapprovisionner", fgSeuil.map((b) => esc(b.nom) + " (reste " + money0(frigoInfo(b.code, today().slice(0, 7)).restant) + ")").join(", ") + " — fixez la dotation de crédit pour la prochaine course (rubrique Frigo).");
     const crAValider = db.crVers.filter((v) => v.statut !== "Reçue");
     if (crAValider.length) add("warning", "📱", crAValider.length + " versement(s) de commission à valider", "Total " + money0(crAValider.reduce((a, v) => a + v.montant, 0)) + " (rubrique Crédit télécom).");
     // Bobines et remontées de fonds
@@ -2281,6 +2285,12 @@
         "</b> — " + (manqueHier ? "les nouvelles recharges sont bloquées tant qu'il n'est pas déclaré." : "notez le crédit YAS et MOOV vendu aujourd'hui.") + "</span>" +
         '<button class="btn small" data-view-link="credit">Déclarer la vente</button></div>';
     }
+    // 💰 Dotation du frigo en attente de course (CC de la boutique)
+    if (me && !isAdmin() && myBoutiqueCode()) {
+      const dfr = dotOuverte(myBoutiqueCode());
+      if (dfr) h += '<div class="alert-line">💰 <span><b>Dotation du frigo : ' + money2(dfr.montant) + "</b> — faites la course du frigo pour exactement ce montant.</span>" +
+        '<button class="btn small" data-view-link="frigo">Faire la course</button></div>';
+    }
     // Commission de crédit des mois passés pas encore reversée (CC autorisé aux achats de crédit)
     if (me && !isAdmin() && canCreditSaisie() && myBoutiqueCode()) {
       const c = commissionInfo(myBoutiqueCode());
@@ -3074,11 +3084,17 @@
   // Montants du frigo au centime près (prix unitaires = total ÷ quantité)
   const money2 = (n) => money(Math.round(Number(n || 0) * 100) / 100);
   const sumBy = (l, f) => l.reduce((a, x) => a + (Number(f(x)) || 0), 0);
-  function canFrigo() { return isAdmin() || isGlobal() || !!myBoutiqueCode(); }
+  function canFrigoDotation() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.frigoDotation); }
+  function canFrigoCourse() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && myBoutiqueCode()); }
+  const fgGlobal = () => isGlobal() || canFrigoDotation();
+  function canFrigo() { return isAdmin() || fgGlobal() || !!myBoutiqueCode(); }
   function frigoScope() {
-    if (isGlobal()) { const f = $("#fg-boutique").value; return f && f !== "ALL" ? db.boutiques.filter((b) => b.code === f) : db.boutiques; }
+    if (fgGlobal()) { const f = $("#fg-boutique").value; return f && f !== "ALL" ? db.boutiques.filter((b) => b.code === f) : db.boutiques; }
     return db.boutiques.filter((b) => b.code === myBoutiqueCode());
   }
+  // Boutique pour la dotation (admin / CC désigné : celle du filtre)
+  function dotBq() { if (!canFrigoDotation()) return ""; const f = $("#fg-boutique").value; return f && f !== "ALL" ? f : ""; }
+  const dotOuverte = (bq) => db.fgDotations.find((d) => d.boutique === bq && d.statut === "Ouverte") || null;
   function frigoBq() { return isAdmin() ? ($("#fg-boutique").value !== "ALL" ? $("#fg-boutique").value : "") : myBoutiqueCode(); }
   const fgVenteLe = (bq, d) => db.fgVentes.find((v) => v.boutique === bq && v.date === d) || null;
   function fgHierManquant(bq) { const h = addDays(today(), -1); return !!bq && h >= FRIGO_DEBUT && db.fgCourses.some((c) => c.boutique === bq && c.date <= h) && !fgVenteLe(bq, h); }
@@ -3105,7 +3121,7 @@
   function boutiquesFrigo() { const s = new Set(db.fgCourses.map((c) => c.boutique)); return db.boutiques.filter((b) => s.has(b.code)); }
 
   function renderFrigo() {
-    const glob = isGlobal(), admin = isAdmin(), t = today(), mois = t.slice(0, 7);
+    const glob = fgGlobal(), admin = isAdmin(), t = today(), mois = t.slice(0, 7);
     const bcur = $("#fg-boutique").value || "ALL";
     if (glob) {
       $("#fg-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
@@ -3169,16 +3185,29 @@
             '</td><td class="num">' + money2(x.montant) + "</td>" + (admin ? '<td class="num">−' + money2(x.consomme) + "</td>" : "") + "</tr>").join("") + "</tbody></table></div>"
         : "Aucune vente de produit du frigo aujourd'hui. Les ventes faites en <b>Caisse</b> des produits du frigo sont déduites automatiquement du crédit vente restant (au prix d'achat).");
 
-    // Course (admin) : possible seulement quand le seuil est atteint
-    if (admin) {
-      const ok = !!sbq && fi.seuilAtteint;
-      $("#fc-zone").classList.toggle("hidden", !ok);
-      $("#fc-etat").innerHTML = !sbq ? "Choisissez une boutique dans le filtre pour enregistrer une course."
-        : !fi.courses.length ? "🧊 Première course du frigo de <b>" + esc(boutiqueName(sbq)) + "</b>."
-        : fi.seuilAtteint ? "✅ Seuil atteint (restant <b>" + money2(Math.max(0, fi.restant)) + "</b> ≤ " + money2(db.settings.frigoSeuil) + ") : nouvelle course possible pour <b>" + esc(boutiqueName(sbq)) + "</b>."
-        : "🔒 Nouvelle course possible quand le crédit vente restant atteint <b>" + money2(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money2(Math.max(0, fi.restant)) + "</b>).";
-      if (!$("#fc-date").value) $("#fc-date").value = t;
+    // Dotation de crédit (admin ou CC désigné) : possible quand le seuil est atteint (ou première course)
+    if (canFrigoDotation()) {
+      const db_ = dotBq(), fd = db_ ? frigoInfo(db_, mois) : null, dot = db_ ? dotOuverte(db_) : null;
+      $("#fd-ouverte").innerHTML = !db_ ? "Choisissez une boutique dans le filtre pour fixer sa dotation."
+        : dot ? "💰 Dotation en attente de course pour <b>" + esc(boutiqueName(db_)) + "</b> : <b>" + money2(dot.montant) + "</b> (fixée par " + esc(dot.saisiPar || "—") + " le " + fmtDate(dot.createdAt.slice(0, 10)) + ")." +
+            ' <button class="btn small danger" data-fd-annul="' + dot.id + '">Annuler la dotation</button>'
+        : !fd.seuilAtteint ? "🔒 Dotation possible quand le crédit vente restant atteint <b>" + money2(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money2(Math.max(0, fd.restant)) + "</b>)."
+        : (fd.courses.length ? "✅ Seuil atteint (restant " + money2(Math.max(0, fd.restant)) + ")" : "🧊 Premier approvisionnement du frigo") + " : fixez la dotation de crédit de <b>" + esc(boutiqueName(db_)) + "</b>.";
+      $("#fd-form").classList.toggle("hidden", !db_ || !!dot || !fd.seuilAtteint);
+      if (db_ && !dot && document.activeElement !== $("#fd-montant") && !$("#fd-montant").value) { const der = db.fgDotations.filter((d) => d.boutique === db_ && d.statut === "Utilisée").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]; if (der) $("#fd-montant").value = der.montant; }
+    }
+    // Course (admin ou CC de la boutique) : seulement avec une dotation ouverte, et égale à cette dotation
+    if (canFrigoCourse()) {
+      const dot = sbq ? dotOuverte(sbq) : null;
+      $("#fc-zone").classList.toggle("hidden", !dot);
+      $("#fc-etat").innerHTML = !sbq ? (admin ? "Choisissez une boutique dans le filtre pour enregistrer une course." : "Vous n'êtes affecté à aucune boutique.")
+        : dot ? "💰 Dotation de crédit pour <b>" + esc(boutiqueName(sbq)) + "</b> : <b>" + money2(dot.montant) + "</b>. Votre course doit être <b>exactement égale</b> à ce montant."
+        : "🔒 Pas de dotation de crédit pour ce frigo : l'administrateur (ou le CC désigné) doit d'abord fixer la dotation" + (fi && fi.courses.length && !fi.seuilAtteint ? " — elle sera possible quand le crédit vente restant atteindra " + money2(db.settings.frigoSeuil) + "." : ".");
+      $("#fc-date").readOnly = !admin;
+      if (!$("#fc-date").value || !admin) $("#fc-date").value = t;
       renderFcLignes();
+    }
+    if (admin) {
       // Retrait
       $("#fx-info").innerHTML = sbq ? "Bénéfice des ventes retirable pour " + esc(boutiqueName(sbq)) + " : <b>" + money2(fi.aRetirer) + "</b>." : "Choisissez une boutique dans le filtre.";
       $("#fx-save").disabled = !sbq;
@@ -3264,6 +3293,17 @@
       set("pu", money2(r.pu)); set("pv", r.pv > 0 ? money2(r.pv) : '<span class="neg">prix de vente manquant</span>'); set("mu", margeHtml(r.mu, r.pv > 0 ? (r.mu / r.pv) * 100 : null));
     });
     $("#fc-summary").innerHTML = fcSummary(s);
+    // Comparaison avec la dotation : la course doit être exactement égale à la dotation
+    const dot = dotOuverte(frigoBq()), total = s.achats + s.deplacement + s.sachet + s.autres;
+    if (!dot) { $("#fc-dot").innerHTML = ""; $("#fc-save").disabled = true; return; }
+    const reste = Math.round((dot.montant - total) * 100) / 100, egal = Math.abs(reste) <= 0.5;
+    $("#fc-dot").className = "fc-dot " + (egal ? "ok" : "ko");
+    $("#fc-dot").innerHTML = '<div class="sum-row"><span>Dotation de crédit</span><b>' + money2(dot.montant) + "</b></div>" +
+      '<div class="sum-row"><span>Total de la course</span><b>' + money2(total) + "</b></div>" +
+      (egal ? '<div class="sum-row big"><span>✅ Course égale à la dotation</span><span>Prête à valider</span></div>'
+        : reste > 0 ? '<div class="sum-row big"><span>⚠ Crédit non utilisé</span><span>' + money2(reste) + "</span></div><small>La course doit utiliser toute la dotation pour pouvoir être validée.</small>"
+        : '<div class="sum-row big"><span>⛔ Dépassement de la dotation</span><span>' + money2(-reste) + "</span></div><small>La course ne peut pas dépasser la dotation.</small>");
+    $("#fc-save").disabled = !egal;
   }
   const majFcSummary = majFcCalc;
   $("#fc-lines").addEventListener("input", (e) => {
@@ -3288,8 +3328,11 @@
   $("#fc-save").addEventListener("click", (e) => {
     const bq = frigoBq(), s = fcTotaux();
     if (!bq) return toast("Choisissez une boutique dans le filtre.");
-    if (!frigoInfo(bq, today().slice(0, 7)).seuilAtteint) return toast("Le crédit vente restant n'a pas encore atteint le seuil.");
+    const dot = dotOuverte(bq);
+    if (!dot) return toast("Aucune dotation de crédit pour ce frigo : l'admin (ou le CC désigné) doit d'abord la fixer.");
     if (!s.lignes.length) return toast("Ajoutez au moins un produit.");
+    const tot0 = s.achats + s.deplacement + s.sachet + s.autres;
+    if (Math.abs(dot.montant - tot0) > 0.5) return toast("La course (" + money2(tot0) + ") doit être égale à la dotation (" + money2(dot.montant) + "). Crédit non utilisé : " + money2(dot.montant - tot0) + ".");
     const bad = s.lignes.find((l) => !s.ok.includes(l)), sansPv = s.ok.map(s.calc).find((r) => !(r.pv > 0));
     if (bad) return toast("Complétez chaque ligne : produit, quantité et prix total payé.");
     if (sansPv) return toast("« " + sansPv.nom + " » n'a pas de prix de vente : définissez-le d'abord dans Stock.");
@@ -3301,6 +3344,19 @@
       fcLignes = [{ code: "", qte: "", total: "" }];
       ["#fc-deplacement", "#fc-sachet", "#fc-autres"].forEach((id) => { $(id).value = 0; }); $("#fc-autres-lib").value = "";
     }, "Course enregistrée : " + money2(total) + " ajoutés au crédit vente du frigo (ventes estimées " + money2(s.vente) + ").", e.target);
+  });
+  // Dotation de crédit du frigo
+  $("#fd-save").addEventListener("click", (e) => {
+    const bq = dotBq(), montant = Number($("#fd-montant").value);
+    if (!bq) return toast("Choisissez une boutique dans le filtre.");
+    if (!(montant > 0)) return toast("Indiquez le montant de la dotation.");
+    if (!confirm("Fixer la dotation de crédit du frigo de " + boutiqueName(bq) + " à " + money2(montant) + " ?\nLa prochaine course devra être exactement de ce montant.")) return;
+    act(async () => { chk(await sb.rpc("frigo_doter", { p_boutique: bq, p_montant: montant })); $("#fd-montant").value = ""; },
+      "Dotation de " + money2(montant) + " fixée pour " + boutiqueName(bq) + " : la course peut être faite.", e.target);
+  });
+  $("#fd-ouverte").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fd-annul]");
+    if (b && confirm("Annuler cette dotation ? La course ne pourra plus être faite tant qu'une nouvelle dotation n'est pas fixée.")) act(async () => chk(await sb.rpc("frigo_annuler_dotation", { p_id: b.dataset.fdAnnul })), "Dotation annulée.", b);
   });
   $("#fx-save").addEventListener("click", (e) => {
     const bq = frigoBq(), montant = Number($("#fx-montant").value);
@@ -3930,6 +3986,8 @@
       '<input type="checkbox" class="switch" data-cc-credit="' + esc(c.code) + '"' + (c.credit ? " checked" : "") + "></label>" +
       (c.credit && c.colCreditVers ? '<label class="perm"><span><b>💸 Reverser la commission à tout moment</b><small>Autorise ce CC à déclarer le reversement de la commission en dehors du 1er et du 2 du mois</small></span>' +
         '<input type="checkbox" class="switch" data-cc-creditvers="' + esc(c.code) + '"' + (c.creditVers ? " checked" : "") + "></label>" : "") +
+      '<label class="perm"><span><b>🧊 Dotation du frigo</b><small>Fixe la dotation de crédit du frigo des boutiques (la course du CC devra être égale à cette dotation)</small></span>' +
+      '<input type="checkbox" class="switch" data-cc-frigodot="' + esc(c.code) + '"' + (c.frigoDotation ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🗂 Gère les fiches RH</b><small>Voit l\'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC</small></span>' +
       '<input type="checkbox" class="switch" data-cc-rh="' + esc(c.code) + '"' + (c.gereRh ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>💵 Reçoit les fonds en espèces</b><small>Peut recevoir les remontées en espèces des autres CC et doit confirmer chaque réception</small></span>' +
@@ -4076,6 +4134,12 @@
       const code = crd.dataset.ccCredit, on = crd.checked;
       return act(async () => chk(await sb.from("ccs").update({ credit: on }).eq("code", code)),
         ccName(code) + (on ? " peut enregistrer les achats de crédit de sa boutique." : " n'enregistre plus les achats de crédit."));
+    }
+    const fdt = e.target.closest("[data-cc-frigodot]");
+    if (fdt) {
+      const code = fdt.dataset.ccFrigodot, on = fdt.checked;
+      return act(async () => chk(await sb.from("ccs").update({ frigo_dotation: on }).eq("code", code)),
+        ccName(code) + (on ? " peut fixer la dotation de crédit du frigo." : " ne fixe plus la dotation du frigo."));
     }
     const cvs = e.target.closest("[data-cc-creditvers]");
     if (cvs) {

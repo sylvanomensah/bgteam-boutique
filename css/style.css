@@ -673,7 +673,12 @@ details.help .hint { margin: 8px 0 0; }
 .kpi .value small { display: block; font-size: .78rem; font-weight: 600; color: var(--muted); margin-top: 2px; }
 .kpi .label img.logo-op.sm { margin-right: 6px; }
 /* Frigo */
-body.no-frigo .need-frigo, body.no-frigo-vente .need-frigo-vente { display: none !important; }
+body.no-frigo .need-frigo, body.no-frigo-vente .need-frigo-vente, body.no-frigo-dot .need-frigo-dot, body.no-frigo-course .need-frigo-course { display: none !important; }
+.fc-dot:empty { display: none; }
+.fc-dot { margin-top: 12px; border-radius: 12px; padding: 12px 16px; border: 2px solid; }
+.fc-dot.ok { border-color: #16a34a; background: #f0fdf4; }
+.fc-dot.ko { border-color: #f59e0b; background: #fffbeb; }
+.fc-dot small { color: var(--muted); }
 .frigo-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 18px; }
 .fg-card { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; border-top: 5px solid #0ea5e9; display: flex; flex-direction: column; gap: 6px; }
 .fg-card.vert { border-top-color: #16a34a; } .fg-card.orange { border-top-color: #f59e0b; } .fg-card.violet { border-top-color: #7c3aed; }

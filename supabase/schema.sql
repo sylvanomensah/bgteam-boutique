@@ -1274,6 +1274,12 @@ create trigger credit_achats_hier before insert on public.credit_achats for each
 -- Les CC déclarent chaque jour la vente du frigo, qui est déduite du crédit vente restant.
 -- Quand le restant atteint le seuil (5 000 par défaut), une nouvelle course peut être faite.
 alter table public.settings add column if not exists frigo_seuil numeric not null default 5000;
+-- CC désigné par l'admin pour fixer la dotation de crédit du frigo des boutiques
+alter table public.ccs add column if not exists frigo_dotation boolean not null default false;
+create or replace function public.can_frigo_dotation() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or coalesce((public.my_cc()).frigo_dotation, false);
+$$;
 create table if not exists public.frigo_courses (
   id uuid primary key default gen_random_uuid(),
   boutique text not null references public.boutiques(code) on update cascade on delete cascade,
@@ -1286,7 +1292,7 @@ create table if not exists public.frigo_courses (
 alter table public.frigo_courses enable row level security;
 drop policy if exists frigo_courses_select on public.frigo_courses;
 create policy frigo_courses_select on public.frigo_courses for select to authenticated
-  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+  using (public.is_global() or public.can_frigo_dotation() or (public.is_member() and boutique = public.my_boutique()));
 drop policy if exists frigo_courses_admin on public.frigo_courses;
 create policy frigo_courses_admin on public.frigo_courses for all to authenticated using (public.is_admin()) with check (public.is_admin());
 -- Détail (prix d'achat, frais) : administrateur uniquement
@@ -1308,12 +1314,59 @@ alter table public.frigo_courses add column if not exists montant_course numeric
 update public.frigo_courses c set montant_course = d.total_course from public.frigo_courses_details d where d.course_id = c.id and c.montant_course = 0;
 update public.frigo_courses set montant_course = round(montant_course, 2) where montant_course <> round(montant_course, 2);
 update public.frigo_courses_details set total_course = round(total_course, 2), total_achats = round(total_achats, 2) where total_course <> round(total_course, 2) or total_achats <> round(total_achats, 2);
--- Enregistrement d'une course (calculs faits par le serveur)
+-- Dotation de crédit du frigo : montant fixé par l'admin (ou le CC désigné) pour la prochaine course d'une boutique.
+-- La course doit être EXACTEMENT égale à la dotation ; la dotation est alors consommée.
+create table if not exists public.frigo_dotations (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  montant numeric not null check (montant > 0),
+  statut text not null default 'Ouverte' check (statut in ('Ouverte', 'Utilisée', 'Annulée')),
+  course_id uuid,
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists frigo_dotation_ouverte on public.frigo_dotations (boutique) where statut = 'Ouverte';
+alter table public.frigo_dotations enable row level security;
+drop policy if exists frigo_dotations_select on public.frigo_dotations;
+create policy frigo_dotations_select on public.frigo_dotations for select to authenticated
+  using (public.is_global() or public.can_frigo_dotation() or (public.is_member() and boutique = public.my_boutique()));
+create or replace function public.frigo_doter(p_boutique text, p_montant numeric) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid; prof public.profiles%rowtype;
+begin
+  if not public.can_frigo_dotation() then raise exception 'Seul l''administrateur ou le CC désigné peut fixer la dotation'; end if;
+  if coalesce(p_montant, 0) <= 0 then raise exception 'Montant de dotation invalide'; end if;
+  if exists (select 1 from public.frigo_dotations where boutique = p_boutique and statut = 'Ouverte') then
+    raise exception 'Une dotation est déjà en attente de course pour cette boutique (annulez-la d''abord)';
+  end if;
+  select * into prof from public.profiles where id = auth.uid();
+  insert into public.frigo_dotations (boutique, montant, saisi_par) values (p_boutique, round(p_montant, 2), coalesce(nullif(prof.nom, ''), prof.email, ''))
+    returning id into v_id;
+  return v_id;
+end $$;
+create or replace function public.frigo_annuler_dotation(p_id uuid) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.can_frigo_dotation() then raise exception 'Seul l''administrateur ou le CC désigné peut annuler la dotation'; end if;
+  update public.frigo_dotations set statut = 'Annulée' where id = p_id and statut = 'Ouverte';
+  if not found then raise exception 'Dotation introuvable ou déjà utilisée'; end if;
+end $$;
+revoke all on function public.frigo_doter(text, numeric) from public, anon;
+grant execute on function public.frigo_doter(text, numeric) to authenticated;
+revoke all on function public.frigo_annuler_dotation(uuid) from public, anon;
+grant execute on function public.frigo_annuler_dotation(uuid) to authenticated;
+-- Enregistrement d'une course (calculs faits par le serveur) : admin ou CC de la boutique, égale à la dotation ouverte
 create or replace function public.frigo_ajouter_course(p_boutique text, p_date date, p_lignes jsonb, p_deplacement numeric, p_sachet numeric, p_autres numeric, p_autres_lib text)
 returns uuid language plpgsql security definer set search_path = public as $$
-declare v_id uuid; v_achats numeric := 0; v_vente numeric := 0; l jsonb; prof public.profiles%rowtype;
+declare v_id uuid; v_achats numeric := 0; v_vente numeric := 0; l jsonb; prof public.profiles%rowtype; v_dot public.frigo_dotations%rowtype; v_total numeric;
 begin
-  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if not (public.is_admin() or (public.is_member() and p_boutique = public.my_boutique())) then
+    raise exception 'Seuls l''administrateur et les CC de la boutique peuvent faire la course du frigo';
+  end if;
+  if not public.is_admin() then p_date := current_date; end if;
+  select * into v_dot from public.frigo_dotations where boutique = p_boutique and statut = 'Ouverte' for update;
+  if not found then raise exception 'Aucune dotation de crédit pour ce frigo : l''admin (ou le CC désigné) doit d''abord la fixer'; end if;
   if jsonb_typeof(p_lignes) <> 'array' or jsonb_array_length(p_lignes) = 0 then raise exception 'Ajoutez au moins un produit'; end if;
   for l in select * from jsonb_array_elements(p_lignes) loop
     if coalesce((l->>'qte')::numeric, 0) <= 0 or coalesce((l->>'achat')::numeric, -1) < 0 or coalesce((l->>'vente')::numeric, -1) < 0 or coalesce(trim(l->>'nom'), '') = '' then
@@ -1324,6 +1377,10 @@ begin
   end loop;
   if v_vente <= 0 then raise exception 'La valeur de vente doit être positive'; end if;
   v_achats := round(v_achats, 2); v_vente := round(v_vente, 2); -- prix unitaires = total ÷ quantité : on évite les décimales parasites
+  v_total := v_achats + greatest(coalesce(p_deplacement, 0), 0) + greatest(coalesce(p_sachet, 0), 0) + greatest(coalesce(p_autres, 0), 0);
+  if abs(v_total - v_dot.montant) > 0.5 then
+    raise exception 'La course (% F) doit être égale à la dotation de crédit (% F) : crédit non utilisé %', v_total, v_dot.montant, v_dot.montant - v_total;
+  end if;
   select * into prof from public.profiles where id = auth.uid();
   insert into public.frigo_courses (boutique, date, valeur_vente, montant_course, saisi_par)
     values (p_boutique, coalesce(p_date, current_date), v_vente,
@@ -1333,6 +1390,7 @@ begin
   insert into public.frigo_courses_details (course_id, lignes, total_achats, frais_deplacement, frais_sachet, frais_autres, frais_autres_lib, total_course)
     values (v_id, p_lignes, v_achats, greatest(coalesce(p_deplacement, 0), 0), greatest(coalesce(p_sachet, 0), 0), greatest(coalesce(p_autres, 0), 0), coalesce(p_autres_lib, ''),
             v_achats + greatest(coalesce(p_deplacement, 0), 0) + greatest(coalesce(p_sachet, 0), 0) + greatest(coalesce(p_autres, 0), 0));
+  update public.frigo_dotations set statut = 'Utilisée', course_id = v_id where id = v_dot.id;
   return v_id;
 end $$;
 revoke all on function public.frigo_ajouter_course(text, date, jsonb, numeric, numeric, numeric, text) from public, anon;
@@ -1416,7 +1474,7 @@ language sql stable security definer set search_path = public as $$
     where c.boutique = s.boutique and l ->> 'code' = s.code and c.created_at <= s.created_at
     order by c.created_at desc limit 1) x
   where public.is_member() and s.valide = 'OUI' and s.boutique is not null
-    and (public.is_global() or s.boutique = public.my_boutique());
+    and (public.is_global() or public.can_frigo_dotation() or s.boutique = public.my_boutique());
 $$;
 revoke all on function public.frigo_sorties() from public, anon;
 grant execute on function public.frigo_sorties() to authenticated;
@@ -1548,7 +1606,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

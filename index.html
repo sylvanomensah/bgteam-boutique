@@ -733,8 +733,18 @@
           <div class="hint" style="margin:0" id="fv-info"></div>
         </div>
 
-        <!-- Course (admin) -->
-        <div class="card admin-only" id="fc-card">
+        <!-- Dotation de crédit (admin ou CC désigné) -->
+        <div class="card need-frigo-dot" id="fd-card">
+          <h2>💰 Dotation de crédit du frigo</h2>
+          <div id="fd-ouverte" class="cv-ferme" style="margin:0 0 12px"></div>
+          <div class="form form-inline" id="fd-form">
+            <label>Montant de la dotation (FCFA)<input type="number" id="fd-montant" min="1" inputmode="numeric" placeholder="Ex. : 28000"></label>
+            <button class="btn primary" id="fd-save" style="align-self:flex-end">Fixer la dotation</button>
+          </div>
+        </div>
+
+        <!-- Course (admin ou CC de la boutique) -->
+        <div class="card need-frigo-course" id="fc-card">
           <h2>🛒 Nouvelle course pour le frigo</h2>
           <div id="fc-etat" class="cv-ferme" style="margin:0 0 12px"></div>
           <div id="fc-zone">
@@ -758,7 +768,10 @@
                   <label>Autres frais (montant)<input type="number" min="0" id="fc-autres" value="0"></label>
                 </div>
               </div>
-              <div class="course-summary" id="fc-summary"></div>
+              <div>
+                <div class="course-summary" id="fc-summary"></div>
+                <div class="fc-dot" id="fc-dot"></div>
+              </div>
             </div>
             <div class="actions"><button class="btn success" id="fc-save">Enregistrer la course</button></div>
           </div>
