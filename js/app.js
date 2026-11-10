@@ -138,7 +138,7 @@
         nom: st.nom || "BGTeam", domaine: st.domaine || "", tel: st.tel || "", adresse: st.adresse || "",
         email: st.email || "", rccm: st.rccm || "", devise: st.devise || "FCFA", numero_depot: st.numero_depot || "",
         tauxYas: st.taux_yas == null ? 5 : Number(st.taux_yas), tauxMoov: st.taux_moov == null ? 5 : Number(st.taux_moov),
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, creditVers: !!c.credit_vers, colCreditVers: "credit_vers" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -2776,8 +2776,8 @@
       if (document.activeElement !== $("#cr-set-moov")) $("#cr-set-moov").value = db.settings.tauxMoov;
     }
   }
-  // Reversement de commission : ouvert aux CC seulement le 1er et le 2 du mois (l'admin peut toujours enregistrer)
-  function versementOuvert() { return isAdmin() || Number(today().slice(8, 10)) <= 2; }
+  // Reversement de commission : ouvert le 1er et le 2 du mois, ou à tout moment pour un CC autorisé par l'admin
+  function versementOuvert() { if (Number(today().slice(8, 10)) <= 2) return true; const c = myCcRow(); return !!(c && c.creditVers); }
   // Montant proposé : commission des mois écoulés pour un CC, tout ce qui reste pour l'admin
   function resteAVerser(bq) { if (!bq) return 0; const c = commissionInfo(bq); return isAdmin() ? c.aDeclarer : c.duAncien; }
   function majPreviewCredit(bq) {
@@ -3435,6 +3435,8 @@
       '<input type="checkbox" class="switch" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>📱 Achats de crédit</b><small>Enregistre les achats de crédit YAS / MOOV de sa boutique et verse la commission</small></span>' +
       '<input type="checkbox" class="switch" data-cc-credit="' + esc(c.code) + '"' + (c.credit ? " checked" : "") + "></label>" +
+      (c.credit && c.colCreditVers ? '<label class="perm"><span><b>💸 Reverser la commission à tout moment</b><small>Autorise ce CC à déclarer le reversement de la commission en dehors du 1er et du 2 du mois</small></span>' +
+        '<input type="checkbox" class="switch" data-cc-creditvers="' + esc(c.code) + '"' + (c.creditVers ? " checked" : "") + "></label>" : "") +
       '<label class="perm"><span><b>🗂 Gère les fiches RH</b><small>Voit l\'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC</small></span>' +
       '<input type="checkbox" class="switch" data-cc-rh="' + esc(c.code) + '"' + (c.gereRh ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>💵 Reçoit les fonds en espèces</b><small>Peut recevoir les remontées en espèces des autres CC et doit confirmer chaque réception</small></span>' +
@@ -3581,6 +3583,12 @@
       const code = crd.dataset.ccCredit, on = crd.checked;
       return act(async () => chk(await sb.from("ccs").update({ credit: on }).eq("code", code)),
         ccName(code) + (on ? " peut enregistrer les achats de crédit de sa boutique." : " n'enregistre plus les achats de crédit."));
+    }
+    const cvs = e.target.closest("[data-cc-creditvers]");
+    if (cvs) {
+      const code = cvs.dataset.ccCreditvers, on = cvs.checked;
+      return act(async () => chk(await sb.from("ccs").update({ credit_vers: on }).eq("code", code)),
+        ccName(code) + (on ? " peut reverser la commission à tout moment." : " ne peut reverser la commission que le 1er et le 2 du mois."));
     }
     const grh = e.target.closest("[data-cc-rh]");
     if (grh) {

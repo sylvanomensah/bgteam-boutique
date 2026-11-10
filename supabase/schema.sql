@@ -1113,6 +1113,8 @@ alter table public.boutiques add column if not exists dotation_moov numeric not 
 alter table public.settings add column if not exists taux_yas numeric not null default 5;
 alter table public.settings add column if not exists taux_moov numeric not null default 5;
 alter table public.ccs add column if not exists credit boolean not null default false;
+-- Autorisation donnée par l'admin : reverser la commission en dehors du 1er et du 2 du mois
+alter table public.ccs add column if not exists credit_vers boolean not null default false;
 create or replace function public.can_credit() returns boolean
 language sql stable security definer set search_path = public as $$
   select public.is_admin() or coalesce((public.my_cc()).credit, false);
@@ -1244,7 +1246,7 @@ begin
   new.mois := date_trunc('month', coalesce(new.mois, current_date))::date;
   if public.is_admin() then return new; end if;
   -- Reversement ouvert aux CC uniquement le 1er et le 2 du mois (heure de Lomé = UTC)
-  if extract(day from (now() at time zone 'Africa/Lome')) > 2 then
+  if extract(day from (now() at time zone 'Africa/Lome')) > 2 and not coalesce((public.my_cc()).credit_vers, false) then
     raise exception 'Le reversement de la commission se fait uniquement le 1er et le 2 de chaque mois';
   end if;
   select coalesce((select sum(commission) from public.credit_achats where boutique = new.boutique), 0)
