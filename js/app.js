@@ -2869,12 +2869,14 @@
       $("#cs-titre").innerHTML = (faitD ? "✅" : "🌙") + " Crédit vendu " + (d === t ? "ce " : "le ") + esc(jourLong(d)) + ' <span class="badge">admin</span>';
       $("#cs-form").classList.remove("hidden");
       $("#cs-save").disabled = faitD;
+      $("#cs-save").textContent = "Déclarer la vente du " + fmtDate(d); // le jour choisi est visible sur le bouton
       $("#cs-card").classList.toggle("a-faire", false); $("#cs-card").classList.toggle("fait", faitD);
       $("#cs-info").innerHTML = faitD ? "Déjà déclaré pour ce jour : " + OPS.map((op) => logoOp(op, true) + " <b>" + money0(venteLe(sbq, op, d) || 0) + "</b>").join(" &nbsp; ") + " — pour corriger, supprimez la ligne dans l'historique puis redéclarez."
         : "Choisissez le jour puis indiquez le crédit vendu YAS et MOOV (0 si rien)." + (d < t ? " Une vente d'un jour passé est enregistrée dans l'historique." : "");
     }
     const cj = venteCible(sbq), oubli = cj !== t, faitAuj = !!sbq && venteFaite(sbq, t);
     if (!(admin && sbq)) {
+    $("#cs-save").textContent = "Déclarer la vente";
     $("#cs-titre").innerHTML = !sbq ? "🌙 Crédit vendu du jour" : faitAuj ? "✅ Crédit vendu " + (oubli ? "" : "ce ") + esc(jourLong(t)) : "🌙 Crédit vendu " + (oubli ? "hier, " : "ce ") + esc(jourLong(cj)) + (oubli ? ' <span class="badge warn">oubli à rattraper</span>' : "");
     $("#cs-form").classList.toggle("hidden", !sbq || faitAuj);
     if (faitAuj) { $("#cs-yas").value = ""; $("#cs-moov").value = ""; }
