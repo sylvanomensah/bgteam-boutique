@@ -3111,7 +3111,8 @@
     const list = db.settings.ccList.filter((c) =>
       (f === "inactifs" ? !c.actif : c.actif) &&
       (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)) &&
-      (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === c.bobines)) &&
+      (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === "rh" && c.gereRh) ||
+        (f === "especes" && c.recoitEspeces) || (f === c.bobines)) &&
       ccMatch(c, q));
     $("#rp-count").textContent = list.length + " CC affiché(s). Les changements sont enregistrés immédiatement.";
     $("#rh-perms").innerHTML = list.length ? list.map((c) => {
