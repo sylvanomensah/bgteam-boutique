@@ -373,25 +373,29 @@
   window.addEventListener("focus", softRefresh);
   // Mise à jour automatique : si une nouvelle version est en ligne, on vide le cache et on recharge
   // (sauf pendant une saisie ou une fenêtre ouverte, pour ne rien faire perdre).
-  async function checkUpdate() {
-    if (APP_VERSION.indexOf("__") === 0 || !navigator.onLine) return;
+  async function checkUpdate(force) {
+    if (APP_VERSION.indexOf("__") === 0 || !navigator.onLine) return false;
     try {
       const res = await fetch(location.pathname + "?maj=" + Date.now(), { cache: "no-store" });
       const html = await res.text();
       const m = html.match(/name="app-version" content="(\d+)"/);
-      if (!m || m[1] === APP_VERSION) return;
-      const occupe = document.querySelector("dialog[open]") || (document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) || cart.length;
-      if (occupe) return; // on réessaiera plus tard
+      if (!m || m[1] === APP_VERSION) return false;
+      // une liste déroulante sélectionnée ne bloque plus la mise à jour ; une saisie en cours, oui (sauf « Actualiser »)
+      const occupe = document.querySelector("dialog[open]") || (document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement.value) || cart.length;
+      if (occupe && force !== true) return false; // on réessaiera plus tard
       if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); }
       location.reload();
-    } catch (e) { /* hors ligne : prochain essai */ }
+      return true;
+    } catch (e) { return false; /* hors ligne : prochain essai */ }
   }
-  window.addEventListener("focus", checkUpdate);
+  window.addEventListener("focus", () => checkUpdate());
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(); });
-  setInterval(checkUpdate, 5 * 60 * 1000);
+  setInterval(() => checkUpdate(), 2 * 60 * 1000);
   setInterval(() => { if (document.visibilityState === "visible") softRefresh(); }, 120000);
+  // « Actualiser » : charge d'abord la nouvelle version de l'application s'il y en a une, sinon recharge les données
   $("#btn-refresh").addEventListener("click", async () => {
-    try { await reload(); render(currentView); toast("Données actualisées."); } catch (e) { toast(errMsg(e)); }
+    if (await checkUpdate(true)) return;
+    try { await reload(); render(currentView); toast("Données actualisées (version " + APP_VERSION + ")."); } catch (e) { toast(errMsg(e)); }
   });
 
   // Changement obligatoire après un mot de passe temporaire
