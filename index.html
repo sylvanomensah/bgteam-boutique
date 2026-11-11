@@ -548,9 +548,9 @@
           </table></div>
         </div>
         <div class="card">
-          <h2>Crédit vendu chaque jour</h2>
+          <h2>Contrôles du crédit restant</h2>
           <div class="table-wrap"><table class="table">
-            <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vendu YAS</th><th class="num">Vendu MOOV</th><th>Déclaré par</th></tr></thead>
+            <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th>Fait par</th></tr></thead>
             <tbody id="rc-clot"></tbody>
           </table></div>
         </div>
@@ -571,32 +571,22 @@
       <div class="card hidden" id="cr-table-card">
         <h2>Crédit restant par boutique</h2>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th class="num">Recharges du mois</th><th class="num">Commission à reverser</th><th>Vente du jour</th></tr></thead>
+          <thead><tr><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th class="num">Recharges du mois</th><th class="num">Commission à reverser</th><th>Contrôle du jour</th></tr></thead>
           <tbody id="cr-table"></tbody>
         </table></div>
       </div>
 
-      <!-- Clôture du soir : tous les CC de la boutique, chaque soir -->
+      <!-- Contrôle du crédit restant lu sur la puce : tous les CC de la boutique, chaque soir -->
       <div class="card need-cloture" id="cs-card">
-        <h2 id="cs-titre">🌙 Crédit vendu du jour</h2>
+        <h2 id="cs-titre">🔍 Contrôle du crédit restant</h2>
         <div class="form form-inline" id="cs-form">
           <label class="admin-only">Jour<input type="date" id="cs-date"></label>
-          <label><span><img class="logo-op yas sm" src="icons/yas.png" alt="YAS"> Crédit vendu</span><input type="number" id="cs-yas" min="0" inputmode="numeric" placeholder="0 si rien"></label>
-          <label><span><img class="logo-op moov sm" src="icons/moov.png" alt="MOOV"> Crédit vendu</span><input type="number" id="cs-moov" min="0" inputmode="numeric" placeholder="0 si rien"></label>
-          <button class="btn success" id="cs-save" style="align-self:flex-end">Déclarer la vente</button>
+          <label><span><img class="logo-op yas sm" src="icons/yas.png" alt="YAS"> Crédit restant lu sur la puce</span><input type="number" id="cs-yas" min="0" inputmode="numeric" placeholder="0 si vide"></label>
+          <label><span><img class="logo-op moov sm" src="icons/moov.png" alt="MOOV"> Crédit restant lu sur la puce</span><input type="number" id="cs-moov" min="0" inputmode="numeric" placeholder="0 si vide"></label>
+          <button class="btn success" id="cs-save" style="align-self:flex-end">Enregistrer le contrôle</button>
         </div>
         <p class="hint" style="margin:0" id="cs-info"></p>
       </div>
-      <!-- Contrôle réel (admin) : crédit lu sur la puce, pour détecter les écarts -->
-      <details class="card cr-details admin-only">
-        <summary><b>🔍 Contrôle du crédit restant réel</b> — lu sur la puce (admin)</summary>
-        <div class="form form-inline" style="margin-top:10px">
-          <label><span><img class="logo-op yas sm" src="icons/yas.png" alt="YAS"> Restant réel</span><input type="number" id="ck-yas" min="0" inputmode="numeric"></label>
-          <label><span><img class="logo-op moov sm" src="icons/moov.png" alt="MOOV"> Restant réel</span><input type="number" id="ck-moov" min="0" inputmode="numeric"></label>
-          <button class="btn" id="ck-save" style="align-self:flex-end">Enregistrer le contrôle</button>
-        </div>
-        <p class="hint" style="margin:0" id="ck-info">Le crédit restant repart de ce chiffre ; un écart avec le crédit attendu est signalé.</p>
-      </details>
 
       <div class="grid2">
         <!-- Recharge -->
@@ -637,9 +627,9 @@
           <thead><tr><th>Date</th><th>Boutique</th><th>Réseau</th><th class="num">Montant</th><th class="num">Commission</th><th>Heure</th><th>Saisi par</th><th></th></tr></thead>
           <tbody id="cr-rows"></tbody>
         </table></div>
-        <h3 class="sub-title">Crédit vendu déclaré</h3>
+        <h3 class="sub-title">Contrôles du crédit restant</h3>
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Jour</th><th>Boutique</th><th>Réseau</th><th class="num">Vendu</th><th>Déclaré par</th><th></th></tr></thead>
+          <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Restant YAS</th><th class="num">Restant MOOV</th><th>Fait par</th><th></th></tr></thead>
           <tbody id="cvt-rows"></tbody>
         </table></div>
         <h3 class="sub-title">Versements de commission</h3>

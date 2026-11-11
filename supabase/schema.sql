@@ -1205,9 +1205,11 @@ alter table public.credit_soldes enable row level security;
 drop policy if exists credit_soldes_select on public.credit_soldes;
 create policy credit_soldes_select on public.credit_soldes for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
--- Crédit restant réel (contrôle) : saisi par l'administrateur uniquement ; les CC déclarent le crédit VENDU (credit_ventes)
+-- Contrôle du crédit restant (lu sur la puce) : fait chaque soir par un CC de la boutique, une seule fois par jour
+-- (aujourd'hui, ou la veille en rattrapage) ; l'admin peut enregistrer n'importe quel jour et corriger.
 drop policy if exists credit_soldes_insert on public.credit_soldes;
-create policy credit_soldes_insert on public.credit_soldes for insert to authenticated with check (public.is_admin());
+create policy credit_soldes_insert on public.credit_soldes for insert to authenticated
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date and created_by = auth.uid()));
 drop policy if exists credit_soldes_update on public.credit_soldes;
 create policy credit_soldes_update on public.credit_soldes for update to authenticated using (public.is_admin()) with check (public.is_admin());
 drop policy if exists credit_soldes_delete on public.credit_soldes;
@@ -1239,12 +1241,39 @@ create policy credit_ventes_update on public.credit_ventes for update to authent
 drop policy if exists credit_ventes_delete on public.credit_ventes;
 create policy credit_ventes_delete on public.credit_ventes for delete to authenticated using (public.is_admin());
 
--- La vente d'hier doit être déclarée (règle active à partir des ventes du 10/11/2026)
+-- Le contrôle d'hier doit être fait (règle active à partir des contrôles du 11/11/2026, boutiques déjà actives en crédit)
+alter table public.settings add column if not exists credit_seuil numeric not null default 5000;
 create or replace function public.credit_hier_manquant(p_boutique text) returns boolean
-language sql stable security definer set search_path = public as $$
-  select current_date - 1 >= date '2026-11-10'
-    and not exists (select 1 from public.credit_ventes where boutique = p_boutique and date = current_date - 1);
-$$;
+language plpgsql security definer set search_path = public as $$
+begin
+  return current_date - 1 >= date '2026-11-11'
+    and (exists (select 1 from public.credit_soldes where boutique = p_boutique and date < current_date)
+         or exists (select 1 from public.credit_achats where boutique = p_boutique and date < current_date))
+    and not exists (select 1 from public.credit_soldes where boutique = p_boutique and date = current_date - 1);
+end $$;
+-- Crédit restant = dernier contrôle + (recharges + commission) faites depuis
+create or replace function public.credit_restant(p_boutique text, p_op text) returns numeric
+language plpgsql security definer set search_path = public as $$
+declare r public.credit_soldes%rowtype;
+begin
+  select * into r from public.credit_soldes where boutique = p_boutique and operateur = p_op order by date desc, updated_at desc limit 1;
+  return coalesce(r.solde, 0) + coalesce((select sum(a.montant + a.commission) from public.credit_achats a
+    where a.boutique = p_boutique and a.operateur = p_op
+      and (r.id is null or a.date > r.date or (a.date = r.date and a.created_at > r.updated_at))), 0);
+end $$;
+-- Un CC ne fait le contrôle d'aujourd'hui qu'après celui d'hier
+create or replace function public.credit_soldes_before() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if public.is_admin() then return new; end if;
+  if new.date = current_date and public.credit_hier_manquant(new.boutique) then
+    raise exception 'Faites d''abord le contrôle du crédit restant d''hier (oubli)';
+  end if;
+  new.updated_at := now();
+  return new;
+end $$;
+drop trigger if exists credit_soldes_before on public.credit_soldes;
+create trigger credit_soldes_before before insert on public.credit_soldes for each row execute function public.credit_soldes_before();
 create or replace function public.credit_ventes_before() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
@@ -1256,12 +1285,19 @@ begin
 end $$;
 drop trigger if exists credit_ventes_before on public.credit_ventes;
 create trigger credit_ventes_before before insert on public.credit_ventes for each row execute function public.credit_ventes_before();
--- Pas de nouvelle recharge tant que la vente d'hier n'est pas déclarée
+-- Recharge : contrôle d'hier fait, et crédit restant de la puce inférieur au seuil (5 000 par défaut)
 create or replace function public.credit_achats_hier() returns trigger
 language plpgsql security definer set search_path = public as $$
+declare v_r numeric; v_seuil numeric;
 begin
-  if not public.is_admin() and public.credit_hier_manquant(new.boutique) then
-    raise exception 'Déclarez d''abord le crédit vendu hier avant de faire une nouvelle recharge';
+  if public.is_admin() then return new; end if;
+  if public.credit_hier_manquant(new.boutique) then
+    raise exception 'Faites d''abord le contrôle du crédit restant d''hier avant de faire une nouvelle recharge';
+  end if;
+  select coalesce(credit_seuil, 5000) into v_seuil from public.settings where id = 1;
+  v_r := public.credit_restant(new.boutique, new.operateur);
+  if v_r >= v_seuil then
+    raise exception 'Recharge % impossible : il reste encore % F sur la puce (recharge possible sous % F)', new.operateur, v_r, v_seuil;
   end if;
   return new;
 end $$;
