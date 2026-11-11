@@ -3145,6 +3145,15 @@
     };
     dlg.showModal();
   });
+  // Historique : liste déroulante pour choisir la rubrique affichée (mémorisée sur l'appareil)
+  function majHistFiltre() {
+    const v = $("#hist-filtre").value;
+    document.querySelectorAll("#view-credit .hist-sec").forEach((s) => s.classList.toggle("hidden", v !== "tout" && s.dataset.hist !== v));
+    try { localStorage.setItem("hist-credit", v); } catch (e) {}
+  }
+  try { const v = localStorage.getItem("hist-credit"); if (v) $("#hist-filtre").value = v; } catch (e) {}
+  majHistFiltre();
+  $("#hist-filtre").addEventListener("change", majHistFiltre);
   // Ajustement du crédit (admin)
   $("#aj-save").addEventListener("click", (e) => {
     const bq = creditSaisieBq(), y = Number($("#aj-yas").value) || 0, m = Number($("#aj-moov").value) || 0, note = $("#aj-note").value.trim();
