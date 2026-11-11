@@ -1274,13 +1274,12 @@ create or replace function public.credit_restant(p_boutique text, p_op text) ret
 language plpgsql security definer set search_path = public as $$
 declare r public.credit_soldes%rowtype;
 begin
-  select * into r from public.credit_soldes where boutique = p_boutique and operateur = p_op order by date desc, updated_at desc limit 1;
+  -- dernier contrôle SAISI (lecture la plus récente de la puce, même s'il est daté d'un jour passé)
+  select * into r from public.credit_soldes where boutique = p_boutique and operateur = p_op and date <= current_date order by updated_at desc, date desc limit 1;
   return coalesce(r.solde, 0) + coalesce((select sum(a.montant + a.commission) from public.credit_achats a
-    where a.boutique = p_boutique and a.operateur = p_op
-      and (r.id is null or a.date > r.date or (a.date = r.date and a.created_at > r.updated_at))), 0)
+    where a.boutique = p_boutique and a.operateur = p_op and (r.id is null or a.created_at > r.updated_at)), 0)
     + coalesce((select sum(j.montant) from public.credit_ajustements j
-    where j.boutique = p_boutique and j.operateur = p_op
-      and (r.id is null or j.date > r.date or (j.date = r.date and j.created_at > r.updated_at))), 0);
+    where j.boutique = p_boutique and j.operateur = p_op and (r.id is null or j.created_at > r.updated_at)), 0);
 end $$;
 -- Un CC ne fait le contrôle d'aujourd'hui qu'après celui d'hier
 create or replace function public.credit_soldes_before() returns trigger

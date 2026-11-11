@@ -2758,9 +2758,31 @@
   }
   // Clôtures du soir
   function soldeLe(bq, op, d) { const r = db.crSoldes.find((x) => x.boutique === bq && x.op === op && x.date === d); return r ? r.solde : null; }
-  function dernierSolde(bq, op) { return db.crSoldes.filter((x) => x.boutique === bq && x.op === op && x.date <= today()).sort((a, b) => b.date.localeCompare(a.date) || String(b.at).localeCompare(String(a.at)))[0] || null; }
-  // Une recharge est-elle postérieure à une clôture ? (jour suivant, ou même jour mais saisie après la clôture)
-  const apresCloture = (x, r) => x.date > r.date || (x.date === r.date && !!r.at && !!x.createdAt && new Date(x.createdAt) > new Date(r.at));
+  // Dernier contrôle = le dernier SAISI (c'est la lecture la plus récente de la puce, même s'il est daté d'hier)
+  const ordreCtrl = (a, b) => String(a.at || a.date).localeCompare(String(b.at || b.date)) || a.date.localeCompare(b.date);
+  function dernierSolde(bq, op) { return db.crSoldes.filter((x) => x.boutique === bq && x.op === op && x.date <= today()).sort((a, b) => ordreCtrl(b, a))[0] || null; }
+  // Une recharge / un ajustement est-il postérieur à un contrôle ? (comparé à l'heure de saisie du contrôle)
+  const apresCloture = (x, r) => (r.at && x.createdAt ? new Date(x.createdAt) > new Date(r.at) : x.date > r.date);
+  // Ventes de crédit calculées : contrôle précédent + recharges (avec commission) + ajustements − contrôle du jour
+  function ventesCredit(bqs) {
+    const out = {};
+    bqs.forEach((bq) => OPS.forEach((op) => {
+      const l = db.crSoldes.filter((x) => x.boutique === bq && x.op === op).sort(ordreCtrl);
+      for (let i = 1; i < l.length; i++) {
+        const v = l[i - 1].solde + acheteEntre(bq, op, l[i - 1], l[i]) - l[i].solde, k = l[i].date + "|" + bq;
+        out[k] = out[k] || { date: l[i].date, bq, YAS: null, MOOV: null };
+        out[k][op] = (out[k][op] || 0) + v;
+      }
+    }));
+    return Object.values(out).sort((a, b) => b.date.localeCompare(a.date) || boutiqueName(a.bq).localeCompare(boutiqueName(b.bq)));
+  }
+  function ventesRows(codes, mois) {
+    const l = ventesCredit(codes).filter((x) => x.date.slice(0, 7) === mois);
+    const cell = (v) => v == null ? '<span class="muted">—</span>' : v < -1 ? '<b class="neg">' + money0(v) + " ⚠</b>" : money0(v);
+    return l.length ? l.map((x) => "<tr><td>" + esc(jourLong(x.date)) + "</td><td>" + esc(boutiqueName(x.bq)) + '</td><td class="num">' + cell(x.YAS) + '</td><td class="num">' + cell(x.MOOV) +
+      '</td><td class="num"><b>' + money0((x.YAS || 0) + (x.MOOV || 0)) + "</b></td></tr>").join("")
+      : '<tr><td colspan="5" class="empty">Pas encore de vente calculée : il faut au moins deux contrôles successifs.</td></tr>';
+  }
   // Une recharge ajoute son montant + la commission sur la puce (ex. : 20 000 + 5 % = 21 000)
   const somme = (l) => l.reduce((a, x) => a + x.montant + (Number(x.commission) || 0), 0);
   function acheteEntre(bq, op, prev, cur) { return somme(db.crAchats.concat(db.crAjust).filter((x) => x.boutique === bq && x.op === op && apresCloture(x, prev) && !apresCloture(x, cur))); }
@@ -2776,7 +2798,7 @@
   function anomaliesCredit(bqs, depuis) {
     const out = [];
     bqs.forEach((bq) => OPS.forEach((op) => {
-      const l = db.crSoldes.filter((x) => x.boutique === bq && x.op === op).sort((a, b) => a.date.localeCompare(b.date) || String(a.at).localeCompare(String(b.at)));
+      const l = db.crSoldes.filter((x) => x.boutique === bq && x.op === op).sort(ordreCtrl);
       for (let i = 1; i < l.length; i++) {
         if (l[i].date < depuis) continue;
         const attendu = l[i - 1].solde + acheteEntre(bq, op, l[i - 1], l[i]);
@@ -2833,8 +2855,10 @@
         const detail = (hierManquant(bq) ? '<span class="neg">contrôle d\'hier non fait</span>' : cr.r ? quandSolde(cr.r) + " : " + money0(cr.base) : (cr.ajust || cr.nb ? "pas encore de contrôle" : "aucun contrôle")) +
           (cr.ajust ? (cr.ajust > 0 ? " + " : " − ") + money0(Math.abs(cr.ajust)) + " d'ajustement" : "") +
           (cr.nb ? " + " + money0(cr.ajout) + " rechargés (commission comprise)" : "");
+        const dv = ventesCredit([bq]).find((x) => x[op] != null);
+        const venteTxt = dv ? '<br>📈 Vendu le ' + fmtDate(dv.date) + " : <b>" + money0(dv[op]) + "</b>" : "";
         return '<div class="op-card ' + op.toLowerCase() + '">' + logoOp(op) +
-          '<div class="op-main"><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b><small>" + detail + "</small></div>" +
+          '<div class="op-main"><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b><small>" + detail + venteTxt + "</small></div>" +
           '<div class="op-stats"><div><b>' + nb + "</b><span>recharge" + (nb > 1 ? "s" : "") + " ce mois</span></div>" +
           "<div><b>" + money0(com) + "</b><span>commission du mois</span></div></div></div>";
       }).join("");
@@ -2905,6 +2929,7 @@
       "</td><td>" + (admin ? '<button class="btn small danger" data-cr-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("")
       : '<tr><td colspan="8" class="empty">Aucune recharge ce mois-ci.</td></tr>';
     $("#cvt-rows").innerHTML = controlesRows(codes, mois, admin);
+    $("#cvc-rows").innerHTML = ventesRows(codes, mois);
     const ajs = db.crAjust.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
     $("#aj-rows").innerHTML = ajs.length ? ajs.map((x) => "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) + '</td><td class="num"><b class="' + (x.montant >= 0 ? "pos" : "neg") + '">' +
       (x.montant > 0 ? "+" : "−") + money0(Math.abs(x.montant)) + "</b></td><td>" + esc(x.note || "—") + "</td><td>" + esc(x.saisiPar || "—") + "</td><td>" +
@@ -2968,6 +2993,8 @@
       k(logoOp("YAS", true) + "Crédit YAS acheté", money0(s(yas, (x) => x.montant)), yas.length + " recharge" + (yas.length > 1 ? "s" : "")) +
       k(logoOp("MOOV", true) + "Crédit MOOV acheté", money0(s(moov, (x) => x.montant)), moov.length + " recharge" + (moov.length > 1 ? "s" : "")) +
       k("Total crédit acheté", money0(s(ach, (x) => x.montant)), ach.length + " recharge" + (ach.length > 1 ? "s" : "") + " au total") +
+      (() => { const vm = ventesCredit(codes).filter((x) => x.date.slice(0, 7) === mois), sy = vm.reduce((a, x) => a + (x.YAS || 0), 0), sm = vm.reduce((a, x) => a + (x.MOOV || 0), 0);
+        return k("📈 Crédit vendu (calculé)", money0(sy + sm), "YAS " + money0(sy) + " · MOOV " + money0(sm)); })() +
       k("Commission générée", money0(s(ach, (x) => x.commission)), "YAS " + money0(s(yas, (x) => x.commission)) + " · MOOV " + money0(s(moov, (x) => x.commission)), "hero") +
       k("Commission reversée (validée)", money0(versRecu), vers.length ? vers.length + " versement" + (vers.length > 1 ? "s" : "") + " déclaré" + (vers.length > 1 ? "s" : "") + " ce mois" : "aucun versement ce mois");
     // Par boutique (si plusieurs)
@@ -2987,6 +3014,7 @@
       : '<tr><td colspan="7" class="empty">Aucune recharge en ' + esc(nomMois) + ".</td></tr>";
     // Contrôles du crédit restant chaque jour (une ligne par jour et par boutique)
     $("#rc-clot").innerHTML = controlesRows(codes, mois, false).replace(/<td><\/td><\/tr>/g, "</tr>");
+    $("#rc-ventes").innerHTML = ventesRows(codes, mois);
     $("#rc-vers").innerHTML = vers.length ? vers.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map((v) =>
       "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
       '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode) + "</td><td>" +

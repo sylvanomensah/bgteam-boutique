@@ -555,6 +555,13 @@
           </table></div>
         </div>
         <div class="card">
+          <h2>📈 Ventes de crédit (calculées)</h2>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vendu YAS</th><th class="num">Vendu MOOV</th><th class="num">Total</th></tr></thead>
+            <tbody id="rc-ventes"></tbody>
+          </table></div>
+        </div>
+        <div class="card">
           <h2>Versements de commission</h2>
           <div class="table-wrap"><table class="table">
             <thead><tr><th>Date</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Statut</th></tr></thead>
@@ -586,6 +593,15 @@
           <button class="btn success" id="cs-save" style="align-self:flex-end">Enregistrer le contrôle</button>
         </div>
         <p class="hint" style="margin:0" id="cs-info"></p>
+      </div>
+      <!-- Ventes de crédit calculées à partir des contrôles -->
+      <div class="card">
+        <h2>📈 Ventes de crédit du mois</h2>
+        <p class="hint" style="margin-top:0">Vente d'un jour = contrôle précédent + recharges (commission comprise) + ajustements − contrôle du jour. Une vente négative (⚠) signale une recharge non déclarée.</p>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vendu YAS</th><th class="num">Vendu MOOV</th><th class="num">Total</th></tr></thead>
+          <tbody id="cvc-rows"></tbody>
+        </table></div>
       </div>
       <!-- Ajustement du crédit (admin) : crédit déjà présent sur la puce avant le démarrage, ou correction -->
       <div class="card admin-only" id="aj-card">
