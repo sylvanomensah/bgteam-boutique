@@ -2855,9 +2855,12 @@
         const detail = (hierManquant(bq) ? '<span class="neg">contrôle d\'hier non fait</span>' : cr.r ? quandSolde(cr.r) + " : " + money0(cr.base) : (cr.ajust || cr.nb ? "pas encore de contrôle" : "aucun contrôle")) +
           (cr.ajust ? (cr.ajust > 0 ? " + " : " − ") + money0(Math.abs(cr.ajust)) + " d'ajustement" : "") +
           (cr.nb ? " + " + money0(cr.ajout) + " rechargés (commission comprise)" : "");
-        const dv = ventesCredit([bq]).find((x) => x[op] != null);
-        const venteTxt = dv ? '<br>📈 Vendu le ' + fmtDate(dv.date) + " : <b>" + money0(dv[op]) + "</b>" : "";
-        return '<div class="op-card ' + op.toLowerCase() + '">' + logoOp(op) +
+        // Vente d'hier (calculée : contrôle d'avant-hier + recharges − contrôle d'hier), affichée à droite du logo
+        const hierD = addDays(t, -1), vh = ventesCredit([bq]).find((x) => x.date === hierD && x[op] != null);
+        const venteTxt = "";
+        const venteBox = '<div class="op-vente"><span>📈 Vente d\'hier</span><b' + (vh && vh[op] < -1 ? ' class="neg"' : "") + ">" + (vh ? money0(vh[op]) : "—") + "</b><small>" +
+          (vh ? esc(jourLong(hierD)) : "pas encore calculée (il faut le contrôle d'avant-hier et celui d'hier)") + "</small></div>";
+        return '<div class="op-card ' + op.toLowerCase() + '"><div class="op-head">' + logoOp(op) + venteBox + "</div>" +
           '<div class="op-main"><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b><small>" + detail + venteTxt + "</small></div>" +
           '<div class="op-stats"><div><b>' + nb + "</b><span>recharge" + (nb > 1 ? "s" : "") + " ce mois</span></div>" +
           "<div><b>" + money0(com) + "</b><span>commission du mois</span></div></div></div>";

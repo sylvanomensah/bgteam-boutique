@@ -229,6 +229,12 @@ body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-ta
 .op-card.yas { border-top-color: #ffd100; }
 .op-card.moov { border-top-color: #005ca9; }
 .op-card > .logo-op { align-self: flex-start; }
+.op-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.op-vente { text-align: right; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 8px 14px; min-width: 150px; }
+.op-vente span { display: block; font-size: .72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.op-vente b { display: block; font-size: 1.5rem; color: #15803d; letter-spacing: -.02em; }
+.op-vente b.neg { color: var(--danger); }
+.op-vente small { display: block; font-size: .72rem; color: var(--muted); max-width: 210px; margin-left: auto; }
 .op-main span { display: block; font-size: .78rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .op-main b { display: block; font-size: 2.1rem; letter-spacing: -.02em; }
 .op-main small { color: var(--muted); }
