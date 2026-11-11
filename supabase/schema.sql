@@ -1251,7 +1251,25 @@ begin
          or exists (select 1 from public.credit_achats where boutique = p_boutique and date < current_date))
     and not exists (select 1 from public.credit_soldes where boutique = p_boutique and date = current_date - 1);
 end $$;
--- Crédit restant = dernier contrôle + (recharges + commission) faites depuis
+-- Ajustements de crédit (admin) : crédit déjà présent sur la puce avant le démarrage, ou correction (+/−)
+create table if not exists public.credit_ajustements (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  operateur text not null check (operateur in ('YAS', 'MOOV')),
+  montant numeric not null check (montant <> 0),
+  note text not null default '',
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table public.credit_ajustements enable row level security;
+drop policy if exists credit_ajust_select on public.credit_ajustements;
+create policy credit_ajust_select on public.credit_ajustements for select to authenticated
+  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+drop policy if exists credit_ajust_admin on public.credit_ajustements;
+create policy credit_ajust_admin on public.credit_ajustements for all to authenticated using (public.is_admin()) with check (public.is_admin());
+-- Crédit restant = dernier contrôle + (recharges + commission) + ajustements faits depuis
 create or replace function public.credit_restant(p_boutique text, p_op text) returns numeric
 language plpgsql security definer set search_path = public as $$
 declare r public.credit_soldes%rowtype;
@@ -1259,7 +1277,10 @@ begin
   select * into r from public.credit_soldes where boutique = p_boutique and operateur = p_op order by date desc, updated_at desc limit 1;
   return coalesce(r.solde, 0) + coalesce((select sum(a.montant + a.commission) from public.credit_achats a
     where a.boutique = p_boutique and a.operateur = p_op
-      and (r.id is null or a.date > r.date or (a.date = r.date and a.created_at > r.updated_at))), 0);
+      and (r.id is null or a.date > r.date or (a.date = r.date and a.created_at > r.updated_at))), 0)
+    + coalesce((select sum(j.montant) from public.credit_ajustements j
+    where j.boutique = p_boutique and j.operateur = p_op
+      and (r.id is null or j.date > r.date or (j.date = r.date and j.created_at > r.updated_at))), 0);
 end $$;
 -- Un CC ne fait le contrôle d'aujourd'hui qu'après celui d'hier
 create or replace function public.credit_soldes_before() returns trigger
@@ -1642,7 +1663,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'credit_ajustements', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

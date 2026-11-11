@@ -29,7 +29,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -128,6 +128,7 @@
       fetchAll("credit_soldes", "date"),
       fetchAll("credit_ventes", "date")
     ]);
+    const crAjust = await fetchAll("credit_ajustements", "created_at");
     // Frigo : courses et ventes visibles par la boutique ; détail des courses (prix d'achat) et retraits : admin
     const [fgCourses, fgDetails, fgVentes, fgRetraits, fgDotations] = await Promise.all([
       fetchAll("frigo_courses", "created_at"),
@@ -204,6 +205,7 @@
         qte: Number(x.qte), pu: Number(x.pu), montant: Number(x.qte) * Number(x.pu), consomme: Number(x.consomme) })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
+      crAjust: crAjust.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       crVentes: crVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       anniv: anniv.map((a) => ({ cc: String(a.cc), nom: a.nom || "", sexe: a.sexe || "" })),
       stocksInit: stocksInit.map((s) => ({ code: s.code, boutique: s.boutique, qte: Number(s.qte) || 0 })),
@@ -360,6 +362,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_versements" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_soldes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_ventes" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "credit_ajustements" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_courses" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_ventes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_retraits" }, onChange)      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
@@ -2760,13 +2763,14 @@
   const apresCloture = (x, r) => x.date > r.date || (x.date === r.date && !!r.at && !!x.createdAt && new Date(x.createdAt) > new Date(r.at));
   // Une recharge ajoute son montant + la commission sur la puce (ex. : 20 000 + 5 % = 21 000)
   const somme = (l) => l.reduce((a, x) => a + x.montant + (Number(x.commission) || 0), 0);
-  function acheteEntre(bq, op, prev, cur) { return somme(db.crAchats.filter((x) => x.boutique === bq && x.op === op && apresCloture(x, prev) && !apresCloture(x, cur))); }
-  // Crédit restant = dernier contrôle (lu sur la puce) + recharges (avec commission) faites depuis
+  function acheteEntre(bq, op, prev, cur) { return somme(db.crAchats.concat(db.crAjust).filter((x) => x.boutique === bq && x.op === op && apresCloture(x, prev) && !apresCloture(x, cur))); }
+  // Crédit restant = dernier contrôle (lu sur la puce) + recharges (avec commission) + ajustements admin faits depuis
   function creditRestant(bq, op) {
     const r = dernierSolde(bq, op);
     const rech = db.crAchats.filter((x) => x.boutique === bq && x.op === op && (!r || apresCloture(x, r)));
-    const total = (r ? r.solde : 0) + somme(rech);
-    return { r, base: r ? r.solde : null, ajout: somme(rech), vendu: 0, nb: rech.length, total, connu: !!r || rech.length > 0 };
+    const aj = db.crAjust.filter((x) => x.boutique === bq && x.op === op && (!r || apresCloture(x, r)));
+    const total = (r ? r.solde : 0) + somme(rech) + somme(aj);
+    return { r, base: r ? r.solde : null, ajout: somme(rech), ajust: somme(aj), vendu: 0, nb: rech.length, total, connu: !!r || rech.length > 0 || aj.length > 0 };
   }
   // Anti-fraude : le crédit lu au contrôle ne peut pas dépasser (contrôle précédent + recharges déclarées)
   function anomaliesCredit(bqs, depuis) {
@@ -2826,7 +2830,8 @@
       const bq = scope[0].code, m = creditMois(bq, mois);
       $("#cr-cards").innerHTML = OPS.map((op) => {
         const cr = creditRestant(bq, op), nb = op === "YAS" ? m.nbYas : m.nbMoov, com = op === "YAS" ? m.comYas : m.comMoov;
-        const detail = (hierManquant(bq) ? '<span class="neg">contrôle d\'hier non fait</span>' : cr.r ? quandSolde(cr.r) + " : " + money0(cr.base) : "aucun contrôle") +
+        const detail = (hierManquant(bq) ? '<span class="neg">contrôle d\'hier non fait</span>' : cr.r ? quandSolde(cr.r) + " : " + money0(cr.base) : (cr.ajust || cr.nb ? "pas encore de contrôle" : "aucun contrôle")) +
+          (cr.ajust ? (cr.ajust > 0 ? " + " : " − ") + money0(Math.abs(cr.ajust)) + " d'ajustement" : "") +
           (cr.nb ? " + " + money0(cr.ajout) + " rechargés (commission comprise)" : "");
         return '<div class="op-card ' + op.toLowerCase() + '">' + logoOp(op) +
           '<div class="op-main"><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b><small>" + detail + "</small></div>" +
@@ -2900,6 +2905,15 @@
       "</td><td>" + (admin ? '<button class="btn small danger" data-cr-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("")
       : '<tr><td colspan="8" class="empty">Aucune recharge ce mois-ci.</td></tr>';
     $("#cvt-rows").innerHTML = controlesRows(codes, mois, admin);
+    const ajs = db.crAjust.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    $("#aj-rows").innerHTML = ajs.length ? ajs.map((x) => "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) + '</td><td class="num"><b class="' + (x.montant >= 0 ? "pos" : "neg") + '">' +
+      (x.montant > 0 ? "+" : "−") + money0(Math.abs(x.montant)) + "</b></td><td>" + esc(x.note || "—") + "</td><td>" + esc(x.saisiPar || "—") + "</td><td>" +
+      (admin ? '<button class="btn small danger" data-aj-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("") : '<tr><td colspan="7" class="empty">Aucun ajustement ce mois-ci.</td></tr>';
+    if (admin) {
+      $("#aj-save").disabled = !sbq;
+      $("#aj-info").innerHTML = sbq ? "Crédit restant actuel de <b>" + esc(boutiqueName(sbq)) + "</b> : " + OPS.map((op) => logoOp(op, true) + " <b>" + money0(creditRestant(sbq, op).total) + "</b>").join(" &nbsp; ") +
+        ". Le montant saisi s'ajoute au crédit restant (signe − pour retirer). Il ne compte ni comme recharge ni comme commission." : "Choisissez une boutique dans le filtre pour ajuster son crédit.";
+    }
     const versTous = db.crVers.filter((v) => codes.includes(v.boutique));
     const totRecu = versTous.filter((v) => v.statut === "Reçue").reduce((a, v) => a + v.montant, 0), totAtt = versTous.filter((v) => v.statut !== "Reçue").reduce((a, v) => a + v.montant, 0);
     $("#cv-total").innerHTML = '<span>✅ Total déjà reversé (validé par l\'admin) : <b class="pos">' + money0(totRecu) + "</b></span>" + (totAtt ? '<span>⏳ En attente de validation : <b>' + money0(totAtt) + "</b></span>" : "");
@@ -3095,6 +3109,23 @@
       }, "Contrôle " + (oubli ? "du " + fmtDate(d) : "de ce soir") + " enregistré." + (oubli && !admin ? " Vous pouvez maintenant faire celui d'aujourd'hui." : ""), btn);
     };
     dlg.showModal();
+  });
+  // Ajustement du crédit (admin)
+  $("#aj-save").addEventListener("click", (e) => {
+    const bq = creditSaisieBq(), y = Number($("#aj-yas").value) || 0, m = Number($("#aj-moov").value) || 0, note = $("#aj-note").value.trim();
+    if (!bq) return toast("Choisissez une boutique dans le filtre.");
+    if (!y && !m) return toast("Indiquez un ajustement YAS et/ou MOOV.");
+    const rows = [];
+    if (y) rows.push({ boutique: bq, operateur: "YAS", montant: y, note, saisi_par: me.nom || me.email || "" });
+    if (m) rows.push({ boutique: bq, operateur: "MOOV", montant: m, note, saisi_par: me.nom || me.email || "" });
+    const txt = rows.map((r) => r.operateur + " " + (r.montant > 0 ? "+" : "−") + money0(Math.abs(r.montant)) + " → " + money0(creditRestant(bq, r.operateur).total + r.montant)).join("\n");
+    if (!confirm("Ajuster le crédit de " + boutiqueName(bq) + " ?\n\n" + txt)) return;
+    act(async () => { chk(await sb.from("credit_ajustements").insert(rows)); $("#aj-yas").value = ""; $("#aj-moov").value = ""; $("#aj-note").value = ""; },
+      "Ajustement enregistré : " + txt.replace(/\n/g, " · ") + ".", e.target);
+  });
+  $("#aj-rows").addEventListener("click", (e) => {
+    const d = e.target.closest("[data-aj-del]");
+    if (d && confirm("Supprimer cet ajustement ? Le crédit restant sera recalculé.")) act(async () => chk(await sb.from("credit_ajustements").delete().eq("id", d.dataset.ajDel)), "Ajustement supprimé.", d);
   });
   $("#cs-date").addEventListener("change", () => { $("#cs-yas").value = ""; $("#cs-moov").value = ""; renderCredit(); });
   $("#cvt-rows").addEventListener("click", (e) => {
