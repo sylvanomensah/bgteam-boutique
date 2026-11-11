@@ -1152,6 +1152,27 @@
     </form>
   </dialog>
 
+  <!-- Nouveau produit depuis la course du frigo : désignation + quantité + prix total payé -->
+  <dialog id="fgnp-dialog">
+    <form method="dialog" id="fgnp-form">
+      <h2>Nouveau produit</h2>
+      <div class="form">
+        <label>Code article<input name="code" readonly></label>
+        <label>Catégorie <span class="req">*</span><input name="categorie" list="fgnp-cats" value="Boisson" required></label>
+        <datalist id="fgnp-cats"></datalist>
+        <label class="full">Désignation <span class="req">*</span><input name="nom" required placeholder="Ex. : SPRITE 33 CL"></label>
+        <label>Quantité <span class="req">*</span><input type="number" name="qte" min="1" required></label>
+        <label>Prix total payé <span class="req">*</span><input type="number" name="total" min="0" required></label>
+        <label>PU vente <span class="req">*</span><input type="number" name="pv" min="1" required></label>
+      </div>
+      <div class="course-summary" id="fgnp-calc" style="margin-top:12px"></div>
+      <div class="actions">
+        <button class="btn" value="cancel" formnovalidate>Annuler</button>
+        <button class="btn primary" value="ok">Enregistrer</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Modal photo du reçu -->
   <dialog id="photo-dialog">
     <form method="dialog">

@@ -3394,7 +3394,7 @@
   // Lignes de course : même principe que « recopiez le reçu du marché » (Entrées de stock) :
   // produit choisi dans le catalogue, quantité, prix total payé → prix d'achat unitaire, prix de vente du catalogue, marge unitaire
   function renderFcLignes() {
-    $("#fc-lines").innerHTML = fcLignes.map((l, i) => '<tr data-i="' + i + '"><td><select data-k="code"><option value="">— Choisir —</option>' + productOptions(l.code) + "</select></td>" +
+    $("#fc-lines").innerHTML = fcLignes.map((l, i) => '<tr data-i="' + i + '"><td><select data-k="code"><option value="">— Choisir —</option>' + productOptions(l.code) + '<option value="__new__">➕ Nouveau produit…</option></select></td>' +
       '<td class="num"><input type="number" min="1" data-k="qte" value="' + esc(l.qte) + '"></td>' +
       '<td class="num"><input type="number" min="0" data-k="total" value="' + esc(l.total) + '"></td>' +
       '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
@@ -3443,9 +3443,57 @@
   });
   $("#fc-lines").addEventListener("change", (e) => {
     const el = e.target.closest('[data-k="code"]'); if (!el) return;
-    fcLignes[Number(el.closest("tr").dataset.i)].code = el.value;
+    const idx = Number(el.closest("tr").dataset.i);
+    if (el.value === "__new__") { el.value = fcLignes[idx].code || ""; return ouvrirFgNouveauProduit(idx); }
+    fcLignes[idx].code = el.value;
     majFcCalc();
     const q = el.closest("tr").querySelector('[data-k="qte"]'); if (el.value && !q.value) q.focus();
+  });
+  // Nouveau produit depuis la course du frigo : désignation, quantité, prix total payé, PU vente → calcul automatique
+  let fgnpLigne = null;
+  function prochainCodeArticle() {
+    const n = db.products.reduce((m, p) => { const x = /^ART-(\d+)$/.exec(p.code); return x ? Math.max(m, Number(x[1])) : m; }, 0) + 1;
+    return "ART-" + String(n).padStart(3, "0");
+  }
+  function majFgnpCalc() {
+    const f = $("#fgnp-form"), q = Number(f.elements.qte.value) || 0, tot = Number(f.elements.total.value) || 0, pv = Number(f.elements.pv.value) || 0;
+    const pu = q > 0 ? tot / q : 0, mu = pv - pu;
+    $("#fgnp-calc").innerHTML = '<div class="sum-row"><span>Prix d\'achat unitaire</span><b>' + (q > 0 && f.elements.total.value !== "" ? money2(pu) : "—") + "</b></div>" +
+      '<div class="sum-row"><span>Prix de vente</span><b>' + (pv > 0 ? money2(pv) : "—") + "</b></div>" +
+      '<div class="sum-row"><span>Marge unitaire</span><b>' + (q > 0 && pv > 0 ? margeHtml(mu, (mu / pv) * 100) : "—") + "</b></div>" +
+      (q > 0 && pv > 0 ? '<div class="sum-row"><span>Bénéfice estimé sur la quantité</span><b>' + margeHtml(mu * q, null) + "</b></div>" : "");
+  }
+  function ouvrirFgNouveauProduit(idx) {
+    fgnpLigne = idx;
+    const f = $("#fgnp-form"), l = fcLignes[idx] || {};
+    f.reset();
+    f.elements.code.value = prochainCodeArticle();
+    f.elements.categorie.value = "Boisson";
+    $("#fgnp-cats").innerHTML = Array.from(new Set(db.products.map((p) => p.categorie).filter(Boolean))).sort().map((c) => '<option value="' + esc(c) + '">').join("");
+    if (l.qte) f.elements.qte.value = l.qte;
+    if (l.total) f.elements.total.value = l.total;
+    majFgnpCalc();
+    $("#fgnp-dialog").showModal();
+    f.elements.nom.focus();
+  }
+  $("#fgnp-form").addEventListener("input", majFgnpCalc);
+  $("#fgnp-form").addEventListener("submit", (e) => {
+    if (!e.submitter || e.submitter.value !== "ok") return;
+    const f = e.target, nom = f.elements.nom.value.trim(), cat = f.elements.categorie.value.trim();
+    const qte = Number(f.elements.qte.value), total = f.elements.total.value, pv = Number(f.elements.pv.value);
+    if (nom.length < 2) { e.preventDefault(); return toast("Indiquez la désignation."); }
+    if (!cat) { e.preventDefault(); return toast("Indiquez la catégorie."); }
+    if (!(qte > 0) || total === "" || !(Number(total) >= 0)) { e.preventDefault(); return toast("Indiquez la quantité et le prix total payé."); }
+    if (!(pv > 0)) { e.preventDefault(); return toast("Indiquez le prix de vente."); }
+    const idx = fgnpLigne;
+    act(async () => chk(await sb.rpc("create_product", { p_nom: nom, p_categorie: cat, p_pv: pv })),
+      isAdmin() ? "Produit « " + nom.toUpperCase() + " » créé et ajouté à la course." : "Produit créé (à valider par l'administrateur) et ajouté à la course.").then((r) => {
+      if (!r || !r.ok) return;
+      if (idx == null || !fcLignes[idx]) fcLignes.push({ code: "", qte: "", total: "" });
+      const i = idx == null || !fcLignes[idx] ? fcLignes.length - 1 : idx;
+      fcLignes[i] = { code: r.data, qte: String(qte), total: String(total) };
+      renderFcLignes();
+    });
   });
   $("#fc-lines").addEventListener("click", (e) => {
     const b = e.target.closest("[data-fc-rm]"); if (!b) return;
