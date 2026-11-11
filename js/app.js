@@ -3486,13 +3486,20 @@
     if (!(qte > 0) || total === "" || !(Number(total) >= 0)) { e.preventDefault(); return toast("Indiquez la quantité et le prix total payé."); }
     if (!(pv > 0)) { e.preventDefault(); return toast("Indiquez le prix de vente."); }
     const idx = fgnpLigne;
+    const placer = (code) => {
+      const i = idx != null && fcLignes[idx] ? idx : (fcLignes.push({ code: "", qte: "", total: "" }), fcLignes.length - 1);
+      fcLignes[i] = { code, qte: String(qte), total: String(total) };
+      renderFcLignes();
+    };
+    // Produit déjà au catalogue (même désignation) : on l'utilise directement
+    const deja = db.products.find((p) => String(p.nom).trim().toUpperCase() === nom.toUpperCase());
+    if (deja) { placer(deja.code); return toast("« " + deja.nom + " » existe déjà (" + deja.code + ") : il a été ajouté à la course."); }
     act(async () => chk(await sb.rpc("create_product", { p_nom: nom, p_categorie: cat, p_pv: pv })),
       isAdmin() ? "Produit « " + nom.toUpperCase() + " » créé et ajouté à la course." : "Produit créé (à valider par l'administrateur) et ajouté à la course.").then((r) => {
-      if (!r || !r.ok) return;
-      if (idx == null || !fcLignes[idx]) fcLignes.push({ code: "", qte: "", total: "" });
-      const i = idx == null || !fcLignes[idx] ? fcLignes.length - 1 : idx;
-      fcLignes[i] = { code: r.data, qte: String(qte), total: String(total) };
-      renderFcLignes();
+      if (!r || !r.ok || !r.data) return;
+      placer(r.data);
+      // la liste des produits peut se recharger juste après (temps réel) : on s'assure que la ligne reste remplie
+      setTimeout(() => { const i = fcLignes.findIndex((l) => l.code === r.data); if (i >= 0) renderFcLignes(); }, 1500);
     });
   });
   $("#fc-lines").addEventListener("click", (e) => {
