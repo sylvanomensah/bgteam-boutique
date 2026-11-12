@@ -1077,12 +1077,12 @@
     $("#c-client").value = "CLIENT COMPTOIR";
     renderCart();
     toast("Vente enregistrée — ticket N° " + ticket);
-    if (confirm("Vente enregistrée (ticket N° " + ticket + "). Afficher le ticket de caisse ?")) {
-      $("#f-remis").value = remis;
-      show("facture");
-      $("#f-ticket").value = String(ticket);
-      renderReceipt();
-    }
+    // Impression directe du reçu (on reste sur la Caisse) : le ticket est préparé dans Facturation puis imprimé
+    $("#f-remis").value = remis;
+    renderFacture();
+    $("#f-ticket").value = String(ticket);
+    renderReceipt();
+    setTimeout(() => window.print(), 300);
   });
 
   // ---------- Ventes ----------
