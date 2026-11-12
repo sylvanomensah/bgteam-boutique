@@ -2030,25 +2030,25 @@
     const total = lines.reduce((a, s) => a + lineTotal(s), 0);
     const remisRaw = $("#f-remis").value;
     const remis = Number(remisRaw);
-    const now = new Date();
-    const vendeur = vendeurOf(first);
+    // Modèle « ticket de caisse » : nom, téléphone, date et heure de la vente, référence du reçu, client, lignes « PRODUIT xQté … total »
+    const quand = first.createdAt ? new Date(first.createdAt) : null;
+    const heure = quand ? quand.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+    const bq = saleBoutique(first) || "";
+    const ref = "TK" + first.date.slice(5, 7) + first.date.slice(0, 4) + (bq ? "-" + bq : "") + "-" + t;
+    const fcfa = (n) => num(n) + " FCFA";
     $("#receipt").innerHTML =
-      '<div class="center"><h3>' + esc(st.nom) + "</h3><div>" + esc(st.domaine) + "</div><div>Tel: " + esc(st.tel) + "</div><div>Adresse: " + esc(st.adresse) +
-      "</div><div>Email: " + esc(st.email) + "</div><div>RCCM/NIF : " + esc(st.rccm) + "</div></div><hr>" +
-      '<div class="center big">TICKET DE CAISSE</div><hr>' +
-      "<table><tr><td>N° " + t + '</td><td class="r">Date : ' + fmtDate(first.date) + "</td></tr>" +
-      "<tr><td>Client : " + esc(first.client) + '</td><td class="r">Heure : ' + now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) + "</td></tr>" +
-      "<tr><td colspan=2>" + ccLabel(first.cc) + (vendeur ? " — Vendeur : " + esc(vendeur) : "") + "</td></tr>" +
-      (first.numClient ? "<tr><td colspan=2>N° client : " + esc(first.numClient) + "</td></tr>" : "") +
-      (first.adresseClient ? "<tr><td colspan=2>Adresse : " + esc(first.adresseClient) + "</td></tr>" : "") +
+      '<div class="center"><div class="r-nom">' + esc(String(st.nom || "").toUpperCase()) + "</div>" +
+      (st.tel ? "<div>Tél: " + esc(st.tel) + "</div>" : "") +
+      "<div>" + fmtDate(first.date) + (heure ? " " + heure : "") + "</div></div><hr>" +
+      '<div class="r-ligne">Reçu ' + esc(ref) + "</div>" +
+      '<div class="r-ligne">Client: ' + esc(first.client || "Passager") + "</div>" +
+      (bq ? '<div class="r-ligne r-petit">Boutique: ' + esc(boutiqueName(bq)) + " · " + ccLabel(first.cc) + "</div>" : "") +
+      "<hr>" +
+      '<table class="r-lignes">' + lines.map((s) => "<tr><td>" + esc(String(s.nom).toUpperCase()) + " x" + num(s.qte) + '</td><td class="r">' + fcfa(lineTotal(s)) + "</td></tr>").join("") + "</table><hr>" +
+      '<table><tr class="big"><td>TOTAL TTC</td><td class="r">' + fcfa(total) + "</td></tr>" +
+      (remisRaw !== "" ? "<tr><td>Paiement:</td><td class=\"r\">Espèces</td></tr><tr><td>Montant remis</td><td class=\"r\">" + fcfa(remis) + "</td></tr><tr><td>Monnaie rendue</td><td class=\"r\">" + fcfa(Math.max(0, remis - total)) + "</td></tr>" : "") +
       "</table><hr>" +
-      '<table><thead><tr><th>Produit</th><th class="r">Qté</th><th class="r">PU</th><th class="r">Prix</th></tr></thead><tbody>' +
-      lines.map((s) => "<tr><td>" + esc(s.nom) + '</td><td class="r">' + num(s.qte) + '</td><td class="r">' + num(s.pu) + '</td><td class="r">' + num(lineTotal(s)) + "</td></tr>").join("") +
-      "</tbody></table><hr>" +
-      '<table><tr class="big"><td>TOTAL À PAYER</td><td class="r">' + money(total) + "</td></tr>" +
-      (remisRaw !== "" ? "<tr><td>Montant remis</td><td class=\"r\">" + money(remis) + "</td></tr><tr><td>Reliquat</td><td class=\"r\">" + money(Math.max(0, remis - total)) + "</td></tr>" : "") +
-      "</table><hr>" +
-      '<div class="center">Merci pour votre confiance.<br>Ticket : ' + String(t).padStart(6, "0") + " | Merci et à bientôt.</div>";
+      '<div class="center r-merci">Merci pour votre confiance!</div>';
   }
   $("#f-ticket").addEventListener("change", renderReceipt);
   $("#f-remis").addEventListener("input", renderReceipt);
