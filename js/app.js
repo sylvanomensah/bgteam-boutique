@@ -3235,7 +3235,7 @@
   // L'admin fait une course : sa valeur de vente devient le « crédit vente » du frigo de la boutique.
   // Les CC déclarent chaque soir la vente du frigo (l'oubli d'hier d'abord), déduite du crédit vente restant.
   // Quand le restant atteint le seuil (5 000 par défaut), une nouvelle course est possible.
-  let fgTab = "ops", fcLignes = [{ code: "", qte: "", total: "" }];
+  let fsVue = "tous", fgTab = "ops", fcLignes = [{ code: "", qte: "", total: "" }];
   const FRIGO_DEBUT = "2026-11-10";
   // Montants du frigo au centime près (prix unitaires = total ÷ quantité)
   const money2 = (n) => money(Math.round(Number(n || 0) * 100) / 100);
@@ -3677,14 +3677,19 @@
       return Object.assign(r, { nom: p ? p.nom : r.nom, categorie: p ? p.categorie : "", pv, stock, statut,
         valAchat: r.achat != null ? s * r.achat : 0, valVente: s * pv });
     }).sort((a, b) => (a.stock > 0) === (b.stock > 0) ? a.nom.localeCompare(b.nom) : a.stock > 0 ? -1 : 1);
-    const list = rows.filter((r) => !q || (r.nom + " " + r.code + " " + r.categorie).toLowerCase().includes(q));
+    // Vue choisie en cliquant sur les cases : tous les produits, en stock, en rupture, sous le seuil
+    const enVue = { tous: () => true, stock: (r) => r.stock > 0, rupture: (r) => r.statut === "RUPTURE", seuil: (r) => r.statut === "STOCK FAIBLE" };
+    const vueLib = { tous: "tous les produits", stock: "produits en stock", rupture: "produits en rupture", seuil: "produits sous le seuil" };
+    $("#fs-title").textContent += " · " + vueLib[fsVue];
+    const list = rows.filter((r) => enVue[fsVue](r) && (!q || (r.nom + " " + r.code + " " + r.categorie).toLowerCase().includes(q)));
     const tot = (l, f) => l.reduce((a, r) => a + f(r), 0);
-    const k = [["Produits", rows.length], ["En stock", rows.filter((r) => r.stock > 0).length], ["Stock total", num(tot(rows, (r) => r.stock))]];
-    if (admin) k.push(["Coût du stock (achat)", money2(tot(rows, (r) => r.valAchat))]);
-    k.push(["Coût du stock (vente)", money2(tot(rows, (r) => r.valVente))]);
-    if (admin) { const b = tot(rows, (r) => r.valVente - r.valAchat); k.push(["Bénéfice du stock", money2(b), b < 0 ? "danger" : "hero-good"]); }
-    k.push(["En rupture", rows.filter((r) => r.statut === "RUPTURE").length, "danger"]);
-    k.push(["Sous seuil", rows.filter((r) => r.statut === "STOCK FAIBLE").length, "warn"]);
+    const tile = (v) => 'data-fsv="' + v + '" title="Cliquer pour afficher les ' + vueLib[v] + '" style="cursor:pointer' + (fsVue === v ? ";outline:2px solid var(--primary)" : "") + '"';
+    const k = [["Produits", rows.length, "", tile("tous")], ["En stock", rows.filter(enVue.stock).length, "", tile("stock")], ["Stock total", num(tot(rows, (r) => r.stock)), "", tile("stock")]];
+    if (admin) k.push(["Coût du stock (achat)", money2(tot(rows, (r) => r.valAchat)), "", tile("stock")]);
+    k.push(["Coût du stock (vente)", money2(tot(rows, (r) => r.valVente)), "", tile("stock")]);
+    if (admin) { const b = tot(rows, (r) => r.valVente - r.valAchat); k.push(["Bénéfice du stock", money2(b), b < 0 ? "danger" : "hero-good", tile("stock")]); }
+    k.push(["En rupture", rows.filter(enVue.rupture).length, "danger", tile("rupture")]);
+    k.push(["Sous seuil", rows.filter(enVue.seuil).length, "warn", tile("seuil")]);
     $("#fs-kpis").innerHTML = kpiHtml(k);
     $("#fs-rows").innerHTML = list.length ? list.map((r) =>
       "<tr><td>" + esc(r.code) + "</td><td>" + esc(r.nom) +
@@ -3698,12 +3703,13 @@
       '</td><td class="num">' + num(r.entrees) + '</td><td class="num">' + num(r.sorties) + '</td><td class="num"><b>' + num(r.stock) +
       '</b></td><td class="num admin-only">' + money2(r.valAchat) + '</td><td class="num admin-only">' + (r.achat != null ? beneStockHtml(r.valVente - r.valAchat) : '<span class="muted">—</span>') +
       '</td><td class="num">' + money2(r.valVente) + "</td><td>" + statutBadge(r.statut) + "</td></tr>").join("")
-      : '<tr><td colspan="13" class="empty">' + (rows.length ? "Aucun produit ne correspond à la recherche." : "Aucun produit : les produits des courses du frigo apparaîtront ici.") + "</td></tr>";
+      : '<tr><td colspan="13" class="empty">' + (q ? "Aucun produit ne correspond à la recherche." : "Aucun produit dans cette vue (" + vueLib[fsVue] + ").") + "</td></tr>";
     $("#fs-foot").innerHTML = list.length ? '<tr class="total-row"><td colspan="3"><b>TOTAL' + (q ? " (recherche)" : "") + '</b></td><td class="admin-only"></td><td></td><td class="admin-only"></td><td class="num"><b>' + num(tot(list, (r) => r.entrees)) +
       '</b></td><td class="num"><b>' + num(tot(list, (r) => r.sorties)) + '</b></td><td class="num"><b>' + num(tot(list, (r) => r.stock)) + '</b></td><td class="num admin-only"><b>' + money2(tot(list, (r) => r.valAchat)) +
       '</b></td><td class="num admin-only">' + beneStockHtml(tot(list, (r) => r.valVente - r.valAchat), true) + '</td><td class="num"><b>' + money2(tot(list, (r) => r.valVente)) + "</b></td><td></td></tr>" : "";
   }
   $("#fs-search").addEventListener("input", () => renderStockFrigo(frigoScope()));
+  $("#fs-kpis").addEventListener("click", (e) => { const t = e.target.closest("[data-fsv]"); if (!t) return; fsVue = t.dataset.fsv; renderStockFrigo(frigoScope()); });
   // Modifier le nom d'un produit (admin) : petit crayon à côté de la désignation
   $("#fs-rows").addEventListener("click", (e) => {
     const b = e.target.closest("[data-fs-nom]"); if (!b || !isAdmin()) return;
