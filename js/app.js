@@ -320,6 +320,8 @@
       document.body.classList.toggle("role-admin", isAdmin());
       document.body.classList.toggle("role-vendeur", !isAdmin());
       $("#user-name").textContent = (me.nom || me.email) + " · " + (isAdmin() ? "Admin" : "Vendeur");
+      // Numéro de version visible : permet de vérifier que la dernière mise en ligne est chargée
+      if (APP_VERSION.indexOf("__") !== 0) $("#user-name").insertAdjacentHTML("beforeend", '<small class="app-ver" style="display:block;opacity:.6;font-weight:400;font-size:11px">Version ' + APP_VERSION + "</small>");
       await reload();
       screen("app");
       const start = location.hash.slice(1);
