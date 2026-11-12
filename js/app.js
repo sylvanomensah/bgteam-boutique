@@ -534,7 +534,10 @@
   }
   // CC autorisé par l'admin à gérer les fiches RH (onglet Fiche CC uniquement)
   function isRhCc() { if (isAdmin()) return false; const c = me && me.cc ? ccByCode(me.cc) : null; return !!(c && c.actif && c.gereRh); }
+  // Menus retirés (remplacés par Frigo → Nouvelle course et Frigo → Stock frigo). Le code est gardé : remettre ici pour les réactiver.
+  const MENUS_RETIRES = ["stock", "entrees"];
   function canView(view) {
+    if (MENUS_RETIRES.includes(view)) return false;
     if (view === "rh" && isRhCc()) return true;
     if (!document.getElementById("view-" + view) || (!isAdmin() && ADMIN_VIEWS.includes(view))) return false;
     if (view === "fonds") return canFonds();
