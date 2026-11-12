@@ -699,3 +699,14 @@ body.no-frigo .need-frigo, body.no-frigo-vente .need-frigo-vente, body.no-frigo-
 .course-lines input.fc-in { width: 100%; min-width: 80px; }
 .fh-course { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: #fff; }
 .fh-course summary { cursor: pointer; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; }
+
+/* Recherche de produit dans la course du frigo */
+.fc-pick { position: relative; min-width: 240px; }
+.fc-pick input { width: 100%; }
+.fc-sug { position: absolute; z-index: 50; left: 0; right: 0; top: calc(100% + 4px); max-height: 300px; overflow-y: auto; background: var(--card, #fff); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 28px rgba(15, 23, 42, .18); }
+.fc-opt { padding: 9px 12px; cursor: pointer; text-align: left; white-space: normal; }
+.fc-opt small { color: var(--muted, #64748b); margin-left: 4px; }
+.fc-opt:hover, .fc-opt.act { background: var(--primary-soft, #eef2ff); }
+.fc-opt.fc-new { border-top: 1px solid var(--border); font-weight: 600; color: var(--primary); }
+.fc-vide { padding: 9px 12px; color: var(--muted, #64748b); font-style: italic; }
+.table-wrap:has(.fc-sug:not(.hidden)) { overflow: visible; }

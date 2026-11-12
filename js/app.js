@@ -3409,7 +3409,8 @@
   // Lignes de course : même principe que « recopiez le reçu du marché » (Entrées de stock) :
   // produit choisi dans le catalogue, quantité, prix total payé → prix d'achat unitaire, prix de vente du catalogue, marge unitaire
   function renderFcLignes() {
-    $("#fc-lines").innerHTML = fcLignes.map((l, i) => '<tr data-i="' + i + '"><td><select data-k="code"><option value="">— Choisir —</option>' + productOptions(l.code) + '<option value="__new__">➕ Nouveau produit…</option></select></td>' +
+    $("#fc-lines").innerHTML = fcLignes.map((l, i) => '<tr data-i="' + i + '"><td><div class="fc-pick"><input type="text" data-pick autocomplete="off" placeholder="🔍 Rechercher un produit…" value="' + esc(fcLabel(l.code)) + '">' +
+      '<div class="fc-sug hidden"></div></div></td>' +
       '<td class="num"><input type="number" min="1" data-k="qte" value="' + esc(l.qte) + '"></td>' +
       '<td class="num"><input type="number" min="0" data-k="total" value="' + esc(l.total) + '"></td>' +
       '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
@@ -3456,13 +3457,57 @@
     fcLignes[Number(el.closest("tr").dataset.i)][el.dataset.k] = el.value;
     majFcCalc();
   });
-  $("#fc-lines").addEventListener("change", (e) => {
-    const el = e.target.closest('[data-k="code"]'); if (!el) return;
-    const idx = Number(el.closest("tr").dataset.i);
-    if (el.value === "__new__") { el.value = fcLignes[idx].code || ""; return ouvrirFgNouveauProduit(idx); }
-    fcLignes[idx].code = el.value;
+  // Recherche de produit (au lieu d'une liste « — Choisir — ») : on tape une partie du nom ou du code
+  function fcLabel(code) { const p = code ? productByCode(code) : null; return p ? p.nom + " (" + p.code + ")" : ""; }
+  const sansAccent = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  function fcSuggest(inp) {
+    const box = inp.parentElement.querySelector(".fc-sug"), idx = Number(inp.closest("tr").dataset.i);
+    const cur = fcLignes[idx] && fcLignes[idx].code, txt = inp.value.trim();
+    const q = txt === fcLabel(cur) ? "" : sansAccent(txt);
+    const mots = q.split(/\s+/).filter(Boolean);
+    const list = db.products.filter((p) => { const t = sansAccent(p.nom + " " + p.code + " " + (p.categorie || "")); return mots.every((m) => t.includes(m)); })
+      .sort((a, b) => { const sa = sansAccent(a.nom).startsWith(q) ? 0 : 1, sb_ = sansAccent(b.nom).startsWith(q) ? 0 : 1; return sa - sb_ || a.nom.localeCompare(b.nom); });
+    box.innerHTML = list.map((p, k) => '<div class="fc-opt' + (k === 0 && q ? " act" : "") + '" data-code="' + esc(p.code) + '">' + (p.valide ? "" : "⚠ ") + esc(p.nom) +
+        ' <small>' + esc(p.code) + (p.valide ? "" : " — à valider") + " · " + money(p.pv) + "</small></div>").join("") +
+      (list.length ? "" : '<div class="fc-vide">Aucun produit trouvé</div>') +
+      '<div class="fc-opt fc-new' + (!list.length ? " act" : "") + '" data-code="__new__">➕ Nouveau produit' + (txt && q ? " « " + esc(txt.toUpperCase()) + " »" : "…") + "</div>";
+    box.classList.remove("hidden");
+  }
+  function fcChoisir(inp, code) {
+    const tr = inp.closest("tr"), idx = Number(tr.dataset.i), txt = inp.value.trim();
+    inp.parentElement.querySelector(".fc-sug").classList.add("hidden");
+    if (code === "__new__") { inp.value = fcLabel(fcLignes[idx].code); return ouvrirFgNouveauProduit(idx, txt && txt !== fcLabel(fcLignes[idx].code) ? txt : ""); }
+    fcLignes[idx].code = code;
+    inp.value = fcLabel(code);
     majFcCalc();
-    const q = el.closest("tr").querySelector('[data-k="qte"]'); if (el.value && !q.value) q.focus();
+    const q = tr.querySelector('[data-k="qte"]'); if (q && !q.value) q.focus();
+  }
+  $("#fc-lines").addEventListener("focusin", (e) => { const inp = e.target.closest("[data-pick]"); if (!inp) return; inp.select(); fcSuggest(inp); });
+  $("#fc-lines").addEventListener("input", (e) => { const inp = e.target.closest("[data-pick]"); if (inp) fcSuggest(inp); });
+  $("#fc-lines").addEventListener("mousedown", (e) => {
+    const o = e.target.closest(".fc-opt"); if (!o) return;
+    e.preventDefault(); // garder le focus jusqu'au choix
+    fcChoisir(o.closest(".fc-pick").querySelector("[data-pick]"), o.dataset.code);
+  });
+  $("#fc-lines").addEventListener("keydown", (e) => {
+    const inp = e.target.closest("[data-pick]"); if (!inp) return;
+    const box = inp.parentElement.querySelector(".fc-sug"), opts = Array.from(box.querySelectorAll(".fc-opt"));
+    if (box.classList.contains("hidden") || !opts.length) return;
+    let k = opts.findIndex((o) => o.classList.contains("act"));
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); k = e.key === "ArrowDown" ? Math.min(opts.length - 1, k + 1) : Math.max(0, k - 1);
+      opts.forEach((o, j) => o.classList.toggle("act", j === k)); opts[k].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") { e.preventDefault(); if (k >= 0) fcChoisir(inp, opts[k].dataset.code); }
+    else if (e.key === "Escape") { box.classList.add("hidden"); }
+  });
+  $("#fc-lines").addEventListener("focusout", (e) => {
+    const inp = e.target.closest("[data-pick]"); if (!inp) return;
+    setTimeout(() => {
+      if (document.activeElement === inp) return;
+      inp.parentElement.querySelector(".fc-sug").classList.add("hidden");
+      const idx = Number(inp.closest("tr").dataset.i);
+      if (!inp.value.trim()) { fcLignes[idx].code = ""; majFcCalc(); } else inp.value = fcLabel(fcLignes[idx].code); // texte non choisi : on remet le produit de la ligne
+    }, 150);
   });
   // Nouveau produit depuis la course du frigo : désignation, quantité, prix total payé, PU vente → calcul automatique
   let fgnpLigne = null;
@@ -3478,10 +3523,11 @@
       '<div class="sum-row"><span>Marge unitaire</span><b>' + (q > 0 && pv > 0 ? margeHtml(mu, (mu / pv) * 100) : "—") + "</b></div>" +
       (q > 0 && pv > 0 ? '<div class="sum-row"><span>Bénéfice estimé sur la quantité</span><b>' + margeHtml(mu * q, null) + "</b></div>" : "");
   }
-  function ouvrirFgNouveauProduit(idx) {
+  function ouvrirFgNouveauProduit(idx, nom) {
     fgnpLigne = idx;
     const f = $("#fgnp-form"), l = fcLignes[idx] || {};
     f.reset();
+    if (nom) f.elements.nom.value = nom.toUpperCase();
     f.elements.code.value = prochainCodeArticle();
     f.elements.categorie.value = "Boisson";
     $("#fgnp-cats").innerHTML = Array.from(new Set(db.products.map((p) => p.categorie).filter(Boolean))).sort().map((c) => '<option value="' + esc(c) + '">').join("");
@@ -3489,7 +3535,7 @@
     if (l.total) f.elements.total.value = l.total;
     majFgnpCalc();
     $("#fgnp-dialog").showModal();
-    f.elements.nom.focus();
+    (nom ? (l.qte ? f.elements.pv : f.elements.qte) : f.elements.nom).focus();
   }
   $("#fgnp-form").addEventListener("input", majFgnpCalc);
   $("#fgnp-form").addEventListener("submit", (e) => {
@@ -3523,7 +3569,7 @@
     if (!fcLignes.length) fcLignes.push({ code: "", qte: "", total: "" });
     renderFcLignes();
   });
-  $("#fc-add").addEventListener("click", () => { fcLignes.push({ code: "", qte: "", total: "" }); renderFcLignes(); const ins = document.querySelectorAll("#fc-lines [data-k=code]"); ins[ins.length - 1].focus(); });
+  $("#fc-add").addEventListener("click", () => { fcLignes.push({ code: "", qte: "", total: "" }); renderFcLignes(); const ins = document.querySelectorAll("#fc-lines [data-pick]"); ins[ins.length - 1].focus(); });
   ["#fc-deplacement", "#fc-sachet", "#fc-autres", "#fc-autres-lib"].forEach((id) => $(id).addEventListener("input", majFcSummary));
   $("#fc-save").addEventListener("click", (e) => {
     const bq = frigoBq(), s = fcTotaux();
