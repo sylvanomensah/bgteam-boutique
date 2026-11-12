@@ -4471,7 +4471,7 @@
         '<td><select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
           [["boutique", "Consultation"], ["saisie", "Saisie utilisation"], ["gestion", "Toutes + appro."]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></td>" +
         '<td><button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></td></tr>';
-    }).join("") : '<tr><td colspan="11" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
+    }).join("") : '<tr><td colspan="10" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
   }
   ["#rp-boutique", "#rp-cc", "#rp-filtre"].forEach((id) => $(id).addEventListener("change", renderPerms));
   // Choisir un titre : applique d'un coup ses autorisations
