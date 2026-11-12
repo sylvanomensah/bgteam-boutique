@@ -207,7 +207,7 @@
       fgSorties: fgSorties.map((x) => ({ id: x.sale_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, ticket: x.ticket, code: x.code, nom: x.nom || x.code,
         qte: Number(x.qte), pu: Number(x.pu), montant: Number(x.qte) * Number(x.pu), consomme: Number(x.consomme) })),
       fgLignes: fgLignes.map((x) => ({ courseId: x.course_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, code: x.code || "", nom: x.nom || x.code || "",
-        qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat) })),
+        qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat), transfert: !!x.transfert })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       crAjust: crAjust.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
@@ -495,7 +495,9 @@
     const r = db.stocksInit.find((s) => s.code === p.code && s.boutique === bq);
     return r ? r.qte : 0;
   }
-  function stockActuel(p, bq) { return stockInitialOf(p, bq) + totalEntrees(p.code, bq) - totalVentes(p.code, bq); }
+  // Stock transféré du stock principal vers le frigo de la boutique (course de transfert)
+  function totalTransfert(code, bq) { return (db.fgLignes || []).filter((l) => l.transfert && l.code === code && inBq(bq, l.boutique)).reduce((a, l) => a + l.qte, 0); }
+  function stockActuel(p, bq) { return stockInitialOf(p, bq) + totalEntrees(p.code, bq) - totalVentes(p.code, bq) - totalTransfert(p.code, bq); }
   function statutStock(p, bq) {
     const s = stockActuel(p, bq);
     if (s <= 0) return "RUPTURE";
@@ -1319,6 +1321,7 @@
       '</td><td class="num admin-only">' + (bq !== "ALL"
         ? '<input type="number" min="0" class="inline-input si-input" data-si="' + esc(p.code) + '" value="' + stockInitialOf(p, bq) + '" title="Stock initial à ' + esc(boutiqueName(bq)) + ' (Entrée pour valider)">'
         : num(stockInitialOf(p, bq))) + '</td><td class="num admin-only">' + num(totalEntrees(p.code, bq)) + '</td><td class="num admin-only">' + num(totalVentes(p.code, bq)) +
+      (totalTransfert(p.code, bq) ? '<span class="sub" title="Quantité transférée au stock frigo">− ' + num(totalTransfert(p.code, bq)) + " au frigo</span>" : "") +
       '</td><td class="num"><b>' + num(stockActuel(p, bq)) + '</b></td><td class="num admin-only">' + num(Math.round(Math.max(0, stockActuel(p, bq)) * Number(p.cmp))) +
       // Bénéfice du stock de ce produit = prix de vente − prix d'achat
       '</td><td class="num admin-only">' + (Number(p.cmp) > 0 ? beneStockHtml(Math.max(0, stockActuel(p, bq)) * (Number(p.pv) - Number(p.cmp))) : '<span class="muted">—</span>') +

@@ -1535,11 +1535,13 @@ $$;
 revoke all on function public.frigo_sorties() from public, anon;
 grant execute on function public.frigo_sorties() to authenticated;
 -- Stock frigo : produits entrés par les courses du frigo (quantités visibles par la boutique ; prix d'achat pour l'admin seulement)
+-- transfert = ligne venant du stock principal de la boutique (retirée du stock principal)
+drop function if exists public.frigo_stock_lignes();
 create or replace function public.frigo_stock_lignes() returns table (
-  course_id uuid, boutique text, date date, created_at timestamptz, code text, nom text, qte numeric, achat numeric)
+  course_id uuid, boutique text, date date, created_at timestamptz, code text, nom text, qte numeric, achat numeric, transfert boolean)
 language sql stable security definer set search_path = public as $$
   select c.id, c.boutique, c.date, c.created_at, l ->> 'code', l ->> 'nom', (l ->> 'qte')::numeric,
-         case when public.is_admin() then (l ->> 'achat')::numeric end
+         case when public.is_admin() then (l ->> 'achat')::numeric end, coalesce((l ->> 'transfert')::boolean, false)
   from public.frigo_courses c
   join public.frigo_courses_details d on d.course_id = c.id
   cross join lateral jsonb_array_elements(d.lignes) l
