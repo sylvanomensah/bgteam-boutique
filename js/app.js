@@ -3439,9 +3439,10 @@
       $("#fd-ouverte").innerHTML = !db_ ? "Choisissez une boutique dans le filtre pour fixer sa dotation."
         : dot ? "💰 Dotation en attente de course pour <b>" + esc(boutiqueName(db_)) + "</b> : <b>" + money2(dot.montant) + "</b> (fixée par " + esc(dot.saisiPar || "—") + " le " + fmtDate(dot.createdAt.slice(0, 10)) + ")." +
             ' <button class="btn small danger" data-fd-annul="' + dot.id + '">Annuler la dotation</button>'
-        : !fd.seuilAtteint ? "🔒 Dotation possible quand le crédit vente restant atteint <b>" + money2(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money2(Math.max(0, fd.restant)) + "</b>)."
-        : (fd.courses.length ? "✅ Seuil atteint (restant " + money2(Math.max(0, fd.restant)) + ")" : "🧊 Premier approvisionnement du frigo") + " : fixez la dotation de crédit de <b>" + esc(boutiqueName(db_)) + "</b>.";
-      $("#fd-form").classList.toggle("hidden", !db_ || !!dot || !fd.seuilAtteint);
+        : !fd.seuilAtteint && !admin ? "🔒 Dotation possible quand le crédit vente restant atteint <b>" + money2(db.settings.frigoSeuil) + "</b> (actuellement <b>" + money2(Math.max(0, fd.restant)) + "</b>)."
+        : (!fd.courses.length ? "🧊 Premier approvisionnement du frigo" : fd.seuilAtteint ? "✅ Seuil atteint (restant " + money2(Math.max(0, fd.restant)) + ")" : "👑 Dotation administrateur à tout moment (crédit vente restant actuel " + money2(Math.max(0, fd.restant)) + ")") +
+          " : fixez la dotation de crédit de <b>" + esc(boutiqueName(db_)) + "</b>. La course devra être exactement égale à ce montant.";
+      $("#fd-form").classList.toggle("hidden", !db_ || !!dot || (!fd.seuilAtteint && !admin));
       if (db_ && !dot && document.activeElement !== $("#fd-montant") && !$("#fd-montant").value) { const der = db.fgDotations.filter((d) => d.boutique === db_ && d.statut === "Utilisée").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]; if (der) $("#fd-montant").value = der.montant; }
     }
     // Course (admin ou CC de la boutique) : seulement avec une dotation ouverte, et égale à cette dotation
@@ -3450,7 +3451,7 @@
       $("#fc-zone").classList.toggle("hidden", !dot);
       $("#fc-etat").innerHTML = !sbq ? (admin ? "Choisissez une boutique dans le filtre pour enregistrer une course." : "Vous n'êtes affecté à aucune boutique.")
         : dot ? "💰 Dotation de crédit pour <b>" + esc(boutiqueName(sbq)) + "</b> : <b>" + money2(dot.montant) + "</b>. Votre course doit être <b>exactement égale</b> à ce montant."
-        : "🔒 Pas de dotation de crédit pour ce frigo : l'administrateur (ou le CC désigné) doit d'abord fixer la dotation" + (fi && fi.courses.length && !fi.seuilAtteint ? " — elle sera possible quand le crédit vente restant atteindra " + money2(db.settings.frigoSeuil) + "." : ".");
+        : "🔒 Pas de dotation de crédit pour ce frigo : l'administrateur (ou le CC désigné) doit d'abord fixer la dotation" + (!admin && fi && fi.courses.length && !fi.seuilAtteint ?" — elle sera possible quand le crédit vente restant atteindra " + money2(db.settings.frigoSeuil) + "." : ".");
       $("#fc-date").readOnly = !admin;
       if (!$("#fc-date").value || !admin) $("#fc-date").value = t;
       renderFcLignes();
