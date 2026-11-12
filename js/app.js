@@ -324,7 +324,9 @@
       if (APP_VERSION.indexOf("__") !== 0) $("#user-name").insertAdjacentHTML("beforeend", '<small class="app-ver" style="display:block;opacity:.6;font-weight:400;font-size:11px">Version ' + APP_VERSION + "</small>");
       await reload();
       screen("app");
-      const start = location.hash.slice(1);
+      // Après actualisation : on revient sur le même menu (adresse #menu, sinon dernier menu mémorisé)
+      let start = location.hash.slice(1);
+      if (!canView(start)) { try { start = localStorage.getItem("menu-" + me.id) || ""; } catch (e) { start = ""; } }
       show(canView(start) ? start : isAdmin() ? "dashboard" : "caisse");
       startRealtime();
     } catch (e) {
@@ -549,6 +551,9 @@
   function show(view) {
     if (!canView(view)) view = isAdmin() ? "dashboard" : "caisse";
     currentView = view;
+    // Mémorise le menu ouvert (adresse + navigateur) pour le retrouver après une actualisation
+    try { if (location.hash !== "#" + view) history.replaceState(null, "", "#" + view); } catch (e) {}
+    try { if (me) localStorage.setItem("menu-" + me.id, view); } catch (e) {}
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + view));
     document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
     // Titre de la barre mobile = rubrique ouverte
@@ -2831,7 +2836,7 @@
   }
   const SEUIL_RECHARGE = () => db.settings.creditSeuil || 5000;
   function jourLong(d) { return parse(d).toLocaleDateString("fr-FR", { weekday: "long" }) + " " + fmtDate(d); }
-  let crOp = "YAS", crTab = "ops", crFiltreInit = false;
+  let crOp = "YAS", crTab = (() => { try { return localStorage.getItem("onglet-credit") || "ops"; } catch (e) { return "ops"; } })(), crFiltreInit = false;
   const OPS = ["YAS", "MOOV"];
   const logoOp = (op, sm) => '<img class="logo-op ' + op.toLowerCase() + (sm ? " sm" : "") + '" src="icons/' + op.toLowerCase() + '.png" alt="' + op + '">';
   function premierDuMois(d) { return d.slice(0, 7) + "-01"; }
@@ -3174,7 +3179,7 @@
   ["#cr-boutique", "#cr-mois"].forEach((id) => $(id).addEventListener("change", () => { $("#cr-montant").dataset.touche = ""; renderCredit(); }));
   $("#cr-tabs").addEventListener("click", (e) => {
     const b = e.target.closest("[data-cr-tab]"); if (!b) return;
-    crTab = b.dataset.crTab; renderCredit(); window.scrollTo({ top: 0 });
+    crTab = b.dataset.crTab; try { localStorage.setItem("onglet-credit", crTab); } catch (e) {} renderCredit(); window.scrollTo({ top: 0 });
   });
   $("#rc-print").addEventListener("click", () => {
     document.body.classList.add("print-recap");
@@ -3316,7 +3321,7 @@
   // L'admin fait une course : sa valeur de vente devient le « crédit vente » du frigo de la boutique.
   // Les CC déclarent chaque soir la vente du frigo (l'oubli d'hier d'abord), déduite du crédit vente restant.
   // Quand le restant atteint le seuil (5 000 par défaut), une nouvelle course est possible.
-  let fsVue = "tous", fgTab = "ops", fcLignes = [{ code: "", qte: "", total: "" }];
+  let fsVue = "tous", fgTab = (() => { try { return localStorage.getItem("onglet-frigo") || "ops"; } catch (e) { return "ops"; } })(), fcLignes = [{ code: "", qte: "", total: "" }];
   const FRIGO_DEBUT = "2026-11-10";
   // Montants du frigo au centime près (prix unitaires = total ÷ quantité)
   const money2 = (n) => money(Math.round(Number(n || 0) * 100) / 100);
@@ -3729,7 +3734,7 @@
     if (r && confirm("Supprimer ce retrait ?")) act(async () => chk(await sb.from("frigo_retraits").delete().eq("id", r.dataset.fxDel)), "Retrait supprimé.", r);
   });
   ["#fg-boutique", "#fg-mois"].forEach((id) => $(id).addEventListener("change", renderFrigo));
-  $("#fg-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-fg-tab]"); if (!b) return; fgTab = b.dataset.fgTab; renderFrigo(); window.scrollTo({ top: 0 }); });
+  $("#fg-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-fg-tab]"); if (!b) return; fgTab = b.dataset.fgTab; try { localStorage.setItem("onglet-frigo", fgTab); } catch (e) {} renderFrigo(); window.scrollTo({ top: 0 }); });
   $("#fr-print").addEventListener("click", () => {
     document.body.classList.add("print-recap");
     window.addEventListener("afterprint", () => document.body.classList.remove("print-recap"), { once: true });
