@@ -6,6 +6,10 @@
   <title>BGTeam Boutique</title>
   <meta name="theme-color" content="#14213d">
   <meta name="app-version" content="__APP_VERSION__">
+  <script>
+    // L'ancienne adresse (GitHub) a du retard sur les mises à jour : on ouvre toujours le site officiel.
+    if (/github\.io$/.test(location.hostname)) location.replace("https://bgteam-boutique.bgteam.workers.dev/" + location.search + location.hash);
+  </script>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="BGTeam">
