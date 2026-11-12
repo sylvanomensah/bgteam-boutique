@@ -1063,11 +1063,26 @@
     const ccObj = ccByCode(cc);
     const vendeur = agentAt(ccObj, date) || currentAgent(ccObj) || (isAdmin() ? "" : me.nom);
     const remis = $("#c-remis").value;
+    const btn = ev.currentTarget;
+    // Confirmation : la vente n'est enregistrée que si on répond Oui
+    const totalV = cart.reduce((a, l) => a + l.qte * l.pu, 0), nbA = cart.reduce((a, l) => a + l.qte, 0);
+    const dlg = $("#crconf-dialog");
+    $("#crconf-titre").textContent = "Valider la vente ?";
+    $("#crconf-oui").textContent = "Oui, valider";
+    $("#crconf-logo").innerHTML = "";
+    $("#crconf-montant").textContent = money(totalV);
+    $("#crconf-text").innerHTML = "<b>" + nbA + " article" + (nbA > 1 ? "s" : "") + "</b> : " + cart.map((l) => esc(l.nom) + " ×" + num(l.qte)).join(", ") +
+      "<br>Client : <b>" + esc($("#c-client").value.trim() || "PASSAGER") + "</b> · " + ccLabel(cc) +
+      (remis !== "" ? "<br>Montant remis : " + money(Number(remis)) + " · Rendu : <b>" + money(Math.max(0, Number(remis) - totalV)) + "</b>" : "") +
+      "<br>Confirmez-vous cette vente ?";
+    dlg.returnValue = "";
+    const ok = await new Promise((resolve) => { dlg.onclose = () => resolve(dlg.returnValue === "oui"); dlg.showModal(); });
+    if (!ok) return toast("Vente non validée : rien n'a été enregistré.");
     const res = await act(async () => chk(await sb.rpc("create_sale", {
       p_date: date, p_client: $("#c-client").value.trim() || "PASSAGER", p_cc: cc, p_vendeur: vendeur,
       p_num_client: $("#c-numclient").value.trim(), p_adresse: $("#c-adresse").value.trim(),
       p_lines: cart.map((l) => ({ code: l.code, qte: l.qte, pu: l.pu }))
-    })), null, ev.currentTarget);
+    })), null, btn);
     if (!res.ok) return;
     const ticket = res.data;
     cart = [];
