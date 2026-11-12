@@ -29,7 +29,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -140,6 +140,9 @@
     // Ventes en caisse des produits du frigo (calculées par la base : prix d'achat de la dernière course)
     let fgSorties = [];
     try { fgSorties = chk(await sb.rpc("frigo_sorties")) || []; } catch (e) { fgSorties = []; }
+    // Stock frigo : lignes des courses (quantités ; prix d'achat pour l'admin)
+    let fgLignes = [];
+    try { fgLignes = chk(await sb.rpc("frigo_stock_lignes")) || []; } catch (e) { fgLignes = []; }
     const st = chk(settingsRes) || {};
     // Anniversaires du jour (sans date ni âge) : pour les notifications
     let anniv = [];
@@ -203,6 +206,8 @@
       fgDotations: fgDotations.map((x) => ({ id: x.id, boutique: x.boutique, montant: Number(x.montant), statut: x.statut, courseId: x.course_id, saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgSorties: fgSorties.map((x) => ({ id: x.sale_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, ticket: x.ticket, code: x.code, nom: x.nom || x.code,
         qte: Number(x.qte), pu: Number(x.pu), montant: Number(x.qte) * Number(x.pu), consomme: Number(x.consomme) })),
+      fgLignes: fgLignes.map((x) => ({ courseId: x.course_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, code: x.code || "", nom: x.nom || x.code || "",
+        qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat) })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       crAjust: crAjust.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
@@ -473,8 +478,14 @@
   function totalEntrees(code, bq) {
     return db.entries.filter((e) => e.code === code && e.statut === "Validée" && inBq(bq, e.boutique)).reduce((a, e) => a + Number(e.qte), 0);
   }
+  // Les ventes en caisse des produits du frigo sortent du STOCK FRIGO, pas du stock principal.
+  let fgIdsSrc = null, fgIds = new Set();
+  function venteFrigo(s) {
+    if (fgIdsSrc !== db.fgSorties) { fgIdsSrc = db.fgSorties; fgIds = new Set((db.fgSorties || []).map((x) => x.id)); }
+    return fgIds.has(s.id);
+  }
   function totalVentes(code, bq) {
-    return db.sales.filter((s) => s.code === code && isCountedSale(s) && inBq(bq, saleBoutique(s))).reduce((a, s) => a + Number(s.qte), 0);
+    return db.sales.filter((s) => s.code === code && isCountedSale(s) && inBq(bq, saleBoutique(s)) && !venteFrigo(s)).reduce((a, s) => a + Number(s.qte), 0);
   }
   // Stock initial par boutique (table stocks_initiaux) ; « ALL » = somme des boutiques existantes.
   function stockInitialOf(p, bq) {
@@ -3267,8 +3278,10 @@
     document.querySelectorAll("#fg-tabs [data-fg-tab]").forEach((b) => b.classList.toggle("active", b.dataset.fgTab === fgTab));
     $("#fg-main").classList.toggle("hidden", fgTab !== "ops");
     $("#fg-recap").classList.toggle("hidden", fgTab !== "recap");
+    $("#fg-stock").classList.toggle("hidden", fgTab !== "stock");
     const scope = frigoScope();
     if (fgTab === "recap") return renderRecapFrigo(scope);
+    if (fgTab === "stock") return renderStockFrigo(scope);
 
     // Cartes (une boutique) ou tableau (plusieurs)
     const une = scope.length === 1;
@@ -3572,6 +3585,49 @@
     window.addEventListener("afterprint", () => document.body.classList.remove("print-recap"), { once: true });
     window.print();
   });
+  // Stock frigo (format du menu Stock) : entrées = quantités des courses du frigo, sorties = ventes en caisse de ces produits
+  function renderStockFrigo(scope) {
+    const admin = isAdmin(), codes = scope.map((b) => b.code), q = $("#fs-search").value.trim().toLowerCase();
+    $("#fs-title").textContent = "Stock frigo — " + (scope.length === 1 ? scope[0].nom : scope.length ? "toutes les boutiques" : "aucune boutique");
+    const lignes = db.fgLignes.filter((l) => codes.includes(l.boutique) && l.code);
+    const sorties = db.fgSorties.filter((x) => codes.includes(x.boutique));
+    const parCode = new Map();
+    lignes.forEach((l) => {
+      const r = parCode.get(l.code) || { code: l.code, nom: l.nom, entrees: 0, sorties: 0, achat: null, achatAt: "" };
+      r.entrees += l.qte;
+      if (l.achat != null && String(l.createdAt) >= r.achatAt) { r.achat = l.achat; r.achatAt = String(l.createdAt); }
+      parCode.set(l.code, r);
+    });
+    sorties.forEach((x) => { const r = parCode.get(x.code); if (r) r.sorties += x.qte; });
+    const rows = Array.from(parCode.values()).map((r) => {
+      const p = db.products.find((y) => y.code === r.code);
+      const stock = r.entrees - r.sorties, pv = p ? Number(p.pv) : 0, s = Math.max(0, stock);
+      const statut = stock <= 0 ? "RUPTURE" : p && Number(p.stockMin) > 0 && stock <= Number(p.stockMin) ? "STOCK FAIBLE" : "OK";
+      return Object.assign(r, { nom: p ? p.nom : r.nom, categorie: p ? p.categorie : "", pv, stock, statut,
+        valAchat: r.achat != null ? s * r.achat : 0, valVente: s * pv });
+    }).sort((a, b) => (a.stock > 0) === (b.stock > 0) ? a.nom.localeCompare(b.nom) : a.stock > 0 ? -1 : 1);
+    const list = rows.filter((r) => !q || (r.nom + " " + r.code + " " + r.categorie).toLowerCase().includes(q));
+    const tot = (l, f) => l.reduce((a, r) => a + f(r), 0);
+    const k = [["Produits", rows.length], ["En stock", rows.filter((r) => r.stock > 0).length], ["Stock total", num(tot(rows, (r) => r.stock))]];
+    if (admin) k.push(["Coût du stock (achat)", money2(tot(rows, (r) => r.valAchat))]);
+    k.push(["Coût du stock (vente)", money2(tot(rows, (r) => r.valVente))]);
+    if (admin) { const b = tot(rows, (r) => r.valVente - r.valAchat); k.push(["Bénéfice du stock", money2(b), b < 0 ? "danger" : "hero-good"]); }
+    k.push(["En rupture", rows.filter((r) => r.statut === "RUPTURE").length, "danger"]);
+    k.push(["Sous seuil", rows.filter((r) => r.statut === "STOCK FAIBLE").length, "warn"]);
+    $("#fs-kpis").innerHTML = kpiHtml(k);
+    $("#fs-rows").innerHTML = list.length ? list.map((r) =>
+      "<tr><td>" + esc(r.code) + "</td><td>" + esc(r.nom) + "</td><td>" + esc(r.categorie) +
+      '</td><td class="num admin-only">' + (r.achat != null ? money2(r.achat) : '<span class="muted">—</span>') + '</td><td class="num">' + num(r.pv) +
+      '</td><td class="num admin-only">' + (r.achat != null ? '<b class="delta ' + (r.pv - r.achat < 0 ? "down" : "up") + '">' + (r.pv - r.achat > 0 ? "+" : "") + money2(r.pv - r.achat) + "</b>" : '<span class="muted">—</span>') +
+      '</td><td class="num">' + num(r.entrees) + '</td><td class="num">' + num(r.sorties) + '</td><td class="num"><b>' + num(r.stock) +
+      '</b></td><td class="num admin-only">' + money2(r.valAchat) + '</td><td class="num admin-only">' + (r.achat != null ? beneStockHtml(r.valVente - r.valAchat) : '<span class="muted">—</span>') +
+      '</td><td class="num">' + money2(r.valVente) + "</td><td>" + statutBadge(r.statut) + "</td></tr>").join("")
+      : '<tr><td colspan="13" class="empty">' + (rows.length ? "Aucun produit ne correspond à la recherche." : "Aucun produit : les produits des courses du frigo apparaîtront ici.") + "</td></tr>";
+    $("#fs-foot").innerHTML = list.length ? '<tr class="total-row"><td colspan="3"><b>TOTAL' + (q ? " (recherche)" : "") + '</b></td><td class="admin-only"></td><td></td><td class="admin-only"></td><td class="num"><b>' + num(tot(list, (r) => r.entrees)) +
+      '</b></td><td class="num"><b>' + num(tot(list, (r) => r.sorties)) + '</b></td><td class="num"><b>' + num(tot(list, (r) => r.stock)) + '</b></td><td class="num admin-only"><b>' + money2(tot(list, (r) => r.valAchat)) +
+      '</b></td><td class="num admin-only">' + beneStockHtml(tot(list, (r) => r.valVente - r.valAchat), true) + '</td><td class="num"><b>' + money2(tot(list, (r) => r.valVente)) + "</b></td><td></td></tr>" : "";
+  }
+  $("#fs-search").addEventListener("input", () => renderStockFrigo(frigoScope()));
   // Récap mensuel du frigo
   function renderRecapFrigo(scope) {
     const admin = isAdmin(), mois = $("#fg-mois").value || today().slice(0, 7), nomMois = fmtMonth(mois + "-01"), codes = scope.map((b) => b.code);

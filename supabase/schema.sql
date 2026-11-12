@@ -1534,6 +1534,19 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.frigo_sorties() from public, anon;
 grant execute on function public.frigo_sorties() to authenticated;
+-- Stock frigo : produits entrés par les courses du frigo (quantités visibles par la boutique ; prix d'achat pour l'admin seulement)
+create or replace function public.frigo_stock_lignes() returns table (
+  course_id uuid, boutique text, date date, created_at timestamptz, code text, nom text, qte numeric, achat numeric)
+language sql stable security definer set search_path = public as $$
+  select c.id, c.boutique, c.date, c.created_at, l ->> 'code', l ->> 'nom', (l ->> 'qte')::numeric,
+         case when public.is_admin() then (l ->> 'achat')::numeric end
+  from public.frigo_courses c
+  join public.frigo_courses_details d on d.course_id = c.id
+  cross join lateral jsonb_array_elements(d.lignes) l
+  where public.is_member() and (public.is_global() or public.can_frigo_dotation() or c.boutique = public.my_boutique());
+$$;
+revoke all on function public.frigo_stock_lignes() from public, anon;
+grant execute on function public.frigo_stock_lignes() to authenticated;
 drop policy if exists credit_achats_select on public.credit_achats;
 create policy credit_achats_select on public.credit_achats for select to authenticated
   using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));

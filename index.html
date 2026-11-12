@@ -711,9 +711,35 @@
         <h1 id="fg-titre">Frigo</h1>
         <div class="tabs cr-tabs" id="fg-tabs">
           <button data-fg-tab="ops" class="active">🧊 Opérations</button>
+          <button data-fg-tab="stock">📦 Stock frigo</button>
           <button data-fg-tab="recap">📊 Récap</button>
         </div>
         <label>Boutique<select id="fg-boutique"></select></label>
+      </div>
+
+      <!-- Stock frigo (format du menu Stock) -->
+      <div id="fg-stock" class="hidden">
+        <div class="card filterbar">
+          <p class="hint" style="margin:0">STOCK FRIGO = Quantités achetées dans les courses du frigo − Ventes en caisse de ces produits dans la boutique. Ces ventes ne sont plus déduites du stock principal.</p>
+        </div>
+        <div class="kpis" id="fs-kpis"></div>
+        <div class="card">
+          <div class="toolbar">
+            <h2 id="fs-title">Stock frigo</h2>
+            <input id="fs-search" placeholder="Rechercher un produit">
+          </div>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr>
+                <th>Code</th><th>Désignation</th><th>Catégorie</th><th class="num admin-only" title="Prix d'achat unitaire de la dernière course">Dernier achat</th><th class="num">PU vente</th><th class="num admin-only" title="PU vente − dernier prix d'achat">Bénéfice / unité</th>
+                <th class="num">Entrées (courses)</th><th class="num">Ventes (caisse)</th>
+                <th class="num">Stock actuel</th><th class="num admin-only" title="Stock actuel × dernier prix d'achat">Prix d'achat</th><th class="num admin-only" title="Prix de vente − prix d'achat du stock">Bénéfice</th><th class="num" title="Stock actuel × PU vente">Prix de vente</th><th>Statut</th>
+              </tr></thead>
+              <tbody id="fs-rows"></tbody>
+              <tfoot id="fs-foot"></tfoot>
+            </table>
+          </div>
+        </div>
       </div>
 
       <!-- Récap d'un mois -->
