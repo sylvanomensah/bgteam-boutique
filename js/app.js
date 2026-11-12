@@ -3392,10 +3392,16 @@
     const tete = "<b>" + fmtDate(c.date) + "</b> · " + esc(boutiqueName(c.boutique)) + " · crédit vente (total de la course) <b>" + money2(c.cout) + "</b> · estimation des ventes " + money2(c.valeur) +
       (admin ? ' · bénéfice estimé <b class="pos">' + money2(c.valeur - c.cout) + "</b>" : "") + ' <span class="muted">par ' + esc(c.saisiPar || "—") + "</span>";
     if (!admin || !d) return '<div class="fh-course">' + tete + "</div>";
+    // Bénéfice par produit = total vente − total achat − part des frais (répartis au prorata du total achat) : la somme = bénéfice estimé
+    const frais = (d.deplacement || 0) + (d.sachet || 0) + (d.autres || 0), achats = sumBy(d.lignes, (l) => l.qte * l.achat);
+    const lg = d.lignes.map((l) => { const ta = l.qte * l.achat, tv = l.qte * l.vente, pf = achats > 0 ? frais * ta / achats : 0; return { l, ta, tv, pf, bene: tv - ta - pf }; });
     return '<details class="fh-course"><summary>' + tete + ' <button class="btn small danger" data-fc-del="' + c.id + '">✕</button></summary>' +
-      '<div class="table-wrap" style="margin-top:8px"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix d\'achat</th><th class="num">Prix de vente</th><th class="num">Total achat</th><th class="num">Total vente</th></tr></thead><tbody>' +
-      d.lignes.map((l) => "<tr><td>" + esc(l.nom) + '</td><td class="num">' + num(l.qte) + '</td><td class="num">' + money2(l.achat) + '</td><td class="num">' + money2(l.vente) +
-        '</td><td class="num">' + money2(l.qte * l.achat) + '</td><td class="num">' + money2(l.qte * l.vente) + "</td></tr>").join("") + "</tbody></table></div>" +
+      '<div class="table-wrap" style="margin-top:8px"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix d\'achat</th><th class="num">Prix de vente</th><th class="num">Total achat</th><th class="num">Total vente</th>' +
+      '<th class="num" title="Frais de la course répartis au prorata du total achat">Part des frais</th><th class="num" title="Total vente − total achat − part des frais">Bénéfice</th></tr></thead><tbody>' +
+      lg.map((x) => "<tr><td>" + esc(x.l.nom) + '</td><td class="num">' + num(x.l.qte) + '</td><td class="num">' + money2(x.l.achat) + '</td><td class="num">' + money2(x.l.vente) +
+        '</td><td class="num">' + money2(x.ta) + '</td><td class="num">' + money2(x.tv) + '</td><td class="num">' + money2(x.pf) + '</td><td class="num"><b class="' + (x.bene < 0 ? "neg" : "pos") + '">' + money2(x.bene) + "</b></td></tr>").join("") +
+      '</tbody><tfoot><tr class="total-row"><td><b>TOTAL</b></td><td class="num"><b>' + num(sumBy(lg, (x) => x.l.qte)) + '</b></td><td></td><td></td><td class="num"><b>' + money2(sumBy(lg, (x) => x.ta)) +
+      '</b></td><td class="num"><b>' + money2(sumBy(lg, (x) => x.tv)) + '</b></td><td class="num"><b>' + money2(sumBy(lg, (x) => x.pf)) + '</b></td><td class="num"><b class="pos">' + money2(sumBy(lg, (x) => x.bene)) + "</b></td></tr></tfoot></table></div>" +
       '<div class="course-summary" style="margin-top:8px">' + fcSummary({ achats: d.achats, deplacement: d.deplacement, sachet: d.sachet, autres: d.autres, autresLib: d.autresLib, vente: c.valeur }) + "</div></details>";
   }
   function fcSummary(s) {
