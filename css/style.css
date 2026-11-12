@@ -211,7 +211,8 @@ input[type=checkbox], input[type=radio] { min-height: 0; width: 18px; height: 18
 /* Reçu de la dernière vente, en miniature dans la Caisse */
 .c-last { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
 .c-last-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.c-last-btns { display: flex; gap: 8px; }
+.c-last-btns { display: flex; gap: 8px; margin-top: 10px; }
+#c-last-search { flex: 1; min-width: 200px; max-width: 320px; }
 .receipt.receipt-mini { max-width: 300px; font-size: 11px; padding: 14px; }
 .receipt.receipt-mini .r-nom { font-size: 15px; }
 .receipt.receipt-mini .big { font-size: 13px; }

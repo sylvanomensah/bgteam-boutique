@@ -974,8 +974,8 @@
 
   // ---------- Caisse ----------
   function clientNames() {
-    const set = new Set(["CLIENT COMPTOIR"]);
-    db.sales.forEach((s) => s.client && set.add(s.client));
+    const set = new Set(["PASSAGER"]);
+    db.sales.forEach((s) => s.client && s.client !== "CLIENT COMPTOIR" && set.add(s.client));
     return Array.from(set).sort();
   }
   function lockedCc() {
@@ -1064,7 +1064,7 @@
     const vendeur = agentAt(ccObj, date) || currentAgent(ccObj) || (isAdmin() ? "" : me.nom);
     const remis = $("#c-remis").value;
     const res = await act(async () => chk(await sb.rpc("create_sale", {
-      p_date: date, p_client: $("#c-client").value.trim() || "CLIENT COMPTOIR", p_cc: cc, p_vendeur: vendeur,
+      p_date: date, p_client: $("#c-client").value.trim() || "PASSAGER", p_cc: cc, p_vendeur: vendeur,
       p_num_client: $("#c-numclient").value.trim(), p_adresse: $("#c-adresse").value.trim(),
       p_lines: cart.map((l) => ({ code: l.code, qte: l.qte, pu: l.pu }))
     })), null, ev.currentTarget);
@@ -1074,27 +1074,54 @@
     $("#c-remis").value = "";
     $("#c-numclient").value = "";
     $("#c-adresse").value = "";
-    $("#c-client").value = "CLIENT COMPTOIR";
+    $("#c-client").value = "PASSAGER";
     renderCart();
     toast("Vente enregistrée — ticket N° " + ticket);
     // Reçu en miniature sous la caisse : impression seulement si on clique sur « Imprimer le reçu »
     $("#f-remis").value = remis;
     renderFacture();
     $("#f-ticket").value = String(ticket);
-    renderReceipt();
-    $("#c-last-titre").textContent = "Reçu du ticket N° " + ticket;
-    $("#c-last-receipt").innerHTML = $("#receipt").innerHTML;
-    $("#c-last").classList.remove("hidden");
+    afficherRecuCaisse(ticket);
     $("#c-last").scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
 
   // Imprimer le reçu de la dernière vente (le ticket est déjà préparé dans Facturation, que l'impression utilise)
+  // Reçu affiché en miniature dans la Caisse (dernière vente ou ticket recherché)
+  let recuCaisse = null;
+  function afficherRecuCaisse(t) {
+    renderFacture();
+    if (!ticketList().includes(Number(t))) return false;
+    recuCaisse = Number(t);
+    $("#f-ticket").value = String(t);
+    renderReceipt();
+    $("#c-last-titre").textContent = "Reçu du ticket N° " + t;
+    $("#c-last-receipt").innerHTML = $("#receipt").innerHTML;
+    $("#c-last-zone").classList.remove("hidden");
+    $("#c-last-vide").classList.add("hidden");
+    return true;
+  }
+  function chercherRecu() {
+    const v = $("#c-last-search").value.trim().replace(/\D/g, "");
+    if (!v) return;
+    $("#f-remis").value = "";
+    if (afficherRecuCaisse(Number(v))) $("#c-last-search").value = "";
+    else toast("Aucun ticket validé N° " + v + ".");
+  }
+  // Suggestions : les derniers tickets (numéro · date · client · total)
+  $("#c-last-search").addEventListener("focus", () => {
+    const tickets = ticketList().slice().sort((a, b) => b - a).slice(0, 50);
+    $("#c-last-tickets").innerHTML = tickets.map((t) => {
+      const l = db.sales.filter((s) => Number(s.ticket) === t && s.valide === "OUI"), f = l[0] || {};
+      const cl = !f.client || f.client === "CLIENT COMPTOIR" ? "PASSAGER" : f.client;
+      return '<option value="' + t + '">' + esc(fmtDate(f.date || "") + " · " + cl + " · " + money(l.reduce((a, s) => a + lineTotal(s), 0))) + "</option>";
+    }).join("");
+  });
+  $("#c-last-search").addEventListener("change", chercherRecu);
   $("#c-last-print").addEventListener("click", () => {
-    const t = ($("#c-last-titre").textContent.match(/\d+$/) || [""])[0];
-    if (t) { renderFacture(); $("#f-ticket").value = t; renderReceipt(); }
+    if (recuCaisse) { renderFacture(); $("#f-ticket").value = String(recuCaisse); renderReceipt(); }
     window.print();
   });
-  $("#c-last-close").addEventListener("click", () => $("#c-last").classList.add("hidden"));
+  $("#c-last-close").addEventListener("click", () => { recuCaisse = null; $("#c-last-zone").classList.add("hidden"); $("#c-last-vide").classList.remove("hidden"); $("#c-last-titre").textContent = "Reçus"; });
 
   // ---------- Ventes ----------
   // Boutiques
@@ -2060,7 +2087,7 @@
       "<table>" + ligne2("Le " + fmtDate(first.date), heure ? "à " + heure : "") +
       ligne2("Ticket N° " + String(t).padStart(6, "0"), "Caisse : " + esc(String(first.cc || "—"))) +
       (vendeur ? ligne2("Vendeur : " + esc(vendeur), "") : "") +
-      ligne2("Client : " + esc(first.client || "Passager"), "") + "</table><hr>" +
+      ligne2("Client : " + esc(!first.client || first.client === "CLIENT COMPTOIR" ? "PASSAGER" : first.client), "") + "</table><hr>" +
       '<table class="r-lignes"><thead><tr><th>Désignation</th><th class="r">Qté</th><th class="r">P.U.</th><th class="r">Montant</th></tr></thead><tbody>' +
       lines.map((s) => "<tr><td>" + esc(String(s.nom).toUpperCase()) + '</td><td class="r">' + num(s.qte) + '</td><td class="r">' + num(s.pu) + '</td><td class="r">' + num(lineTotal(s)) + "</td></tr>").join("") +
       "</tbody></table><hr>" +

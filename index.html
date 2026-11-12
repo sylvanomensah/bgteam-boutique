@@ -209,7 +209,7 @@
           <div class="form">
             <label>Date<input type="date" id="c-date"></label>
             <label>Code commercial (CC)<select id="c-cc"></select></label>
-            <label class="full">Client<input id="c-client" list="clients-list" value="CLIENT COMPTOIR"></label>
+            <label class="full">Client<input id="c-client" list="clients-list" value="PASSAGER"></label>
             <label>N° client<input id="c-numclient" placeholder="Optionnel"></label>
             <label>Adresse client<input id="c-adresse" placeholder="Optionnel"></label>
           </div>
@@ -239,11 +239,16 @@
             <button class="btn success" id="c-validate">Valider la vente</button>
           </div>
           <!-- Reçu de la dernière vente, en miniature : imprimé seulement sur demande -->
-          <div id="c-last" class="c-last hidden">
-            <div class="c-last-head"><b id="c-last-titre">Reçu</b>
+          <div id="c-last" class="c-last">
+            <div class="c-last-head"><b id="c-last-titre">Reçus</b>
+              <input type="search" id="c-last-search" list="c-last-tickets" inputmode="numeric" autocomplete="off" placeholder="🔍 Rechercher un reçu (N° de ticket)">
+              <datalist id="c-last-tickets"></datalist>
+            </div>
+            <div id="c-last-zone" class="hidden">
+              <div class="receipt receipt-mini" id="c-last-receipt"></div>
               <div class="c-last-btns"><button class="btn primary" id="c-last-print">🖨 Imprimer le reçu</button><button class="btn" id="c-last-close">Fermer</button></div>
             </div>
-            <div class="receipt receipt-mini" id="c-last-receipt"></div>
+            <p class="hint" id="c-last-vide" style="margin:6px 0 0">Après « Valider la vente », le reçu s'affiche ici. Vous pouvez aussi chercher un ancien reçu par son numéro.</p>
           </div>
         </div>
       </div>
