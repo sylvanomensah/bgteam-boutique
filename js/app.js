@@ -3684,10 +3684,10 @@
     const list = rows.filter((r) => enVue[fsVue](r) && (!q || (r.nom + " " + r.code + " " + r.categorie).toLowerCase().includes(q)));
     const tot = (l, f) => l.reduce((a, r) => a + f(r), 0);
     const tile = (v) => 'data-fsv="' + v + '" title="Cliquer pour afficher les ' + vueLib[v] + '" style="cursor:pointer' + (fsVue === v ? ";outline:2px solid var(--primary)" : "") + '"';
-    const k = [["Produits", rows.length, "", tile("tous")], ["En stock", rows.filter(enVue.stock).length, "", tile("stock")], ["Stock total", num(tot(rows, (r) => r.stock)), "", tile("stock")]];
-    if (admin) k.push(["Coût du stock (achat)", money2(tot(rows, (r) => r.valAchat)), "", tile("stock")]);
-    k.push(["Coût du stock (vente)", money2(tot(rows, (r) => r.valVente)), "", tile("stock")]);
-    if (admin) { const b = tot(rows, (r) => r.valVente - r.valAchat); k.push(["Bénéfice du stock", money2(b), b < 0 ? "danger" : "hero-good", tile("stock")]); }
+    const k = [["Produits", rows.length, "", tile("tous")], ["En stock", rows.filter(enVue.stock).length, "", tile("stock")], ["Stock total", num(tot(rows, (r) => r.stock))]];
+    if (admin) k.push(["Coût du stock (achat)", money2(tot(rows, (r) => r.valAchat))]);
+    k.push(["Coût du stock (vente)", money2(tot(rows, (r) => r.valVente))]);
+    if (admin) { const b = tot(rows, (r) => r.valVente - r.valAchat); k.push(["Bénéfice du stock", money2(b), b < 0 ? "danger" : "hero-good"]); }
     k.push(["En rupture", rows.filter(enVue.rupture).length, "danger", tile("rupture")]);
     k.push(["Sous seuil", rows.filter(enVue.seuil).length, "warn", tile("seuil")]);
     $("#fs-kpis").innerHTML = kpiHtml(k);
