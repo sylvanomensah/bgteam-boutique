@@ -4444,7 +4444,9 @@
   const COLS_TITRE = { entrees: "entrees", voirStock: "voir_stock", credit: "credit", frigoDotation: "frigo_dotation", gereRh: "gere_rh", recoitEspeces: "recoit_especes", bobines: "bobines" };
   function titreDe(c) { const t = TITRES.find((x) => Object.keys(x.p).every((k) => (k === "bobines" ? c.bobines : !!c[k]) === x.p[k])); return t ? t.id : ""; }
   function renderPerms() {
-    const bcur = $("#rp-boutique").value || "ALL";
+    // Par défaut : ATILAMONOU
+    const defBq = (db.boutiques.find((x) => /^ATILAMONOU/i.test(x.nom)) || {}).code || "ALL";
+    const bcur = $("#rp-boutique").value || defBq;
     $("#rp-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("") + '<option value="NONE">CC non affectés</option>';
     $("#rp-boutique").value = Array.from($("#rp-boutique").options).some((o) => o.value === bcur) ? bcur : "ALL";
     const b = $("#rp-boutique").value, f = $("#rp-filtre").value;
