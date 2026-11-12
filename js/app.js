@@ -3666,7 +3666,9 @@
     k.push(["Sous seuil", rows.filter((r) => r.statut === "STOCK FAIBLE").length, "warn"]);
     $("#fs-kpis").innerHTML = kpiHtml(k);
     $("#fs-rows").innerHTML = list.length ? list.map((r) =>
-      "<tr><td>" + esc(r.code) + "</td><td>" + esc(r.nom) + "</td><td>" + esc(r.categorie) +
+      "<tr><td>" + esc(r.code) + "</td><td>" + esc(r.nom) +
+      (admin && db.products.some((p) => p.code === r.code) ? ' <button class="btn-bic" data-fs-nom="' + esc(r.code) + '" title="Modifier le nom du produit">✏️</button>' : "") +
+      "</td><td>" + esc(r.categorie) +
       '</td><td class="num admin-only">' + (r.achat != null ? money2(r.achat) : '<span class="muted">—</span>') + '</td><td class="num">' +
       (admin && db.products.some((p) => p.code === r.code)
         ? '<input type="number" min="0" step="any" class="inline-input si-input" data-fs-pv="' + esc(r.code) + '" value="' + r.pv + '" title="Prix de vente de ' + esc(r.nom) + ' (Entrée pour valider)">'
@@ -3681,6 +3683,18 @@
       '</b></td><td class="num admin-only">' + beneStockHtml(tot(list, (r) => r.valVente - r.valAchat), true) + '</td><td class="num"><b>' + money2(tot(list, (r) => r.valVente)) + "</b></td><td></td></tr>" : "";
   }
   $("#fs-search").addEventListener("input", () => renderStockFrigo(frigoScope()));
+  // Modifier le nom d'un produit (admin) : petit crayon à côté de la désignation
+  $("#fs-rows").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fs-nom]"); if (!b || !isAdmin()) return;
+    const p = productByCode(b.dataset.fsNom); if (!p) return;
+    const v = prompt("Nouveau nom du produit " + p.code + " :", p.nom); if (v == null) return;
+    const nom = v.trim().toUpperCase();
+    if (nom.length < 2) return toast("Indiquez un nom d'au moins 2 caractères.");
+    if (nom === p.nom) return;
+    const deja = db.products.find((x) => x.code !== p.code && String(x.nom).trim().toUpperCase() === nom);
+    if (deja) return toast("Ce nom est déjà utilisé par " + deja.code + ".");
+    act(async () => chk(await sb.from("products").update({ nom }).eq("code", p.code)), "Produit " + p.code + " renommé : " + nom + ".", b);
+  });
   // Modifier le prix de vente d'un produit du frigo (admin) : c'est le prix du catalogue, utilisé aussi par la Caisse
   $("#fs-rows").addEventListener("change", (e) => {
     const inp = e.target.closest("[data-fs-pv]"); if (!inp || !isAdmin()) return;
