@@ -4149,6 +4149,7 @@
   });
 
   // ---------- Mon compte (chaque utilisateur) ----------
+  let mvJourOuvert = false;
   function renderCompte() {
     const t = today(), mois = t.slice(0, 7);
     const code = me.cc;
@@ -4182,9 +4183,18 @@
         (mine.length > avenir.length ? '<p class="hint" style="margin:6px 0 0">' + (mine.length - avenir.length) + " congé(s) passé(s).</p>" : "") + "</div>";
       const my = db.sales.filter((s) => s.cc === code && isCountedSale(s));
       const jour = summarize(my.filter((s) => s.date === t)), m = summarize(my.filter((s) => (s.date || "").slice(0, 7) === mois));
+      const lj = my.filter((s) => s.date === t).sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")) || b.ticket - a.ticket);
       h += '<div class="card"><h2>Mes ventes</h2><div class="report">' +
-        "<div><span>Aujourd'hui</span><strong>" + money(jour.ca) + "</strong></div><div><span>Tickets aujourd'hui</span><strong>" + num(jour.tickets) + "</strong></div>" +
+        '<div class="mv-click' + (mvJourOuvert ? " active" : "") + '" data-mv-jour title="Voir la liste des ventes du jour"><span>Aujourd\'hui ' + (mvJourOuvert ? "▲" : "▼") + "</span><strong>" + money(jour.ca) + "</strong></div><div><span>Tickets aujourd'hui</span><strong>" + num(jour.tickets) + "</strong></div>" +
         "<div><span>Ce mois</span><strong>" + money(m.ca) + "</strong></div><div><span>Jours d'activité ce mois</span><strong>" + joursActivite(code, mois) + "</strong></div></div></div>";
+      if (mvJourOuvert) {
+        h += '<div class="card" id="mv-jour-liste" style="grid-column:1/-1"><h2>🧾 Mes ventes du jour — ' + fmtDate(t) + "</h2>" +
+          (lj.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Heure</th><th>Ticket</th><th>Client</th><th>Article</th><th class="num">Qté</th><th class="num">P.U.</th><th class="num">Montant</th></tr></thead><tbody>' +
+            lj.map((s) => "<tr><td>" + (s.createdAt ? new Date(s.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—") + "</td><td>N° " + s.ticket + "</td><td>" +
+              esc(!s.client || s.client === "CLIENT COMPTOIR" ? "PASSAGER" : s.client) + "</td><td>" + esc(s.nom || s.code) + '</td><td class="num">' + num(s.qte) + '</td><td class="num">' + money0(s.pu) + '</td><td class="num"><b>' + money0(lineTotal(s)) + "</b></td></tr>").join("") +
+            '</tbody><tfoot><tr><th colspan="4">TOTAL (' + num(jour.tickets) + " ticket" + (jour.tickets > 1 ? "s" : "") + ')</th><th class="num">' + num(lj.reduce((a, s) => a + s.qte, 0)) + '</th><th></th><th class="num">' + money0(jour.ca) + "</th></tr></tfoot></table></div>"
+            : '<p class="muted" style="margin:0">Aucune vente aujourd\'hui.</p>') + "</div>";
+      }
     }
     // Remontées en espèces reçues par mon CC : historique et confirmation de réception
     const recues = code ? db.remontees.filter((r) => r.ccReceveur === String(code)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) : [];
@@ -4201,6 +4211,12 @@
     $("#compte-body").innerHTML = h + "</div>";
   }
   $("#compte-body").addEventListener("click", (e) => {
+    if (e.target.closest("[data-mv-jour]")) {
+      mvJourOuvert = !mvJourOuvert;
+      renderCompte();
+      if (mvJourOuvert) { const l = $("#mv-jour-liste"); if (l) l.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+      return;
+    }
     const b = e.target.closest("[data-esp-ok]");
     if (!b) return;
     const r = db.remontees.find((x) => x.id === b.dataset.espOk);
