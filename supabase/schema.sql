@@ -1209,7 +1209,7 @@ create policy credit_soldes_select on public.credit_soldes for select to authent
 -- (aujourd'hui, ou la veille en rattrapage) ; l'admin peut enregistrer n'importe quel jour et corriger.
 drop policy if exists credit_soldes_insert on public.credit_soldes;
 create policy credit_soldes_insert on public.credit_soldes for insert to authenticated
-  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date between current_date - 1 and current_date and created_by = auth.uid()));
+  with check (public.is_admin() or (public.can_credit() and boutique = public.my_boutique() and date between current_date - 1 and current_date and created_by = auth.uid()));
 drop policy if exists credit_soldes_update on public.credit_soldes;
 create policy credit_soldes_update on public.credit_soldes for update to authenticated using (public.is_admin()) with check (public.is_admin());
 drop policy if exists credit_soldes_delete on public.credit_soldes;
