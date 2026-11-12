@@ -238,6 +238,13 @@
             <button class="btn" id="c-clear">Vider</button>
             <button class="btn success" id="c-validate">Valider la vente</button>
           </div>
+          <!-- Reçu de la dernière vente, en miniature : imprimé seulement sur demande -->
+          <div id="c-last" class="c-last hidden">
+            <div class="c-last-head"><b id="c-last-titre">Reçu</b>
+              <div class="c-last-btns"><button class="btn primary" id="c-last-print">🖨 Imprimer le reçu</button><button class="btn" id="c-last-close">Fermer</button></div>
+            </div>
+            <div class="receipt receipt-mini" id="c-last-receipt"></div>
+          </div>
         </div>
       </div>
     </section>

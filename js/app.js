@@ -1077,13 +1077,24 @@
     $("#c-client").value = "CLIENT COMPTOIR";
     renderCart();
     toast("Vente enregistrée — ticket N° " + ticket);
-    // Impression directe du reçu (on reste sur la Caisse) : le ticket est préparé dans Facturation puis imprimé
+    // Reçu en miniature sous la caisse : impression seulement si on clique sur « Imprimer le reçu »
     $("#f-remis").value = remis;
     renderFacture();
     $("#f-ticket").value = String(ticket);
     renderReceipt();
-    setTimeout(() => window.print(), 300);
+    $("#c-last-titre").textContent = "Reçu du ticket N° " + ticket;
+    $("#c-last-receipt").innerHTML = $("#receipt").innerHTML;
+    $("#c-last").classList.remove("hidden");
+    $("#c-last").scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
+
+  // Imprimer le reçu de la dernière vente (le ticket est déjà préparé dans Facturation, que l'impression utilise)
+  $("#c-last-print").addEventListener("click", () => {
+    const t = ($("#c-last-titre").textContent.match(/\d+$/) || [""])[0];
+    if (t) { renderFacture(); $("#f-ticket").value = t; renderReceipt(); }
+    window.print();
+  });
+  $("#c-last-close").addEventListener("click", () => $("#c-last").classList.add("hidden"));
 
   // ---------- Ventes ----------
   // Boutiques
