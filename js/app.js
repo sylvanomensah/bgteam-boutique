@@ -2921,6 +2921,35 @@
   }
   function creditSaisieBq() { return isAdmin() ? ($("#cr-boutique").value !== "ALL" ? $("#cr-boutique").value : "") : myBoutiqueCode(); }
 
+  // Ordre des cadres « boutique » du Crédit télécom : l'admin les déplace par glisser-déposer (échange de places)
+  function crOrdre() { try { return JSON.parse(localStorage.getItem("ordre-credit") || "[]"); } catch (e) { return []; } }
+  let crDrag = null;
+  $("#cr-resume").addEventListener("dragstart", (e) => {
+    const c = e.target.closest(".crr-move"); if (!c) return;
+    crDrag = c.dataset.crrBq; c.classList.add("crr-drag");
+    e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", crDrag); } catch (er) {}
+  });
+  $("#cr-resume").addEventListener("dragend", () => { crDrag = null; document.querySelectorAll(".crr-drag,.crr-over").forEach((x) => x.classList.remove("crr-drag", "crr-over")); });
+  $("#cr-resume").addEventListener("dragover", (e) => {
+    const c = e.target.closest(".crr-move"); if (!c || !crDrag) return;
+    e.preventDefault();
+    document.querySelectorAll(".crr-over").forEach((x) => x !== c && x.classList.remove("crr-over"));
+    if (c.dataset.crrBq !== crDrag) c.classList.add("crr-over");
+  });
+  $("#cr-resume").addEventListener("drop", (e) => {
+    const c = e.target.closest(".crr-move"); if (!c || !crDrag) return;
+    e.preventDefault();
+    const cible = c.dataset.crrBq; if (cible === crDrag) return;
+    const codes = [...$("#cr-resume").querySelectorAll("[data-crr-bq]")].map((x) => x.dataset.crrBq);
+    const i = codes.indexOf(crDrag), j = codes.indexOf(cible);
+    [codes[i], codes[j]] = [codes[j], codes[i]];
+    const reste = crOrdre().filter((x) => !codes.includes(x));
+    try { localStorage.setItem("ordre-credit", JSON.stringify(codes.concat(reste))); } catch (er) {}
+    crDrag = null;
+    renderCredit();
+    toast("Cadres échangés : " + boutiqueName(codes[j]) + " ⇄ " + boutiqueName(codes[i]) + ".");
+  });
+
   function renderCredit() {
     const glob = isGlobal(), admin = isAdmin(), t = today();
     const bcur = $("#cr-boutique").value || "ALL";
@@ -2981,10 +3010,11 @@
       $("#cr-cards").innerHTML = "";
       // Vue résumée : une carte par boutique (logo + crédit restant de chaque opérateur, commission à reverser)
       // Tous les profils : grille de 3 colonnes ; « recharges du mois » et « contrôle du jour » sauf en vue restreinte
-      $("#cr-resume").innerHTML = scope.map((b) => {
+      const ordre = crOrdre(), rang = (c) => { const i = ordre.indexOf(c); return i < 0 ? 999 : i; };
+      $("#cr-resume").innerHTML = scope.slice().sort((a, b) => rang(a.code) - rang(b.code)).map((b) => {
         const ci = commissionInfo(b.code), m = creditMois(b.code, mois);
         const etat = venteFaite(b.code, t) ? '<span class="badge ok">✓ contrôle fait</span>' : hierManquant(b.code) ? '<span class="badge warn">⚠ hier manquant</span>' : '<span class="badge">contrôle : pas encore</span>';
-        return '<div class="crr-card"><div class="crr-nom">' + esc(b.nom) + (restreint ? "" : " " + etat) + "</div>" +
+        return '<div class="crr-card' + (isAdmin() ? " crr-move" : "") + '" data-crr-bq="' + esc(b.code) + '"' + (isAdmin() ? ' draggable="true" title="Glissez ce cadre sur un autre pour échanger leurs places"' : "") + '><div class="crr-nom">' + esc(b.nom) + (restreint ? "" : " " + etat) + "</div>" +
           OPS.map((op) => { const cr = creditRestant(b.code, op), nb = op === "YAS" ? m.nbYas : m.nbMoov;
             return '<div class="crr-op ' + op.toLowerCase() + '">' + logoOp(op) + '<div><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b>" +
               (restreint ? "" : "<small>" + nb + " recharge" + (nb > 1 ? "s" : "") + " ce mois</small>") + "</div></div>"; }).join("") +
