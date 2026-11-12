@@ -2137,6 +2137,22 @@
     return db.sales.filter((s) => isCountedSale(s) && saleBoutique(s) === bq && s.date >= du && s.date <= au).reduce((a, s) => a + lineTotal(s), 0);
   }
   function remonteesOf(bq, semaine) { return db.remontees.filter((r) => r.boutique === bq && (!semaine || r.semaine === semaine)); }
+  // Frigo : depuis le 12/11/2026, la remontée du lundi = ventes de la semaine (prix d'achat + bénéfice).
+  // Avant, elle ne contenait que le bénéfice.
+  const REM_TOTAL_DEPUIS = "2026-11-12T17:00";
+  function fgSemaine(bq, w) {
+    const ls = db.fgSorties.filter((x) => x.boutique === bq && x.date >= w && x.date <= weekEnd(w));
+    const achat = Math.round(sumBy(ls, (x) => x.consomme) * 100) / 100;
+    return { ventes: ventesDeclarees(bq, w, weekEnd(w)), achat };
+  }
+  // Part « bénéfice » d'une remontée d'une boutique avec frigo
+  function remBenefPart(r) {
+    if (String(r.createdAt || "") < REM_TOTAL_DEPUIS) return r.montant;
+    const s = fgSemaine(r.boutique, r.semaine);
+    return s.ventes > 0 ? Math.round(r.montant * Math.max(0, s.ventes - s.achat) / s.ventes * 100) / 100 : 0;
+  }
+  // Validation des remontées : admin, ou CC gestionnaire du frigo (ccs.frigo_dotation) pour les boutiques avec frigo
+  function canValiderRem(bq) { return isAdmin() || (canFrigoDotation() && db.fgCourses.some((c) => c.boutique === bq)); }
   function sumMontant(list) { return list.reduce((a, r) => a + r.montant, 0); }
   function ecartHtml(v) { return '<span class="delta ' + (v < -0.5 ? "down" : v > 0.5 ? "up" : "") + '">' + (v > 0.5 ? "+" : "") + money0(v) + "</span>"; }
   function fondsScope() {
@@ -2226,7 +2242,7 @@
         (r.statut === "Reçue"
           ? '<span class="badge ok">✓ Vérifiée et validée</span><span class="sub">par ' + esc(r.recuPar) + (r.recuLe ? " le " + new Date(r.recuLe).toLocaleDateString("fr-FR") : "") + "</span>"
           : '<span class="badge warn">⏳ En attente de vérification</span>') + "</td><td>" +
-        (admin ? '<button class="btn small' + (r.statut === "Reçue" ? "" : " success") + '" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la validation" : "✓ Argent reçu : valider") + "</button> " : "") +
+        (canValiderRem(r.boutique) ? '<button class="btn small' + (r.statut === "Reçue" ? "" : " success") + '" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la validation" : "✓ Argent reçu : valider") + "</button> " : "") +
         (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="empty">Aucune remontée sur ce mois.</td></tr>';
 
@@ -2301,16 +2317,18 @@
     const admin = isAdmin(), remBq = admin ? ($("#fd-boutique").value !== "ALL" ? $("#fd-boutique").value : "") : (canEntrees() ? myBoutiqueCode() : "");
     if (!remBq) return;
     const w = $("#rm-semaine").value, r = sumMontant(remonteesOf(remBq, w)), frigo = db.fgCourses.some((c) => c.boutique === remBq);
-    const base = frigo ? Math.max(0, soldesOf(remBq).benefice) : Math.max(0, ventesDeclarees(remBq, w, weekEnd(w)) - r);
+    const fs = fgSemaine(remBq, w);
+    const base = Math.max(0, fs.ventes - r);
     const el = $("#rm-montant");
     if (proposer && document.activeElement !== el && !rmOcr) el.value = base > 0 ? Math.round(base * 100) / 100 : "";
     const saisi = Number(el.value) || 0, reste = Math.max(0, Math.round((base - saisi) * 100) / 100);
     $("#rm-info").innerHTML = '<div class="info-row"><span>Boutique</span><span><b>' + esc(boutiqueName(remBq)) + "</b></span></div>" +
+      '<div class="info-row"><span>Ventes de la semaine du ' + fmtDate(w) + "</span><span><b>" + money2(fs.ventes) + "</b></span></div>" +
       (frigo
-        ? '<div class="info-row"><span>Solde bénéfice à remonter</span><span><b>' + money2(base) + "</b></span></div>" +
-          '<div class="info-row"><span>Bénéfice remonté cette semaine</span><span>' + money2(r) + "</span></div>"
-        : '<div class="info-row"><span>Ventes déclarées dans l\'application</span><span><b>' + money0(ventesDeclarees(remBq, w, weekEnd(w))) + "</b></span></div>" +
-          '<div class="info-row"><span>Déjà remonté pour cette semaine</span><span>' + money0(r) + "</span></div>") +
+        ? '<div class="info-row"><span>&nbsp;&nbsp;dont montant de l\'achat (frigo)</span><span>' + money2(fs.achat) + "</span></div>" +
+          '<div class="info-row"><span>&nbsp;&nbsp;dont bénéfice réalisé</span><span>' + money2(Math.max(0, fs.ventes - fs.achat)) + "</span></div>"
+        : "") +
+      '<div class="info-row"><span>Déjà remonté pour cette semaine</span><span>' + money2(r) + "</span></div>" +
       '<div class="info-row"><span>Reste à remonter</span><span><b' + (reste > 0 ? ' class="neg"' : ' class="pos"') + ">" + money2(reste) + "</b></span></div>";
   }
   function journalOf(codes) {
@@ -2321,7 +2339,8 @@
         const jf = {};
         db.fgSorties.filter((x) => x.boutique === bq).forEach((x) => { const j = jf[x.date] || (jf[x.date] = { ca: 0, bene: 0 }); j.ca += x.montant; j.bene += x.montant - x.consomme; });
         Object.keys(jf).forEach((d) => out.push({ date: d, boutique: bq, ca: jf[d].ca, bene: Math.round(jf[d].bene * 100) / 100, label: "🧊 Bénéfice des ventes du frigo du jour" }));
-        db.remontees.filter((r) => r.boutique === bq).forEach((r) => out.push({ date: String(r.createdAt || r.semaine).slice(0, 10), boutique: bq, ca: 0, bene: -r.montant, label: "⬆ Bénéfice remonté (" + esc(r.mode || "") + ")" }));
+        db.remontees.filter((r) => r.boutique === bq).forEach((r) => out.push({ date: String(r.createdAt || r.semaine).slice(0, 10), boutique: bq, ca: 0, bene: -remBenefPart(r),
+          label: "⬆ Remontée du " + fmtDate(String(r.createdAt || r.semaine).slice(0, 10)) + " : " + money2(r.montant) + " (" + esc(r.mode || "") + ") — part bénéfice" }));
         db.fgRetraits.filter((x) => x.boutique === bq).forEach((x) => out.push({ date: x.date, boutique: bq, ca: 0, bene: -x.montant, label: "🏧 Retrait (Frigo)" + (x.note ? " — " + esc(x.note) : "") }));
         return;
       }
@@ -2623,12 +2642,10 @@
       if (dup) return toast("Ce reçu (n° " + ocr.tx + ") a déjà servi pour une remontée du " + fmtDate(dup.semaine) + " (" + money0(dup.montant) + ").");
     }
     const w = $("#rm-semaine").value;
-    // Contrôle : boutique avec frigo = le bénéfice ; sinon les ventes déclarées de la semaine
-    const frigoRm = db.fgCourses.some((c) => c.boutique === bq);
-    const du = frigoRm ? Math.round(Math.max(0, soldesOf(bq).benefice) * 100) / 100 : Math.round(ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w)));
-    if (frigoRm && montant > du + 0.5) return toast("Le montant (" + money2(montant) + ") dépasse le solde bénéfice à remonter (" + money2(du) + ").");
+    // Contrôle : ventes de la semaine (pour le frigo : montant de l'achat + bénéfice) − déjà remonté
+    const du = Math.round((ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w))) * 100) / 100;
     const manque = Math.round((du - montant) * 100) / 100;
-    if (manque > 0 && !confirm("⚠ Montant inférieur " + (frigoRm ? "au solde bénéfice" : "aux ventes déclarées") + "\n\n" + (frigoRm ? "Solde bénéfice à remonter" : "Ventes déclarées de la semaine du " + fmtDate(w) + " (reste dû)") + " : " + money2(du) +
+    if (manque > 0 && !confirm("⚠ Montant inférieur aux ventes déclarées\n\nVentes de la semaine du " + fmtDate(w) + " (reste dû) : " + money2(du) +
       "\nMontant que vous remontez : " + money2(montant) + "\nReste à remonter : " + money2(manque) + "\n\nLe reste devra être remonté. Confirmer quand même ?")) return;
     const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: "", saisi_par: me.nom || me.email || "" };
     if (receveur) row.cc_receveur = receveur;
@@ -3386,7 +3403,7 @@
     const ca = sumBy(sorties, (x) => x.montant); // argent encaissé (prix de vente)
     const derniere = courses[0] || null;
     const retire = sumBy(db.fgRetraits.filter((r) => r.boutique === bq), (r) => r.montant);
-    const remonte = sumBy(db.remontees.filter((r) => r.boutique === bq), (r) => r.montant); // bénéfice déjà remonté (Fonds & dépenses)
+    const remonte = sumBy(db.remontees.filter((r) => r.boutique === bq), remBenefPart); // part bénéfice déjà remontée (Fonds & dépenses)
     const sMois = sorties.filter((x) => x.date.slice(0, 7) === mois), venduMois = sumBy(sMois, (x) => x.montant), articlesMois = sumBy(sMois, (x) => x.qte);
     const sJour = sorties.filter((x) => x.date === today());
     // Estimation des ventes et bénéfice estimé du mois : d'après les produits des courses du mois (prix de vente × quantité)

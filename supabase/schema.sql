@@ -955,7 +955,11 @@ create or replace function public.set_remontee_recue(p_id uuid, p_recue boolean)
 language plpgsql security definer set search_path = public as $$
 declare prof public.profiles%rowtype;
 begin
-  if not public.is_admin() then raise exception 'Seul l''administrateur valide les remontées de fonds'; end if;
+  -- Admin, ou CC gestionnaire du frigo (ccs.frigo_dotation) pour les remontées des boutiques avec frigo
+  if not (public.is_admin() or (public.can_frigo_dotation() and exists (
+      select 1 from public.remontees r join public.frigo_courses c on c.boutique = r.boutique where r.id = p_id))) then
+    raise exception 'Seul l''administrateur (ou le CC gestionnaire du frigo) valide les remontées de fonds';
+  end if;
   select * into prof from public.profiles where id = auth.uid();
   update public.remontees set
     statut = case when p_recue then 'Reçue' else 'Déclarée' end,
