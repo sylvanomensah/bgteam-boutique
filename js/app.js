@@ -2974,6 +2974,14 @@
       }).join("");
     } else {
       $("#cr-cards").innerHTML = "";
+      // Vue résumée : une carte par boutique (logo + crédit restant de chaque opérateur, commission à reverser)
+      $("#cr-resume").innerHTML = !restreint ? "" : scope.map((b) => {
+        const ci = commissionInfo(b.code);
+        return '<div class="crr-card"><div class="crr-nom">' + esc(b.nom) + "</div>" +
+          OPS.map((op) => { const cr = creditRestant(b.code, op);
+            return '<div class="crr-op ' + op.toLowerCase() + '">' + logoOp(op) + '<div><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b></div></div>"; }).join("") +
+          '<div class="crr-com' + (ci.du > 0 ? " due" : "") + '"><span>💰 Commission à reverser</span><b>' + money0(ci.du || 0) + "</b></div></div>";
+      }).join("");
       $("#cr-table").innerHTML = scope.map((b) => {
         const cy = creditRestant(b.code, "YAS"), cm = creditRestant(b.code, "MOOV"), m = creditMois(b.code, mois), ci = commissionInfo(b.code);
         const etat = venteFaite(b.code, t) ? '<span class="badge ok">✓ fait</span>' : hierManquant(b.code) ? '<span class="badge warn">⚠ hier manquant</span>' : '<span class="badge">pas encore</span>';
