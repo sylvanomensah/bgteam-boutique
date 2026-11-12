@@ -2044,7 +2044,7 @@
       '<div class="r-ligne">Client: ' + esc(first.client || "Passager") + "</div>" +
       (bq ? '<div class="r-ligne r-petit">Boutique: ' + esc(boutiqueName(bq)) + " · " + ccLabel(first.cc) + "</div>" : "") +
       "<hr>" +
-      '<table class="r-lignes">' + lines.map((s) => "<tr><td>" + esc(String(s.nom).toUpperCase()) + " x" + num(s.qte) + '</td><td class="r">' + fcfa(lineTotal(s)) + "</td></tr>").join("") + "</table><hr>" +
+      '<table class="r-lignes">' + lines.map((s) => "<tr><td>" + esc(String(s.nom).toUpperCase()) + '<div class="r-pu">' + num(s.qte) + " x " + fcfa(s.pu) + '</div></td><td class="r">' + fcfa(lineTotal(s)) + "</td></tr>").join("") + "</table><hr>" +
       '<table><tr class="big"><td>TOTAL TTC</td><td class="r">' + fcfa(total) + "</td></tr>" +
       (remisRaw !== "" ? "<tr><td>Paiement:</td><td class=\"r\">Espèces</td></tr><tr><td>Montant remis</td><td class=\"r\">" + fcfa(remis) + "</td></tr><tr><td>Monnaie rendue</td><td class=\"r\">" + fcfa(Math.max(0, remis - total)) + "</td></tr>" : "") +
       "</table><hr>" +
