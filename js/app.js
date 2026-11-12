@@ -2831,7 +2831,7 @@
   }
   const SEUIL_RECHARGE = () => db.settings.creditSeuil || 5000;
   function jourLong(d) { return parse(d).toLocaleDateString("fr-FR", { weekday: "long" }) + " " + fmtDate(d); }
-  let crOp = "YAS", crTab = "ops";
+  let crOp = "YAS", crTab = "ops", crFiltreInit = false;
   const OPS = ["YAS", "MOOV"];
   const logoOp = (op, sm) => '<img class="logo-op ' + op.toLowerCase() + (sm ? " sm" : "") + '" src="icons/' + op.toLowerCase() + '.png" alt="' + op + '">';
   function premierDuMois(d) { return d.slice(0, 7) + "-01"; }
@@ -2929,6 +2929,13 @@
       $("#cr-boutique").disabled = true;
     }
     if (!$("#cr-mois").value) $("#cr-mois").value = t.slice(0, 7);
+    // CC « toutes boutiques » (non admin) : sa boutique en entier ; pour les AUTRES boutiques, seulement
+    // le crédit restant et la commission à reverser (pas de recharges, contrôles, ventes ni historique)
+    const myBq = myBoutiqueCode();
+    if (glob && !admin && myBq && !crFiltreInit) { crFiltreInit = true; $("#cr-boutique").value = myBq; }
+    const restreint = glob && !admin && !(myBq && $("#cr-boutique").value === myBq);
+    $("#view-credit").classList.toggle("cr-restreint", restreint);
+    if (restreint) crTab = "ops";
     // Écran principal : toujours le mois en cours ; le Récap permet de choisir un autre mois
     const mois = t.slice(0, 7), scope = creditScope(), codes = scope.map((b) => b.code);
     $("#cr-titre").textContent = "Opérations de " + fmtMonth(mois + "-01");
@@ -2943,7 +2950,7 @@
       anom.slice(0, 8).map((a) => "<li>" + esc(boutiqueName(a.bq)) + " · " + a.op + " · " + fmtDate(a.date) + " : <b>" + ecartTxt(a) + "</b></li>").join("") + "</ul></div>" : "";
 
     // Une boutique : une carte par réseau ; plusieurs : tableau
-    const une = scope.length === 1;
+    const une = scope.length === 1 && !restreint;
     $("#cr-table-card").classList.toggle("hidden", une || !scope.length);
     if (une) {
       const bq = scope[0].code, m = creditMois(bq, mois);
@@ -2971,8 +2978,8 @@
         const cy = creditRestant(b.code, "YAS"), cm = creditRestant(b.code, "MOOV"), m = creditMois(b.code, mois), ci = commissionInfo(b.code);
         const etat = venteFaite(b.code, t) ? '<span class="badge ok">✓ fait</span>' : hierManquant(b.code) ? '<span class="badge warn">⚠ hier manquant</span>' : '<span class="badge">pas encore</span>';
         return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (cy.connu ? money0(cy.total) : "—") + '</td><td class="num">' + (cm.connu ? money0(cm.total) : "—") +
-          '</td><td class="num">' + logoOp("YAS", true) + " " + m.nbYas + " &nbsp; " + logoOp("MOOV", true) + " " + m.nbMoov +
-          '</td><td class="num">' + (ci.du > 0 ? "<b>" + money0(ci.du) + "</b>" : '<span class="pos">0</span>') + "</td><td>" + etat + "</td></tr>";
+          '</td><td class="num cr-det">' + logoOp("YAS", true) + " " + m.nbYas + " &nbsp; " + logoOp("MOOV", true) + " " + m.nbMoov +
+          '</td><td class="num">' + (ci.du > 0 ? "<b>" + money0(ci.du) + "</b>" : '<span class="pos">0</span>') + '</td><td class="cr-det">' + etat + "</td></tr>";
       }).join("");
     }
 

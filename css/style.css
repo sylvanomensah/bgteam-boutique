@@ -208,6 +208,10 @@ input[type=checkbox], input[type=radio] { min-height: 0; width: 18px; height: 18
 .receipt .r-lignes td, .receipt .r-lignes th { padding: 3px 0; vertical-align: top; }
 .receipt .r-lignes th { font-weight: 700; border-bottom: 1px dashed #888; padding-bottom: 4px; }
 .receipt .r-lignes .r { white-space: nowrap; padding-left: 8px; }
+/* Crédit télécom : CC « toutes boutiques » sur une autre boutique que la sienne → seulement crédit restant + commission à reverser */
+#view-credit.cr-restreint #cr-tabs,
+#view-credit.cr-restreint #cr-main > *:not(#cr-table-card),
+#view-credit.cr-restreint .cr-det { display: none !important; }
 /* Reçu de la dernière vente, en miniature dans la Caisse */
 .c-last { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
 .c-last-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
