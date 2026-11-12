@@ -3619,7 +3619,7 @@
       "<tr><td>" + esc(r.code) + "</td><td>" + esc(r.nom) + "</td><td>" + esc(r.categorie) +
       '</td><td class="num admin-only">' + (r.achat != null ? money2(r.achat) : '<span class="muted">—</span>') + '</td><td class="num">' +
       (admin && db.products.some((p) => p.code === r.code)
-        ? '<input type="number" min="0" step="any" class="inline-input" data-fs-pv="' + esc(r.code) + '" value="' + r.pv + '" title="Prix de vente de ' + esc(r.nom) + ' (Entrée pour valider)">'
+        ? '<input type="number" min="0" step="any" class="inline-input si-input" data-fs-pv="' + esc(r.code) + '" value="' + r.pv + '" title="Prix de vente de ' + esc(r.nom) + ' (Entrée pour valider)">'
         : num(r.pv)) +
       '</td><td class="num admin-only">' + (r.achat != null ? '<b class="delta ' + (r.pv - r.achat < 0 ? "down" : "up") + '">' + (r.pv - r.achat > 0 ? "+" : "") + money2(r.pv - r.achat) + "</b>" : '<span class="muted">—</span>') +
       '</td><td class="num">' + num(r.entrees) + '</td><td class="num">' + num(r.sorties) + '</td><td class="num"><b>' + num(r.stock) +
