@@ -4431,29 +4431,57 @@
       [["boutique", "Consultation (sa boutique)"], ["saisie", "Saisie utilisation (sa boutique)"], ["gestion", "Toutes + approvisionnement (sans saisie)"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
       "</select></label></div>";
   }
+  // Titres : chaque titre coche un ensemble d'autorisations (« Reverser à tout moment » reste au cas par cas)
+  const TITRES = [
+    { id: "commercial", nom: "Commercial", p: { entrees: false, voirStock: false, credit: false, frigoDotation: false, gereRh: false, recoitEspeces: false, bobines: "boutique" } },
+    { id: "caissier", nom: "Commercial caissier", p: { entrees: false, voirStock: false, credit: false, frigoDotation: false, gereRh: false, recoitEspeces: false, bobines: "saisie" } },
+    { id: "manager-agent", nom: "Manager agent", p: { entrees: false, voirStock: false, credit: true, frigoDotation: false, gereRh: false, recoitEspeces: false, bobines: "boutique" } },
+    { id: "manager", nom: "Manager", p: { entrees: true, voirStock: false, credit: true, frigoDotation: false, gereRh: false, recoitEspeces: false, bobines: "saisie" } },
+    { id: "secretaire", nom: "Secrétaire", p: { entrees: true, voirStock: true, credit: true, frigoDotation: false, gereRh: true, recoitEspeces: false, bobines: "gestion" } },
+    { id: "secretaire-dir", nom: "Secrétaire de direction", p: { entrees: false, voirStock: true, credit: true, frigoDotation: true, gereRh: true, recoitEspeces: false, bobines: "gestion" } },
+    { id: "superviseur", nom: "Superviseur", p: { entrees: true, voirStock: true, credit: true, frigoDotation: true, gereRh: true, recoitEspeces: true, bobines: "gestion" } }
+  ];
+  const COLS_TITRE = { entrees: "entrees", voirStock: "voir_stock", credit: "credit", frigoDotation: "frigo_dotation", gereRh: "gere_rh", recoitEspeces: "recoit_especes", bobines: "bobines" };
+  function titreDe(c) { const t = TITRES.find((x) => Object.keys(x.p).every((k) => (k === "bobines" ? c.bobines : !!c[k]) === x.p[k])); return t ? t.id : ""; }
   function renderPerms() {
     const bcur = $("#rp-boutique").value || "ALL";
     $("#rp-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("") + '<option value="NONE">CC non affectés</option>';
     $("#rp-boutique").value = Array.from($("#rp-boutique").options).some((o) => o.value === bcur) ? bcur : "ALL";
-    const b = $("#rp-boutique").value, q = $("#rp-search").value, f = $("#rp-filtre").value;
-    const list = db.settings.ccList.filter((c) =>
-      (f === "inactifs" ? !c.actif : c.actif) &&
-      (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b)) &&
+    const b = $("#rp-boutique").value, f = $("#rp-filtre").value;
+    const dansBq = (c) => (f === "inactifs" ? !c.actif : c.actif) && (b === "ALL" || (b === "NONE" ? !c.boutique : c.boutique === b));
+    // Filtre CC : les CC de la boutique choisie
+    const ccCur = $("#rp-cc").value, ccsBq = db.settings.ccList.filter(dansBq);
+    $("#rp-cc").innerHTML = '<option value="">Tous les CC' + (b !== "ALL" && b !== "NONE" ? " de " + esc(boutiqueName(b)) : "") + " (" + ccsBq.length + ")</option>" +
+      ccsBq.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + "</option>").join("");
+    $("#rp-cc").value = ccsBq.some((c) => c.code === ccCur) ? ccCur : "";
+    const cc = $("#rp-cc").value;
+    const list = ccsBq.filter((c) => (!cc || c.code === cc) &&
       (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === "rh" && c.gereRh) || (f === "credit" && c.credit) ||
-        (f === "especes" && c.recoitEspeces) || (f === c.bobines)) &&
-      ccMatch(c, q));
-    $("#rp-count").textContent = list.length + " CC affiché(s). Les changements sont enregistrés immédiatement.";
+        (f === "especes" && c.recoitEspeces) || (f === c.bobines)));
+    $("#rp-count").textContent = list.length + " CC affiché(s). Cochez ou décochez : chaque changement est enregistré immédiatement.";
+    const caseP = (c, attr, on) => '<td class="c"><input type="checkbox" class="pt-check" data-' + attr + '="' + esc(c.code) + '"' + (on ? " checked" : "") + "></td>";
     $("#rh-perms").innerHTML = list.length ? list.map((c) => {
-      const user = db.users.find((u) => u.cc === c.code);
-      return '<div class="perm-card"><div class="perm-head">' + avatarHtml(c.code) + '<div><b>' + esc(ccName(c.code)) + "</b><small>🏬 " + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") +
-        (user ? " · " + esc(user.email) : "") + "</small></div>" + (c.actif ? "" : '<span class="badge mute">Inactif</span>') +
-        '<button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></div>' + permsHtml(c) + "</div>";
-    }).join("") : '<p class="empty">' + (f && f !== "inactifs"
-      ? "Aucun CC " + (b !== "ALL" && b !== "NONE" ? "de " + esc(boutiqueName(b)) + " " : "") + "n'a l'autorisation « " + esc($("#rp-filtre").selectedOptions[0].text) +
-        " ». Pour la donner : choisissez « Tous les CC actifs », trouvez le CC, puis activez l'interrupteur sur sa carte."
-      : "Aucun CC ne correspond à la recherche.") + "</p>";
+      const tid = titreDe(c);
+      return "<tr" + (c.actif ? "" : ' class="pending"') + '><td class="pt-cc">' + avatarHtml(c.code) + "<div><b>" + esc(ccName(c.code)) + "</b><small>" + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") + "</small></div></td>" +
+        '<td><select class="inline-select pt-titre" data-cc-titre="' + esc(c.code) + '">' + (tid ? "" : '<option value="" selected>Personnalisé</option>') +
+          TITRES.map((t) => '<option value="' + t.id + '"' + (t.id === tid ? " selected" : "") + ">" + esc(t.nom) + "</option>").join("") + "</select></td>" +
+        caseP(c, "cc-entrees", c.entrees) + caseP(c, "cc-voirstock", c.voirStock) + caseP(c, "cc-credit", c.credit) +
+        (c.credit && c.colCreditVers ? caseP(c, "cc-creditvers", c.creditVers) : '<td class="c muted" title="Seulement pour les CC qui font les achats de crédit">—</td>') +
+        caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-rh", c.gereRh) + caseP(c, "cc-recoit", c.recoitEspeces) +
+        '<td><select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
+          [["boutique", "Consultation"], ["saisie", "Saisie utilisation"], ["gestion", "Toutes + appro."]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></td>" +
+        '<td><button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></td></tr>';
+    }).join("") : '<tr><td colspan="11" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
   }
-  ["#rp-search", "#rp-boutique", "#rp-filtre"].forEach((id) => $(id).addEventListener(id === "#rp-search" ? "input" : "change", renderPerms));
+  ["#rp-boutique", "#rp-cc", "#rp-filtre"].forEach((id) => $(id).addEventListener("change", renderPerms));
+  // Choisir un titre : applique d'un coup ses autorisations
+  $("#rh-perms").addEventListener("change", (e) => {
+    const s = e.target.closest("[data-cc-titre]"); if (!s) return;
+    const t = TITRES.find((x) => x.id === s.value); if (!t) return;
+    const code = s.dataset.ccTitre, row = {};
+    Object.keys(t.p).forEach((k) => { row[COLS_TITRE[k]] = t.p[k]; });
+    act(async () => chk(await sb.from("ccs").update(row).eq("code", code)), ccName(code) + " : titre « " + t.nom + " » appliqué.", s);
+  });
   $("#cc-search").addEventListener("input", renderCcTable);
 
   // Onglets de la rubrique RH (le dernier onglet ouvert est mémorisé)

@@ -524,6 +524,19 @@ details.data-table summary { font-weight: 600; }
 .rh-pane.active { display: block; animation: fadein .18s ease-out; }
 
 /* ---------- Cartes d'autorisations ---------- */
+/* Autorisations en tableau : tableau à gauche, filtres Boutique / CC à droite */
+.perm-layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: start; }
+@media (max-width: 1000px) { .perm-layout { grid-template-columns: 1fr; } .perm-side { order: -1; } }
+.perm-side { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.perm-side label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.perm-table th.c, .perm-table td.c { text-align: center; }
+.perm-table th { font-size: 11px; line-height: 1.25; vertical-align: bottom; }
+.perm-table td { vertical-align: middle; }
+.perm-table .pt-cc { display: flex; align-items: center; gap: 10px; min-width: 170px; }
+.perm-table .pt-cc small { display: block; color: var(--muted); font-size: 12px; }
+.perm-table .pt-check { width: 20px; height: 20px; cursor: pointer; accent-color: var(--primary); }
+.perm-table .pt-titre { min-width: 170px; font-weight: 600; }
+.perm-table select.inline-select { min-height: 34px; }
 .perm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
 .perm-card { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); }
 .perm-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }

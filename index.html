@@ -1013,9 +1013,27 @@
 
       <!-- Onglet : autorisations par CC (recherche) -->
       <div class="rh-pane" data-pane="perms">
-        <div class="card filterbar">
-          <label style="flex:2 1 260px">Rechercher un CC<input id="rp-search" type="search" placeholder="Code, nom du CC ou du vendeur… ex. 02, Edwige"></label>
+        <div class="perm-layout">
+        <div class="card perm-table-card">
+          <h2 style="margin-top:0">Autorisations des CC</h2>
+          <p class="hint" id="rp-count"></p>
+          <div class="table-wrap"><table class="table perm-table">
+            <thead><tr><th>CC</th><th>Titre</th><th class="c" title="Entrées de stock : saisit les courses et remonte les fonds de sa boutique">📦<br>Entrées</th>
+              <th class="c" title="Voit le stock, les fonds et les dépenses de toutes les boutiques">🌍<br>Toutes boutiques</th>
+              <th class="c" title="Enregistre les achats de crédit YAS / MOOV de sa boutique et verse la commission">📱<br>Achats crédit</th>
+              <th class="c" title="Peut déclarer le reversement de la commission en dehors du 1er et du 2 du mois">💸<br>Reverser à tout moment</th>
+              <th class="c" title="Fixe la dotation de crédit du frigo des boutiques">🧊<br>Dotation frigo</th>
+              <th class="c" title="Voit l'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC">🗂<br>Fiches RH</th>
+              <th class="c" title="Peut recevoir les remontées en espèces des autres CC et doit confirmer chaque réception">💵<br>Reçoit espèces</th>
+              <th>🧻 Bobines</th><th></th></tr></thead>
+            <tbody id="rh-perms"></tbody>
+          </table></div>
+        </div>
+        <div class="card perm-side">
+          <h3 style="margin-top:0">Filtres</h3>
           <label>Boutique<select id="rp-boutique"></select></label>
+          <label>CC de la boutique<select id="rp-cc"></select></label>
+          <input id="rp-search" type="hidden">
           <label>Afficher<select id="rp-filtre">
             <option value="">Tous les CC actifs</option>
             <option value="entrees">Autorisés aux entrées de stock</option>
@@ -1027,9 +1045,9 @@
             <option value="especes">💵 Reçoit les fonds en espèces</option>
             <option value="inactifs">CC inactifs</option>
           </select></label>
+          <p class="hint" style="margin:12px 0 0"><b>Titre</b> : choisir un titre coche d'un coup les autorisations correspondantes. Vous pouvez ensuite cocher ou décocher une case à la main (le titre devient « Personnalisé »).</p>
         </div>
-        <p class="hint" id="rp-count"></p>
-        <div class="perm-grid" id="rh-perms"></div>
+        </div>
       </div>
 
       <!-- Filtre commun aux onglets Fiche CC et Planning -->
