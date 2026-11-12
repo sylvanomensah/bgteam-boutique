@@ -3476,7 +3476,7 @@
   function fcChoisir(inp, code) {
     const tr = inp.closest("tr"), idx = Number(tr.dataset.i), txt = inp.value.trim();
     inp.parentElement.querySelector(".fc-sug").classList.add("hidden");
-    if (code === "__new__") { inp.value = fcLabel(fcLignes[idx].code); return ouvrirFgNouveauProduit(idx, txt && txt !== fcLabel(fcLignes[idx].code) ? txt : ""); }
+    if (code === "__new__") { inp.value = fcLabel(fcLignes[idx].code); inp.blur(); return ouvrirFgNouveauProduit(idx, txt && txt !== fcLabel(fcLignes[idx].code) ? txt : ""); }
     fcLignes[idx].code = code;
     inp.value = fcLabel(code);
     majFcCalc();
@@ -3503,7 +3503,8 @@
   $("#fc-lines").addEventListener("focusout", (e) => {
     const inp = e.target.closest("[data-pick]"); if (!inp) return;
     setTimeout(() => {
-      if (document.activeElement === inp) return;
+      // case remplacée par un nouvel affichage (ex. : après création d'un produit) : ne rien effacer
+      if (document.activeElement === inp || !inp.isConnected) return;
       inp.parentElement.querySelector(".fc-sug").classList.add("hidden");
       const idx = Number(inp.closest("tr").dataset.i);
       if (!inp.value.trim()) { fcLignes[idx].code = ""; majFcCalc(); } else inp.value = fcLabel(fcLignes[idx].code); // texte non choisi : on remet le produit de la ligne
