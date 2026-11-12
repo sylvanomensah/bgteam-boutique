@@ -3599,6 +3599,8 @@
       parCode.set(l.code, r);
     });
     sorties.forEach((x) => { const r = parCode.get(x.code); if (r) r.sorties += x.qte; });
+    // Tous les produits du catalogue apparaissent (stock 0 tant qu'aucune course ne les contient)
+    db.products.forEach((p) => { if (!parCode.has(p.code)) parCode.set(p.code, { code: p.code, nom: p.nom, entrees: 0, sorties: 0, achat: null, achatAt: "" }); });
     const rows = Array.from(parCode.values()).map((r) => {
       const p = db.products.find((y) => y.code === r.code);
       const stock = r.entrees - r.sorties, pv = p ? Number(p.pv) : 0, s = Math.max(0, stock);
