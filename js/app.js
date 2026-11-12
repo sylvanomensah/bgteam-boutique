@@ -4461,10 +4461,7 @@
     $("#rp-count").textContent = list.length + " CC affiché(s). Cochez ou décochez : chaque changement est enregistré immédiatement.";
     const caseP = (c, attr, on) => '<td class="c"><input type="checkbox" class="pt-check" data-' + attr + '="' + esc(c.code) + '"' + (on ? " checked" : "") + "></td>";
     $("#rh-perms").innerHTML = list.length ? list.map((c) => {
-      const tid = titreDe(c);
       return "<tr" + (c.actif ? "" : ' class="pending"') + '><td class="pt-cc">' + avatarHtml(c.code) + "<div><b>" + esc(ccName(c.code)) + "</b><small>" + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") + "</small></div></td>" +
-        '<td><select class="inline-select pt-titre" data-cc-titre="' + esc(c.code) + '">' + (tid ? "" : '<option value="" selected>Personnalisé</option>') +
-          TITRES.map((t) => '<option value="' + t.id + '"' + (t.id === tid ? " selected" : "") + ">" + esc(t.nom) + "</option>").join("") + "</select></td>" +
         caseP(c, "cc-entrees", c.entrees) + caseP(c, "cc-voirstock", c.voirStock) + caseP(c, "cc-credit", c.credit) +
         (c.credit && c.colCreditVers ? caseP(c, "cc-creditvers", c.creditVers) : '<td class="c muted" title="Seulement pour les CC qui font les achats de crédit">—</td>') +
         caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-rh", c.gereRh) + caseP(c, "cc-recoit", c.recoitEspeces) +
