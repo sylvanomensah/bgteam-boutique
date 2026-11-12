@@ -3617,7 +3617,10 @@
     $("#fs-kpis").innerHTML = kpiHtml(k);
     $("#fs-rows").innerHTML = list.length ? list.map((r) =>
       "<tr><td>" + esc(r.code) + "</td><td>" + esc(r.nom) + "</td><td>" + esc(r.categorie) +
-      '</td><td class="num admin-only">' + (r.achat != null ? money2(r.achat) : '<span class="muted">—</span>') + '</td><td class="num">' + num(r.pv) +
+      '</td><td class="num admin-only">' + (r.achat != null ? money2(r.achat) : '<span class="muted">—</span>') + '</td><td class="num">' +
+      (admin && db.products.some((p) => p.code === r.code)
+        ? '<input type="number" min="0" step="any" class="inline-input" data-fs-pv="' + esc(r.code) + '" value="' + r.pv + '" title="Prix de vente de ' + esc(r.nom) + ' (Entrée pour valider)">'
+        : num(r.pv)) +
       '</td><td class="num admin-only">' + (r.achat != null ? '<b class="delta ' + (r.pv - r.achat < 0 ? "down" : "up") + '">' + (r.pv - r.achat > 0 ? "+" : "") + money2(r.pv - r.achat) + "</b>" : '<span class="muted">—</span>') +
       '</td><td class="num">' + num(r.entrees) + '</td><td class="num">' + num(r.sorties) + '</td><td class="num"><b>' + num(r.stock) +
       '</b></td><td class="num admin-only">' + money2(r.valAchat) + '</td><td class="num admin-only">' + (r.achat != null ? beneStockHtml(r.valVente - r.valAchat) : '<span class="muted">—</span>') +
@@ -3628,6 +3631,16 @@
       '</b></td><td class="num admin-only">' + beneStockHtml(tot(list, (r) => r.valVente - r.valAchat), true) + '</td><td class="num"><b>' + money2(tot(list, (r) => r.valVente)) + "</b></td><td></td></tr>" : "";
   }
   $("#fs-search").addEventListener("input", () => renderStockFrigo(frigoScope()));
+  // Modifier le prix de vente d'un produit du frigo (admin) : c'est le prix du catalogue, utilisé aussi par la Caisse
+  $("#fs-rows").addEventListener("change", (e) => {
+    const inp = e.target.closest("[data-fs-pv]"); if (!inp || !isAdmin()) return;
+    const p = productByCode(inp.dataset.fsPv), pv = Number(inp.value);
+    if (!p) return;
+    if (!(inp.value !== "" && pv >= 0)) { inp.value = p.pv; return toast("Indiquez un prix de vente valide (0 ou plus)."); }
+    if (pv === Number(p.pv)) return;
+    if (!confirm("Nouveau prix de vente de « " + p.nom + " » : " + money(pv) + " (au lieu de " + money(p.pv) + ").\n\nCe prix s'applique aussi en Caisse pour les prochaines ventes. Confirmer ?")) { inp.value = p.pv; return; }
+    act(async () => chk(await sb.from("products").update({ pv }).eq("code", p.code)), "Prix de vente de " + p.nom + " : " + money(pv) + ".", inp);
+  });
   // Récap mensuel du frigo
   function renderRecapFrigo(scope) {
     const admin = isAdmin(), mois = $("#fg-mois").value || today().slice(0, 7), nomMois = fmtMonth(mois + "-01"), codes = scope.map((b) => b.code);
