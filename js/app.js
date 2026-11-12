@@ -1009,11 +1009,12 @@
   function statutCaisse(p, bq) { const s = stockCaisse(p, bq); return s <= 0 ? "RUPTURE" : s <= Number(p.stockMin) ? "STOCK FAIBLE" : "OK"; }
   function updateProductInfo(resetPrice) {
     const p = productByCode($("#c-product").value);
-    if (!p) { $("#c-stock-info").textContent = ""; return; }
+    if (!p) { $("#c-stock-info").textContent = ""; $("#c-add").disabled = false; return; }
     if (resetPrice !== false) $("#c-pu").value = p.pv;
     const inCart = cart.filter((l) => l.code === p.code).reduce((a, l) => a + l.qte, 0);
     const bq = caisseBoutique();
     const dispo = stockCaisse(p, bq) - inCart, frigo = estFrigo(p.code, bq);
+    $("#c-add").disabled = dispo <= 0; // rupture : bouton « Ajouter au panier » bloqué
     $("#c-stock-info").innerHTML = (frigo ? "🧊 Stock frigo disponible" : "Stock disponible") + (bq ? " (" + esc(boutiqueName(bq)) + ")" : "") + " : <b>" + num(dispo) + "</b> " +
       statutBadge(statutCaisse(p, bq)) + " · Prix de vente : " + money(p.pv);
   }
@@ -1041,7 +1042,10 @@
     if (!(pu >= 0)) return toast("Prix invalide.");
     const inCart = cart.filter((l) => l.code === p.code).reduce((a, l) => a + l.qte, 0);
     const bq = caisseBoutique();
-    if (stockCaisse(p, bq) - inCart < qte && !confirm("Stock " + (estFrigo(p.code, bq) ? "frigo " : "") + "insuffisant pour " + p.nom + (bq ? " dans " + boutiqueName(bq) : "") + " (disponible : " + (stockCaisse(p, bq) - inCart) + "). Ajouter quand même ?")) return;
+    // Stock insuffisant (rupture) : le produit n'est pas ajouté au panier
+    const dispoAj = stockCaisse(p, bq) - inCart;
+    if (dispoAj < qte) return toast(dispoAj <= 0 ? "⛔ " + p.nom + " est en rupture" + (bq ? " à " + boutiqueName(bq) : "") + " : impossible de l'ajouter au panier."
+      : "⛔ Stock insuffisant pour " + p.nom + " : seulement " + num(dispoAj) + " disponible" + (dispoAj > 1 ? "s" : "") + ".");
     cart.push({ code: p.code, nom: p.nom, qte, pu });
     $("#c-qte").value = 1;
     updateProductInfo(false);
