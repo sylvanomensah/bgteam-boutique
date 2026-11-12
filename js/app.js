@@ -3300,13 +3300,13 @@
       if (admin) {
         h += '<div class="fg-card violet"><span>Bénéfice estimé du mois</span><b>' + money2(f.benefMois) + "</b><small>" +
           (f.taux == null ? "aucune course ce mois-ci" : "somme des marges des produits achetés : " + Math.round(f.taux * 100) + " %") + "</small></div>";
-        h += '<div class="fg-card"><span>Bénéfice des ventes (retirable)</span><b>' + money2(f.aRetirer) + "</b><small>bénéfice des ventes en caisse : " + money2(f.benefVentes) + " · déjà retiré : " + money2(f.retire) + "</small></div>";
+        h += '<div class="fg-card"><span>Bénéfice (retirable)</span><b>' + money2(f.aRetirer) + "</b><small>bénéfice des ventes en caisse : " + money2(f.benefVentes) + " · déjà retiré : " + money2(f.retire) + "</small></div>";
       }
       $("#fg-cards").innerHTML = h;
     } else {
       $("#fg-cards").innerHTML = "";
       $("#fg-table-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Crédit vente restant</th><th class=\"num\">Estimation des ventes du mois</th><th class=\"num\">Vendu en caisse ce mois</th><th class=\"num\">Vendu aujourd'hui</th>" +
-        (admin ? '<th class="num">Bénéfice estimé du mois</th><th class="num">Bénéfice des ventes (retirable)</th>' : "") + "</tr>";
+        (admin ? '<th class="num">Bénéfice estimé du mois</th><th class="num">Bénéfice (retirable)</th>' : "") + "</tr>";
       const avec = scope.filter((b) => db.fgCourses.some((c) => c.boutique === b.code));
       $("#fg-table").innerHTML = avec.length ? avec.map((b) => {
         const f = frigoInfo(b.code, mois);
