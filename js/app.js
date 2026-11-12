@@ -4193,7 +4193,7 @@
       (c ? '<div class="info-row"><span>Code commercial</span><span>' + esc(ccName(code)) + "</span></div>" +
         '<div class="info-row"><span>Boutique</span><span>🏬 ' + esc(boutiqueName(c.boutique)) + "</span></div>" +
         '<div class="info-row"><span>Affecté depuis</span><span>' + (agentDebut(c) ? fmtDate(agentDebut(c)) : "—") + "</span></div>" +
-        '<div class="info-row"><span>Entrées de stock</span><span>' + (canEntrees() ? "✅ Autorisé" : "Non autorisé (géré par l'administrateur)") + "</span></div>" +
+        '<div class="info-row"><span>Courses Frigo</span><span>' + (canEntrees() ? "✅ Autorisé" : "Non autorisé (géré par l'administrateur)") + "</span></div>" +
         '<div class="info-row"><span>Stock visible</span><span>' + (isAdmin() || c.voirStock ? "Toutes les boutiques" : "Ma boutique uniquement") + "</span></div>"
         : '<p class="hint">Aucun code commercial lié à votre compte.</p>') + "</div>";
     if (c) {
@@ -4459,7 +4459,7 @@
   // Bloc d'autorisations d'un CC (utilisé dans l'onglet Autorisations et dans la fiche)
   function permsHtml(c) {
     return '<div class="perm-list">' +
-      '<label class="perm"><span><b>📦 Entrées de stock</b><small>Saisit les courses et remonte les fonds de sa boutique</small></span>' +
+      '<label class="perm"><span><b>🛒 Courses Frigo</b><small>Saisit les courses et remonte les fonds de sa boutique</small></span>' +
       '<input type="checkbox" class="switch" data-cc-entrees="' + esc(c.code) + '"' + (c.entrees ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🌍 Toutes boutiques</b><small>Voit le stock, les fonds et les dépenses de toutes les boutiques</small></span>' +
       '<input type="checkbox" class="switch" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "></label>" +
