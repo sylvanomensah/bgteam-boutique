@@ -205,8 +205,9 @@ input[type=checkbox], input[type=radio] { min-height: 0; width: 18px; height: 18
 .receipt .r-nom { font-size: 19px; font-weight: 800; letter-spacing: 2px; margin-bottom: 6px; }
 .receipt .r-ligne { margin: 4px 0; }
 .receipt .r-petit { font-size: 12px; color: #555; }
-.receipt .r-lignes td { padding: 3px 0; vertical-align: top; }
-.receipt .r-lignes td.r { white-space: nowrap; padding-left: 10px; }
+.receipt .r-lignes td, .receipt .r-lignes th { padding: 3px 0; vertical-align: top; }
+.receipt .r-lignes th { font-weight: 700; border-bottom: 1px dashed #888; padding-bottom: 4px; }
+.receipt .r-lignes .r { white-space: nowrap; padding-left: 8px; }
 .receipt .r-pu { font-size: 12px; color: #444; padding-left: 8px; }
 .receipt .r-merci { font-size: 12px; margin-top: 4px; }
 

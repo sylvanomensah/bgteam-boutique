@@ -2030,25 +2030,34 @@
     const total = lines.reduce((a, s) => a + lineTotal(s), 0);
     const remisRaw = $("#f-remis").value;
     const remis = Number(remisRaw);
-    // Modèle « ticket de caisse » : nom, téléphone, date et heure de la vente, référence du reçu, client, lignes « PRODUIT xQté … total »
+    // Modèle standard des tickets de caisse des magasins en France :
+    // en-tête magasin (nom, adresse, tél., identifiant légal) · date/heure, n° ticket, caisse, vendeur · colonnes Désignation/Qté/P.U./Montant
+    // · nombre d'articles · TOTAL TTC · règlement et rendu · remerciements · référence
     const quand = first.createdAt ? new Date(first.createdAt) : null;
-    const heure = quand ? quand.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+    const heure = quand ? quand.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
     const bq = saleBoutique(first) || "";
     const ref = "TK" + first.date.slice(5, 7) + first.date.slice(0, 4) + (bq ? "-" + bq : "") + "-" + t;
-    const fcfa = (n) => num(n) + " FCFA";
+    const vendeur = vendeurOf(first);
+    const nbArticles = lines.reduce((a, s) => a + Number(s.qte), 0);
+    const ligne2 = (g, d, cls) => "<tr" + (cls ? ' class="' + cls + '"' : "") + "><td>" + g + '</td><td class="r">' + d + "</td></tr>";
     $("#receipt").innerHTML =
       '<div class="center"><div class="r-nom">' + esc(String(st.nom || "").toUpperCase()) + "</div>" +
-      (st.tel ? "<div>Tél: " + esc(st.tel) + "</div>" : "") +
-      "<div>" + fmtDate(first.date) + (heure ? " " + heure : "") + "</div></div><hr>" +
-      '<div class="r-ligne">Reçu ' + esc(ref) + "</div>" +
-      '<div class="r-ligne">Client: ' + esc(first.client || "Passager") + "</div>" +
-      (bq ? '<div class="r-ligne r-petit">Boutique: ' + esc(boutiqueName(bq)) + " · " + ccLabel(first.cc) + "</div>" : "") +
-      "<hr>" +
-      '<table class="r-lignes">' + lines.map((s) => "<tr><td>" + esc(String(s.nom).toUpperCase()) + '<div class="r-pu">' + num(s.qte) + " x " + fcfa(s.pu) + '</div></td><td class="r">' + fcfa(lineTotal(s)) + "</td></tr>").join("") + "</table><hr>" +
-      '<table><tr class="big"><td>TOTAL TTC</td><td class="r">' + fcfa(total) + "</td></tr>" +
-      (remisRaw !== "" ? "<tr><td>Paiement:</td><td class=\"r\">Espèces</td></tr><tr><td>Montant remis</td><td class=\"r\">" + fcfa(remis) + "</td></tr><tr><td>Monnaie rendue</td><td class=\"r\">" + fcfa(Math.max(0, remis - total)) + "</td></tr>" : "") +
+      (bq ? "<div>" + esc(boutiqueName(bq)) + "</div>" : "") +
+      (st.adresse ? "<div>" + esc(st.adresse) + "</div>" : "") +
+      (st.tel ? "<div>Tél : " + esc(st.tel) + "</div>" : "") +
+      (st.rccm ? '<div class="r-petit">RCCM/NIF : ' + esc(st.rccm) + "</div>" : "") + "</div><hr>" +
+      "<table>" + ligne2("Le " + fmtDate(first.date), heure ? "à " + heure : "") +
+      ligne2("Ticket N° " + String(t).padStart(6, "0"), "Caisse : " + esc(String(first.cc || "—"))) +
+      (vendeur ? ligne2("Vendeur : " + esc(vendeur), "") : "") +
+      ligne2("Client : " + esc(first.client || "Passager"), "") + "</table><hr>" +
+      '<table class="r-lignes"><thead><tr><th>Désignation</th><th class="r">Qté</th><th class="r">P.U.</th><th class="r">Montant</th></tr></thead><tbody>' +
+      lines.map((s) => "<tr><td>" + esc(String(s.nom).toUpperCase()) + '</td><td class="r">' + num(s.qte) + '</td><td class="r">' + num(s.pu) + '</td><td class="r">' + num(lineTotal(s)) + "</td></tr>").join("") +
+      "</tbody></table><hr>" +
+      "<table>" + ligne2(nbArticles + " article" + (nbArticles > 1 ? "s" : ""), "") +
+      ligne2("TOTAL TTC", num(total) + " FCFA", "big") +
+      (remisRaw !== "" ? ligne2("Espèces", num(remis) + " FCFA") + ligne2("Rendu", num(Math.max(0, remis - total)) + " FCFA") : "") +
       "</table><hr>" +
-      '<div class="center r-merci">Merci pour votre confiance!</div>';
+      '<div class="center r-merci">Merci de votre visite<br>À bientôt !<br><br>Conservez ce ticket<br>' + esc(ref) + "</div>";
   }
   $("#f-ticket").addEventListener("change", renderReceipt);
   $("#f-remis").addEventListener("input", renderReceipt);
