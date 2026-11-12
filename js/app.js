@@ -581,7 +581,7 @@
     document.body.classList.toggle("no-credit-saisie", !canCreditSaisie());
     document.body.classList.toggle("no-cloture", !canCloture());
     document.body.classList.toggle("no-frigo", !canFrigo());
-    document.body.classList.toggle("no-frigo-vente", !canCloture());
+    document.body.classList.toggle("no-frigo-vente", !canFrigoVente());
     document.body.classList.toggle("no-frigo-dot", !canFrigoDotation());
     document.body.classList.toggle("no-frigo-course", !canFrigoCourse());
     document.body.classList.toggle("rh-limite", isRhCc());
@@ -2821,8 +2821,10 @@
   // ---------- Crédit télécom (YAS / MOOV) ----------
   // Saisie : admin, ou CC autorisé (ccs.credit) pour sa boutique. Consultation : tous les CC de la boutique.
   function canCreditSaisie() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.credit); }
-  // Clôture du soir : tout CC actif de la boutique (pour suivre le crédit en temps réel)
-  function canCloture() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && myBoutiqueCode()); }
+  // Contrôle du crédit restant : seulement les CC cochés « Contrôle Crédit » (ccs.credit) dans RH → Autorisations
+  function canCloture() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.credit && myBoutiqueCode()); }
+  // Déclaration des ventes du frigo : tout CC actif de la boutique (inchangé)
+  function canFrigoVente() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && myBoutiqueCode()); }
   // Boutiques qui vendent du crédit (activité déjà enregistrée)
   function boutiquesCredit() { const s = new Set(db.crAchats.map((x) => x.boutique).concat(db.crSoldes.map((x) => x.boutique), db.crVentes.map((x) => x.boutique))); return db.boutiques.filter((b) => s.has(b.code)); }
   // Contrôle du crédit restant fait chaque soir par les CC (règle « hier d'abord » active à partir du 11/11/2026)
@@ -3041,7 +3043,7 @@
     if (document.activeElement !== $("#cv-montant")) $("#cv-montant").value = reste > 0 ? reste : "";
     $("#cv-save").disabled = !sbq || reste <= 0 || !ouvert;
     $("#cv-form").classList.toggle("hidden", !ouvert);
-    $("#cv-ferme").classList.toggle("hidden", ouvert);
+    $("#cv-ferme").classList.toggle("hidden", ouvert || !canCreditSaisie());
     $("#cv-ferme").innerHTML = ouvert ? "" : "🔒 Le reversement de la commission se fait uniquement <b>le 1er et le 2 de chaque mois</b> (commission du mois écoulé). Prochaine ouverture : <b>" + fmtDate(premierDuMois(addDays(premierDuMois(t), 32))) + "</b>.";
 
     // Recharge : montant proposé automatiquement (dotation du réseau)
@@ -3256,6 +3258,7 @@
   });
   $("#cv-save").addEventListener("click", (e) => {
     const bq = creditSaisieBq(), montant = Number($("#cv-montant").value);
+    if (!canCreditSaisie()) return toast("Vous n'êtes pas autorisé à reverser la commission (case « Contrôle Crédit » dans RH → Autorisations).");
     if (!bq) return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant versé.");
     if (!versementOuvert()) return toast("Le reversement se fait uniquement le 1er et le 2 de chaque mois.");
@@ -3267,6 +3270,7 @@
   // Contrôle du crédit restant lu sur la puce (hier d'abord si oublié), confirmé par « Oui »
   $("#cs-save").addEventListener("click", (e) => {
     const admin = isAdmin(), bq = creditSaisieBq(), d = venteJourChoisi(bq), btn = e.target, y = $("#cs-yas").value.trim(), m = $("#cs-moov").value.trim();
+    if (!canCloture()) return toast("Vous n'êtes pas autorisé au contrôle du crédit (case « Contrôle Crédit » dans RH → Autorisations).");
     if (d > today()) return toast("Impossible d'enregistrer un contrôle pour un jour à venir.");
     if (!bq) return toast("Choisissez une boutique.");
     if (!admin && venteFaite(bq, d)) return toast("Le contrôle de ce jour est déjà fait.");
