@@ -2980,11 +2980,14 @@
     } else {
       $("#cr-cards").innerHTML = "";
       // Vue résumée : une carte par boutique (logo + crédit restant de chaque opérateur, commission à reverser)
-      $("#cr-resume").innerHTML = !restreint ? "" : scope.map((b) => {
-        const ci = commissionInfo(b.code);
-        return '<div class="crr-card"><div class="crr-nom">' + esc(b.nom) + "</div>" +
-          OPS.map((op) => { const cr = creditRestant(b.code, op);
-            return '<div class="crr-op ' + op.toLowerCase() + '">' + logoOp(op) + '<div><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b></div></div>"; }).join("") +
+      // Tous les profils : grille de 3 colonnes ; « recharges du mois » et « contrôle du jour » sauf en vue restreinte
+      $("#cr-resume").innerHTML = scope.map((b) => {
+        const ci = commissionInfo(b.code), m = creditMois(b.code, mois);
+        const etat = venteFaite(b.code, t) ? '<span class="badge ok">✓ contrôle fait</span>' : hierManquant(b.code) ? '<span class="badge warn">⚠ hier manquant</span>' : '<span class="badge">contrôle : pas encore</span>';
+        return '<div class="crr-card"><div class="crr-nom">' + esc(b.nom) + (restreint ? "" : " " + etat) + "</div>" +
+          OPS.map((op) => { const cr = creditRestant(b.code, op), nb = op === "YAS" ? m.nbYas : m.nbMoov;
+            return '<div class="crr-op ' + op.toLowerCase() + '">' + logoOp(op) + '<div><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b>" +
+              (restreint ? "" : "<small>" + nb + " recharge" + (nb > 1 ? "s" : "") + " ce mois</small>") + "</div></div>"; }).join("") +
           '<div class="crr-com' + (ci.du > 0 ? " due" : "") + '"><span>💰 Commission à reverser</span><b>' + money0(ci.du || 0) + "</b></div></div>";
       }).join("");
       $("#cr-table").innerHTML = scope.map((b) => {
