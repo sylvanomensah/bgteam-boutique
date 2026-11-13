@@ -1093,8 +1093,10 @@
     const inCart = cart.filter((l) => l.code === p.code).reduce((a, l) => a + l.qte, 0);
     const bq = caisseBoutique();
     const dispo = stockCaisse(p, bq) - inCart, frigo = estFrigo(p.code, bq);
-    $("#c-add").disabled = dispo <= 0; // rupture : bouton « Ajouter au panier » bloqué
-    $("#c-stock-info").innerHTML = (frigo ? "🧊 Stock frigo disponible" : "Stock disponible") + (bq ? " (" + esc(boutiqueName(bq)) + ")" : "") + " : <b>" + num(dispo) + "</b> " +
+    const bloqueValid = !p.valide && !isAdmin(); // produit créé par un CC : vendable seulement après validation de l'admin
+    $("#c-add").disabled = dispo <= 0 || bloqueValid; // rupture ou produit non validé : bouton « Ajouter au panier » bloqué
+    $("#c-stock-info").innerHTML = (bloqueValid ? '<b class="neg">⛔ Produit pas encore validé par l\'administrateur : vente impossible pour l\'instant.</b><br>' : "") +
+      (frigo ? "🧊 Stock frigo disponible" : "Stock disponible") + (bq ? " (" + esc(boutiqueName(bq)) + ")" : "") + " : <b>" + num(dispo) + "</b> " +
       statutBadge(statutCaisse(p, bq)) + " · Prix de vente : " + money(p.pv);
   }
   // Boutique de la caisse = boutique du CC qui encaisse (stock commun si le CC n'a pas de boutique)
@@ -1117,6 +1119,7 @@
     const qte = Number($("#c-qte").value);
     const pu = isAdmin() ? Number($("#c-pu").value) : (p ? p.pv : 0);
     if (!p) return toast("Choisissez un produit.");
+    if (!p.valide && !isAdmin()) return toast("⛔ " + p.nom + " n'est pas encore validé par l'administrateur : vente impossible pour l'instant.");
     if (!(qte > 0)) return toast("Quantité invalide.");
     if (!(pu >= 0)) return toast("Prix invalide.");
     const inCart = cart.filter((l) => l.code === p.code).reduce((a, l) => a + l.qte, 0);

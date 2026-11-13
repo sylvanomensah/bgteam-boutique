@@ -254,6 +254,8 @@ begin
   for l in select * from jsonb_array_elements(p_lines) loop
     select * into prod from public.products where code = l ->> 'code';
     if not found then raise exception 'Produit inconnu : %', l ->> 'code'; end if;
+    -- produit créé par un CC : vendable seulement après validation par l'administrateur (prix vérifié)
+    if not admin and not prod.valide then raise exception 'Produit « % » pas encore validé par l''administrateur : vente impossible', prod.nom; end if;
     insert into public.sales (ticket, date, client, code, nom, qte, pu, cc, vendeur, valide, num_client, adresse_client, created_by, boutique)
     values (
       t, case when admin then coalesce(p_date, current_date) else current_date end,
