@@ -3215,16 +3215,16 @@
 
     // Historique du mois
     const achats = db.crAchats.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
-    $("#cr-rows").innerHTML = achats.length ? achats.map((x) => "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) +
-      '</td><td class="num">' + money0(x.montant) + '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + (x.createdAt ? new Date(x.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—") + "</td><td>" + esc(x.saisiPar || "—") +
+    $("#cr-rows").innerHTML = achats.length ? achats.map((x) => "<tr><td>" + fmtDate(x.date) + "</td><td>" + heureDe(x.createdAt) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) +
+      '</td><td class="num">' + money0(x.montant) + '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + esc(x.saisiPar || "—") +
       "</td><td>" + (admin ? '<button class="btn small danger" data-cr-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("")
       : '<tr><td colspan="8" class="empty">Aucune recharge ce mois-ci.</td></tr>';
     $("#cvt-rows").innerHTML = controlesRows(codes, mois, admin);
     $("#cvc-rows").innerHTML = ventesRows(codes, mois);
     const ajs = db.crAjust.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-    $("#aj-rows").innerHTML = ajs.length ? ajs.map((x) => "<tr><td>" + fmtDate(x.date) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) + '</td><td class="num"><b class="' + (x.montant >= 0 ? "pos" : "neg") + '">' +
+    $("#aj-rows").innerHTML = ajs.length ? ajs.map((x) => "<tr><td>" + fmtDate(x.date) + "</td><td>" + heureDe(x.createdAt) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) + '</td><td class="num"><b class="' + (x.montant >= 0 ? "pos" : "neg") + '">' +
       (x.montant > 0 ? "+" : "−") + money0(Math.abs(x.montant)) + "</b></td><td>" + esc(x.note || "—") + "</td><td>" + esc(x.saisiPar || "—") + "</td><td>" +
-      (admin ? '<button class="btn small danger" data-aj-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("") : '<tr><td colspan="7" class="empty">Aucun ajustement ce mois-ci.</td></tr>';
+      (admin ? '<button class="btn small danger" data-aj-del="' + x.id + '">✕</button>' : "") + "</td></tr>").join("") : '<tr><td colspan="8" class="empty">Aucun ajustement ce mois-ci.</td></tr>';
     if (admin) {
       $("#aj-save").disabled = !sbq;
       $("#aj-info").innerHTML = sbq ? "Crédit restant actuel de <b>" + esc(boutiqueName(sbq)) + "</b> : " + OPS.map((op) => logoOp(op, true) + " <b>" + money0(creditRestant(sbq, op).total) + "</b>").join(" &nbsp; ") +
