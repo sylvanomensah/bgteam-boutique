@@ -748,6 +748,15 @@ body.no-frigo .need-frigo, body.no-frigo-vente .need-frigo-vente, body.no-frigo-
 .fg-card > span { font-size: .78rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .fg-card > b { font-size: 2rem; letter-spacing: -.02em; }
 .fg-card > small { color: var(--muted); font-size: .85rem; }
+/* Tableau de bord financier du frigo : 2 colonnes, total à reverser en pleine largeur */
+.frigo-cards.fg-2col { grid-template-columns: 1fr 1fr; }
+.fg-2col .fg-plein { grid-column: 1 / -1; }
+.fg-card.fg-total { border-top: 0; border: 2px solid #16a34a; background: #f0fdf4; }
+.fg-card.fg-total > span { color: #15803d; }
+.fg-card.fg-total > b { font-size: 2.4rem; color: #15803d; }
+.fg-card .vert-txt { color: #15803d; } .fg-card .orange-txt { color: #c2410c; } .fg-card .rouge-txt { color: var(--danger); }
+.fg-card.rouge { border-top-color: var(--danger); }
+@media (max-width: 700px) { .frigo-cards.fg-2col { grid-template-columns: 1fr; } .fg-card.fg-total > b { font-size: 1.9rem; } }
 .fg-bar { height: 10px; background: #e9edf4; border-radius: 99px; overflow: hidden; margin-top: 4px; }
 .fg-bar > i { display: block; height: 100%; background: #0ea5e9; border-radius: 99px; }
 .fg-bar.bas > i { background: #f59e0b; }

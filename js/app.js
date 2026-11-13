@@ -3448,20 +3448,33 @@
     // Cartes (une boutique) ou tableau (plusieurs)
     const une = scope.length === 1;
     $("#fg-table-card").classList.toggle("hidden", une || !scope.length);
+    $("#fg-cards").classList.toggle("fg-2col", une);
     if (une) {
       const bq = scope[0].code, f = frigoInfo(bq, mois);
       const pct = f.base > 0 ? Math.max(0, Math.min(100, Math.round((f.restant / f.base) * 100))) : 0;
-      let h = '<div class="fg-card' + (f.courses.length && f.seuilAtteint ? " orange" : "") + '"><span>Crédit vente restant</span><b>' + (f.courses.length ? money2(Math.max(0, f.restant)) : "—") + "</b>" + (f.restant < 0 ? '<small class="pos">✅ Course remboursée · <b>+' + money2(-f.restant) + "</b> de bénéfice déjà vendu</small>" : "") +
+      // Tableau de bord financier (2 colonnes) : semaine en cours (lundi → dimanche), reversée le lundi suivant
+      const lundiC = mondayOf(t), lundiRev = addDays(lundiC, 7), sw = reversementSemaine(bq, lundiC);
+      const reste = Math.max(0, Math.round((sw.solde + sw.reliquatAvant) * 100) / 100), enRetard = sw.reliquatAvant > 0.5;
+      // 1re ligne : stock restant au coût d'achat | chiffre d'affaires du mois
+      let h = '<div class="fg-card' + (f.courses.length && f.seuilAtteint ? " orange" : "") + '"><span>Stock restant au coût d\'achat</span><b>' + (f.courses.length ? money2(Math.max(0, f.restant)) : "—") + "</b>" +
         (f.courses.length ? '<div class="fg-bar' + (f.seuilAtteint ? " bas" : "") + '"><i style="width:' + pct + '%"></i></div><small>' +
-          (f.seuilAtteint ? "🛒 <b>Seuil atteint</b> : nouvelle course de <b>" + money0(DOTATION_STANDARD) + "</b> à faire" : "Dernière course du " + fmtDate(f.derniere.date) + " : " + money2(f.derniere.cout)) + "</small>"
+          (f.seuilAtteint ? "🛒 <b>Seuil de " + money0(db.settings.frigoSeuil) + " atteint</b> : nouvelle course de <b>" + money0(DOTATION_STANDARD) + "</b> à faire"
+            : "achats enregistrés " + money2(f.credit) + " − coût d'achat sorti " + money2(f.consomme) + " · dernière course du " + fmtDate(f.derniere.date) + " : " + money2(f.derniere.cout)) + "</small>"
           : "<small>Aucune course enregistrée pour ce frigo</small>") + "</div>";
-      h += '<div class="fg-card vert"><span>Estimation des ventes du mois</span><b>' + money2(f.estimationMois) + "</b><small>prix de vente des produits des courses · vendu en caisse ce mois : <b>" + money2(f.venduMois) +
-        "</b> (" + num(f.articlesMois) + " article" + (f.articlesMois > 1 ? "s" : "") + ") · aujourd'hui : " + money2(f.venteJour) + "</small></div>";
-      if (admin) {
-        h += '<div class="fg-card violet"><span>Bénéfice estimé du mois</span><b>' + money2(f.benefMois) + "</b><small>" +
-          (f.taux == null ? "aucune course ce mois-ci" : "somme des marges des produits achetés : " + Math.round(f.taux * 100) + " %") + "</small></div>";
-        h += '<div class="fg-card"><span>Bénéfice (retirable)</span><b>' + money2(f.aRetirer) + "</b><small>bénéfice des ventes en caisse : " + money2(f.benefVentes) + " · déjà retiré : " + money2(f.retire) + "</small></div>";
-      }
+      h += '<div class="fg-card vert"><span>Chiffre d\'affaires du mois</span><b>' + money2(f.venduMois) + "</b><small>" + num(f.articlesMois) + " article" + (f.articlesMois > 1 ? "s" : "") +
+        " vendu" + (f.articlesMois > 1 ? "s" : "") + " en caisse en " + esc(fmtMonth(mois + "-01")) + " · aujourd'hui : " + money2(f.venteJour) + "</small></div>";
+      // 2e ligne : coût d'achat vendu | bénéfice réalisé (semaine en cours)
+      h += '<div class="fg-card"><span>Coût d\'achat vendu de la semaine</span><b>' + money2(sw.cout) + "</b><small>stock au début " + money2(Math.max(0, sw.restantDebut)) + " + achats de la semaine " + money2(sw.dotations) +
+        " − stock restant " + money2(Math.max(0, sw.restantFin)) + "</small></div>";
+      h += '<div class="fg-card vert"><span>Bénéfice réalisé de la semaine</span><b class="vert-txt">' + money2(sw.benef) + "</b><small>somme des marges des ventes du " + fmtDate(lundiC) + " au " + fmtDate(t) + " (prix de vente − coût d'achat)</small></div>";
+      // 3e ligne : total à reverser lundi (pleine largeur)
+      h += '<div class="fg-card fg-total fg-plein"><span>Total des recettes à reverser lundi ' + fmtDate(lundiRev) + "</span><b>" + money2(sw.total) + "</b><small>coût d'achat vendu de la semaine " + money2(sw.cout) +
+        " + bénéfice réalisé de la semaine " + money2(sw.benef) + "</small></div>";
+      // 4e ligne : déjà reversé | reste à reverser (orange = en attente, rouge = en retard)
+      h += '<div class="fg-card"><span>Montant déjà reversé</span><b>' + money2(sw.recu) + "</b><small>versements confirmés pour la semaine du " + fmtDate(lundiC) +
+        (sw.attente > 0 ? " · ⏳ " + money2(sw.attente) + " déclarés, en attente de confirmation" : "") + "</small></div>";
+      h += '<div class="fg-card ' + (enRetard ? "rouge" : reste > 0.5 ? "orange" : "vert") + '"><span>Reste à reverser</span><b class="' + (enRetard ? "rouge-txt" : reste > 0.5 ? "orange-txt" : "vert-txt") + '">' + money2(reste) + "</b><small>" +
+        (enRetard ? "⚠ dont <b>" + money2(sw.reliquatAvant) + "</b> de reliquat des semaines précédentes (en retard) · " : "") + "prochain reversement : <b>lundi " + fmtDate(lundiRev) + "</b></small></div>";
       $("#fg-cards").innerHTML = h;
     } else {
       $("#fg-cards").innerHTML = "";
