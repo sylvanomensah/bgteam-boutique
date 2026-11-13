@@ -1614,7 +1614,8 @@ drop policy if exists credit_demandes_select on public.credit_demandes;
 create policy credit_demandes_select on public.credit_demandes for select to authenticated using (public.is_member());
 drop policy if exists credit_demandes_insert on public.credit_demandes;
 create policy credit_demandes_insert on public.credit_demandes for insert to authenticated
-  with check (public.can_gerer_commissions() and created_by = auth.uid());
+  with check (public.can_gerer_commissions() and created_by = auth.uid()
+    and extract(day from (now() at time zone 'Africa/Lome')) <= 2); -- demande le 1er et le 2 du mois
 drop policy if exists credit_demandes_delete on public.credit_demandes;
 create policy credit_demandes_delete on public.credit_demandes for delete to authenticated using (public.is_admin());
 -- 3. Un versement ne peut pas dépasser la commission encore due par la boutique

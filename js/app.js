@@ -713,6 +713,8 @@
     charts[id] = new Chart(el, config);
   }
 
+  // La demande de versement des commissions se fait le 1er et le 2 de chaque mois
+  function jourDemande() { return Number(today().slice(8, 10)) <= 2; }
   // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)
   function renderDashCom() {
     const card = $("#dash-com");
@@ -739,7 +741,8 @@
         " — les CC peuvent verser tout de suite. " : "🔔 Rappel automatique le <b>1er et le 2</b> de chaque mois pour les commissions des mois passés. ") +
       (aRelancer.length ? "<b>" + aRelancer.length + "</b> boutique" + (aRelancer.length > 1 ? "s" : "") + " reçoi" + (aRelancer.length > 1 ? "vent" : "t") + " la notification jusqu'au versement : " + aRelancer.map((b) => esc(b.nom)).join(", ") + "."
         : "Aucune boutique à relancer pour l'instant.") + "</p>" +
-      '<button class="btn primary" id="dc-demander"' + (reste > 0 ? "" : " disabled") + ">📣 Demander le versement des commissions</button>";
+      (jourDemande() ? '<button class="btn primary" id="dc-demander"' + (reste > 0 ? "" : " disabled") + ">📣 Demander le versement des commissions</button>"
+        : '<button class="btn" disabled title="La demande se fait le 1er et le 2 de chaque mois">📣 Demande possible le 1er et le 2 du mois (prochaine : ' + fmtDate(premierDuMois(addDays(premierDuMois(today()), 32))) + ")</button>");
     $("#dc-rows").innerHTML = infos.length ? infos.map(({ b, c, m }) => {
       const etat = c.aDeclarer <= 0 && c.attente <= 0 ? '<span class="badge ok">✓ À jour</span>' : c.aDeclarer <= 0 ? '<span class="badge warn">⏳ À confirmer</span>'
         : comARelancer(b.code) > 0 ? '<span class="badge danger">🔔 Relancé</span>' : '<span class="badge">À verser</span>';
@@ -756,6 +759,7 @@
   $("#dc-boutique").addEventListener("change", () => renderDashCom());
   $("#dash-com").addEventListener("click", (e) => {
     if (e.target.closest("#dc-demander")) {
+      if (!jourDemande()) return toast("La demande de versement se fait uniquement le 1er et le 2 de chaque mois.");
       const n = boutiquesCredit().filter((b) => commissionInfo(b.code).aDeclarer > 0).length;
       if (!confirm("Demander le versement des commissions du crédit télécom ?\n\nLes CC de " + n + " boutique(s) qui n'ont pas encore versé recevront la notification dans l'application jusqu'à ce qu'ils versent. Le versement leur est ouvert tout de suite.")) return;
       return act(async () => chk(await sb.from("credit_demandes").insert({ demandeur: me.nom || me.email || "" })), "Demande envoyée : les CC concernés sont notifiés.", e.target);
@@ -3160,6 +3164,13 @@
       (ci.attente ? '<div class="info-row"><span>dont versé, en attente de validation</span><span>' + money0(ci.attente) + "</span></div>" : "") +
       '<div class="info-row"><span>' + logoOp("YAS", true) + " commission de " + esc(fmtMonth(mois + "-01")) + "</span><b>" + money0(mAll.y) + "</b></div>" +
       '<div class="info-row"><span>' + logoOp("MOOV", true) + " commission de " + esc(fmtMonth(mois + "-01")) + "</span><b>" + money0(mAll.m) + "</b></div>";
+    // CC : statut de ses versements (⏳ en attente → ✓ validé par EDWIGE ou l'admin)
+    if (!isAdmin() && me && me.cc) {
+      const mes = db.crVers.filter((v) => v.cc === String(me.cc)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 8);
+      if (mes.length) $("#cv-solde").innerHTML += '<h3 class="sub-title" style="margin:12px 0 4px">Mes versements</h3>' + mes.map((v) =>
+        '<div class="info-row"><span>' + (v.createdAt ? new Date(v.createdAt).toLocaleDateString("fr-FR") : "—") + " · <b>" + money0(v.montant) + "</b> (" + esc(v.mode || "") + ")</span><span>" +
+        (v.statut === "Reçue" ? '<span class="badge ok">✓ Validé' + (v.recuPar ? " par " + esc(v.recuPar) : "") + "</span>" : '<span class="badge warn">⏳ En attente de validation</span>') + "</span></div>").join("");
+    }
     const sbq = creditSaisieBq(), ouvert = versementOuvert();
     const reste = resteAVerser(sbq);
     if (document.activeElement !== $("#cv-montant")) $("#cv-montant").value = reste > 0 ? reste : "";
