@@ -554,8 +554,58 @@
       });
     });
   }
+  // Cadres déplaçables (▲ ▼) dans les pages Crédit télécom et Frigo : l'ordre est gardé sur l'appareil, par utilisateur
+  const BLOC_CONTENEURS = ["#cr-main", "#fg-main"];
+  const blocsDe = (c) => [...c.children].filter((e) => e.matches(".card, .op-cards, .frigo-cards, details"));
+  BLOC_CONTENEURS.forEach((sel) => { const c = document.querySelector(sel); if (c) blocsDe(c).forEach((b, i) => { b.dataset.bloc = b.id || c.id + "-" + i; b.classList.add("bloc-mobile"); }); });
+  const blocCle = (c) => "ordre-blocs-" + c.id + "-" + (me ? me.id : "");
+  const blocsAppliques = new Set();
+  function appliquerOrdreBlocs(view) {
+    const sel = view === "credit" ? "#cr-main" : view === "frigo" ? "#fg-main" : "";
+    const c = sel && document.querySelector(sel); if (!c || !me || blocsAppliques.has(blocCle(c))) return;
+    blocsAppliques.add(blocCle(c));
+    let ordre = []; try { ordre = JSON.parse(localStorage.getItem(blocCle(c)) || "[]"); } catch (e) {}
+    if (!ordre.length) return;
+    const blocs = blocsDe(c), rang = (b) => { const i = ordre.indexOf(b.dataset.bloc); return i < 0 ? 1000 + blocs.indexOf(b) : i; };
+    blocs.slice().sort((a, b) => rang(a) - rang(b)).forEach((b) => c.appendChild(b));
+  }
+  function poignéesBlocs() {
+    BLOC_CONTENEURS.forEach((sel) => {
+      const c = document.querySelector(sel); if (!c) return;
+      blocsDe(c).forEach((b) => {
+        if (!b.querySelector(":scope > .bloc-move")) {
+          const m = document.createElement("div");
+          m.className = "bloc-move";
+          m.innerHTML = '<button type="button" data-bloc-mv="-1" title="Monter ce cadre">▲</button><button type="button" data-bloc-mv="1" title="Descendre ce cadre">▼</button>';
+          b.appendChild(m);
+        }
+        b.classList.toggle("bloc-vide", b.children.length <= 1);
+      });
+    });
+  }
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-bloc-mv]"); if (!btn) return;
+    e.preventDefault(); e.stopPropagation();
+    const b = btn.closest(".bloc-mobile"), c = b.parentElement, dir = Number(btn.dataset.blocMv);
+    const visibles = blocsDe(c).filter((x) => x === b || (x.offsetHeight > 20 && !x.classList.contains("bloc-vide")));
+    const i = visibles.indexOf(b), cible = visibles[i + dir];
+    if (!cible) return toast(dir < 0 ? "Ce cadre est déjà tout en haut." : "Ce cadre est déjà tout en bas.");
+    c.insertBefore(b, dir < 0 ? cible : cible.nextSibling);
+    try { localStorage.setItem(blocCle(c), JSON.stringify(blocsDe(c).map((x) => x.dataset.bloc))); } catch (er) {}
+    b.classList.remove("bloc-flash"); void b.offsetWidth; b.classList.add("bloc-flash");
+    b.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, true);
+  // Lignes / cartes cliquables : choisissent la boutique dans le filtre de la page (si l'utilisateur y a accès)
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("a, button, input, select, [data-bloc-mv]")) return;
+    const r = e.target.closest("[data-go-filtre]"); if (!r) return;
+    const sel = document.querySelector(r.dataset.goFiltre), v = r.dataset.goBq;
+    if (!sel || sel.disabled || ![...sel.options].some((o) => o.value === v)) return;
+    sel.value = v; sel.dispatchEvent(new Event("change", { bubbles: true }));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
   let etiqTimer = null;
-  new MutationObserver(() => { if (etiqTimer) return; etiqTimer = requestAnimationFrame(() => { etiqTimer = null; etiqueterTableaux(); }); })
+  new MutationObserver(() => { if (etiqTimer) return; etiqTimer = requestAnimationFrame(() => { etiqTimer = null; etiqueterTableaux(); poignéesBlocs(); }); })
     .observe(document.body, { childList: true, subtree: true });
   function kpiHtml(items) {
     return items.map(([l, v, c, attrs]) => '<div class="kpi ' + (c || "") + '"' + (attrs ? " " + attrs : "") + '><div class="label">' + l + '</div><div class="value">' + v + "</div></div>").join("");
@@ -609,6 +659,7 @@
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.body.classList.remove("nav-open"); });
   let jourAffiche = today();
   function render(view) {
+    try { appliquerOrdreBlocs(view); } catch (e) { /* jamais bloquant */ }
     // Application restée ouverte après minuit : on remet les dates du jour (caisse, tableau de bord)
     if (today() !== jourAffiche) {
       if (dash.ref === jourAffiche) dash.ref = today();
@@ -824,7 +875,7 @@
     $("#dc-rows").innerHTML = infos.length ? infos.map(({ b, c, m }) => {
       const etat = c.aDeclarer <= 0 && c.attente <= 0 ? '<span class="badge ok">✓ À jour</span>' : c.aDeclarer <= 0 ? '<span class="badge warn">⏳ À confirmer</span>'
         : comARelancer(b.code) > 0 ? '<span class="badge danger">🔔 Relancé</span>' : '<span class="badge">À verser</span>';
-      return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money0(m) + '</td><td class="num">' + money0(c.total) + '</td><td class="num">' + money0(c.recu) + '</td><td class="num">' + money0(c.attente) +
+      return '<tr class="cliquable" data-go-filtre="#dc-boutique" data-go-bq="' + esc(b.code) + '" title="Voir seulement ' + esc(b.nom) + '"><td><b>' + esc(b.nom) + '</b></td><td class="num">' + money0(m) + '</td><td class="num">' + money0(c.total) + '</td><td class="num">' + money0(c.recu) + '</td><td class="num">' + money0(c.attente) +
         '</td><td class="num">' + (c.aDeclarer > 0 ? '<b class="neg">' + money0(c.aDeclarer) + "</b>" : '<span class="pos">0</span>') + "</td><td>" + etat + "</td></tr>";
     }).join("") : '<tr><td colspan="7" class="empty">Aucune boutique.</td></tr>';
     const vers = db.crVers.filter((v) => codes.includes(v.boutique)).sort((a, b) => (a.statut === "Reçue") - (b.statut === "Reçue") || String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 60);
@@ -3359,7 +3410,7 @@
       $("#cr-resume").innerHTML = scope.slice().sort((a, b) => rang(a.code) - rang(b.code)).map((b) => {
         const ci = commissionInfo(b.code), m = creditMois(b.code, mois);
         const etat = venteFaite(b.code, t) ? '<span class="badge ok">✓ contrôle fait</span>' : hierManquant(b.code) ? '<span class="badge warn">⚠ hier manquant</span>' : '<span class="badge">contrôle : pas encore</span>';
-        return '<div class="crr-card' + (isAdmin() ? " crr-move" : "") + '" data-crr-bq="' + esc(b.code) + '"' + (isAdmin() ? ' draggable="true" title="Glissez ce cadre sur un autre pour échanger leurs places"' : "") + '><div class="crr-nom">' + esc(b.nom) + (restreint ? "" : " " + etat) + "</div>" +
+        return '<div class="crr-card cliquable' + (isAdmin() ? " crr-move" : "") + '" data-crr-bq="' + esc(b.code) + '" data-go-filtre="#cr-boutique" data-go-bq="' + esc(b.code) + '"' + (isAdmin() ? ' draggable="true" title="Glissez ce cadre sur un autre pour échanger leurs places"' : "") + '><div class="crr-nom">' + esc(b.nom) + (restreint ? "" : " " + etat) + "</div>" +
           OPS.map((op) => { const cr = creditRestant(b.code, op), nb = op === "YAS" ? m.nbYas : m.nbMoov;
             return '<div class="crr-op ' + op.toLowerCase() + '">' + logoOp(op) + '<div><span>Crédit restant</span><b>' + (cr.connu ? money0(cr.total) : "—") + "</b>" +
               (restreint ? "" : "<small>" + nb + " recharge" + (nb > 1 ? "s" : "") + " ce mois</small>") + "</div></div>"; }).join("") +
@@ -3368,7 +3419,7 @@
       $("#cr-table").innerHTML = scope.map((b) => {
         const cy = creditRestant(b.code, "YAS"), cm = creditRestant(b.code, "MOOV"), m = creditMois(b.code, mois), ci = commissionInfo(b.code);
         const etat = venteFaite(b.code, t) ? '<span class="badge ok">✓ fait</span>' : hierManquant(b.code) ? '<span class="badge warn">⚠ hier manquant</span>' : '<span class="badge">pas encore</span>';
-        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (cy.connu ? money0(cy.total) : "—") + '</td><td class="num">' + (cm.connu ? money0(cm.total) : "—") +
+        return '<tr class="cliquable" data-go-filtre="#cr-boutique" data-go-bq="' + esc(b.code) + '" title="Ouvrir ' + esc(b.nom) + '"><td><b>' + esc(b.nom) + '</b></td><td class="num">' + (cy.connu ? money0(cy.total) : "—") + '</td><td class="num">' + (cm.connu ? money0(cm.total) : "—") +
           '</td><td class="num cr-det">' + logoOp("YAS", true) + " " + m.nbYas + " &nbsp; " + logoOp("MOOV", true) + " " + m.nbMoov +
           '</td><td class="num">' + (ci.du > 0 ? "<b>" + money0(ci.du) + "</b>" : '<span class="pos">0</span>') + '</td><td class="cr-det">' + etat + "</td></tr>";
       }).join("");
@@ -3828,7 +3879,7 @@
       $("#fg-table").innerHTML = avec.length ? avec.map((b) => {
         const f = frigoInfo(b.code, mois);
         const etat = '<span class="num">' + money2(f.venteJour) + "</span>";
-        return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + (f.seuilAtteint ? '<b class="neg">' + money2(Math.max(0, f.restant)) + "</b> 🛒" : money2(Math.max(0, f.restant))) + '</td><td class="num">' + money2(f.estimationMois) + '</td><td class="num">' + money2(f.venduMois) + "</td><td>" + etat + "</td>" +
+        return '<tr class="cliquable" data-go-filtre="#fg-boutique" data-go-bq="' + esc(b.code) + '" title="Ouvrir le frigo de ' + esc(b.nom) + '"><td><b>' + esc(b.nom) + '</b></td><td class="num">' + (f.seuilAtteint ? '<b class="neg">' + money2(Math.max(0, f.restant)) + "</b> 🛒" : money2(Math.max(0, f.restant))) + '</td><td class="num">' + money2(f.estimationMois) + '</td><td class="num">' + money2(f.venduMois) + "</td><td>" + etat + "</td>" +
           (admin ? '<td class="num">' + money2(f.benefMois) + '</td><td class="num">' + money2(f.aRetirer) + "</td>" : "") + "</tr>";
       }).join("") : '<tr><td colspan="6" class="empty">Aucun frigo approvisionné : choisissez une boutique dans le filtre pour enregistrer sa première course.</td></tr>';
     }

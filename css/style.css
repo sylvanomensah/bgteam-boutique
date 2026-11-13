@@ -949,3 +949,60 @@ input:focus, select:focus, textarea:focus { border-color: #6366f1; box-shadow: 0
   .hello-cc .hc-stat span { font-size: .62rem; }
   .hello-cc .hc-stat b { font-size: .95rem; white-space: nowrap; }
 }
+/* =====================================================================
+   THÈME 2026 — 2e passe : bleu nuit du menu et orange BG utilisés dans l'application
+   ===================================================================== */
+:root { --g-navy: linear-gradient(135deg, #0b1230 0%, #1d1b4f 100%); --g-bg: linear-gradient(135deg, #ffb347 0%, #ff8a00 100%); }
+body { color: #131a33; }
+h1 { color: #0b1230; }
+.card > h2:first-child, .card > .toolbar > h2 { display: flex; align-items: center; gap: 10px; }
+.card > h2:first-child::before { content: ""; width: 6px; height: 20px; border-radius: 4px; background: var(--g-bg); flex: none; }
+
+/* Onglets : fond bleu nuit, onglet actif orange BG */
+.tabs { background: var(--g-navy); padding: 5px; box-shadow: 0 6px 18px rgba(11, 18, 48, .25); }
+.tabs button { color: #c9d1e8; font-weight: 700; }
+.tabs button:hover { color: #fff; background: rgba(255, 255, 255, .08); }
+.tabs button.active { background: var(--g-bg); color: #1b1300; box-shadow: 0 4px 14px rgba(255, 138, 0, .45); }
+
+/* Première case du tableau de bord : bleu nuit, texte blanc */
+.kpi-hero > .kpi:first-child { background: var(--g-navy); color: #ffb347; border: 0; }
+.kpi-hero > .kpi:first-child .label { color: #c9d1e8; }
+.kpi-hero > .kpi:first-child .value { color: #fff; }
+.kpi-hero > .kpi:first-child::after { background: #ff8a00; opacity: .18; }
+
+/* Solde de commission : bleu nuit (dû) / vert (à jour) */
+.com-big.due { background: var(--g-navy); color: #ffb347; }
+.com-big.due b { color: #fff; }
+
+/* Fenêtres (boîtes de dialogue) et messages */
+dialog { border-top: 6px solid #ff8a00; }
+dialog h2 { color: #0b1230; }
+.toast { background: var(--g-navy) !important; color: #fff !important; border-left: 5px solid #ff8a00; font-weight: 600; }
+
+/* Écran de connexion : fond bleu nuit */
+#auth, .auth-screen, .screen:not(#app) { background: radial-gradient(800px 400px at 80% 0%, rgba(255, 138, 0, .18), transparent 60%), var(--g-navy); }
+
+/* Barres de défilement fines et colorées */
+* { scrollbar-width: thin; scrollbar-color: #b9b4ef transparent; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: linear-gradient(#a5b4fc, #c4b5fd); border-radius: 8px; }
+
+/* Champs */
+input, select, textarea { border-radius: 12px; border-color: #d9def0; }
+label { font-weight: 650; color: #4b5675; }
+
+/* Lignes et cartes cliquables */
+.cliquable { cursor: pointer; transition: transform .15s, box-shadow .15s, background .15s; }
+tr.cliquable:hover td { background: #fff4e5 !important; }
+.crr-card.cliquable:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: #ffb347; }
+
+/* Déplacement des cadres (▲ ▼) : chaque personne range sa page comme elle veut */
+.bloc-mobile { position: relative; }
+.bloc-move { position: absolute; top: 10px; right: 10px; z-index: 5; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; }
+.bloc-mobile:hover > .bloc-move, .bloc-mobile:focus-within > .bloc-move { opacity: 1; }
+.bloc-move button { width: 28px; height: 28px; border-radius: 9px; border: 0; cursor: pointer; font-size: .8rem; font-weight: 800; color: #fff; background: var(--g-navy); box-shadow: 0 3px 10px rgba(11, 18, 48, .3); }
+.bloc-move button:hover { background: var(--g-bg); color: #1b1300; }
+.bloc-mobile.bloc-flash { animation: blocflash .6s ease-out; }
+@keyframes blocflash { from { box-shadow: 0 0 0 4px #ffb347; } to { box-shadow: var(--shadow); } }
+@media (hover: none) { .bloc-move { opacity: .75; } .bloc-move button { width: 26px; height: 26px; } }
+.bloc-vide > .bloc-move { display: none; }
