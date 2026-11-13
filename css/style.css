@@ -791,3 +791,33 @@ body.no-frigo .need-frigo, body.no-frigo-vente .need-frigo-vente, body.no-frigo-
 .table-wrap:has(.fc-sug:not(.hidden)) { overflow: visible; }
 .btn-bic { border: 0; background: transparent; cursor: pointer; padding: 2px 4px; font-size: 13px; opacity: .55; border-radius: 6px; vertical-align: middle; }
 .btn-bic:hover { opacity: 1; background: var(--primary-soft); }
+
+/* =====================================================================
+   Téléphone : chaque ligne de tableau devient une petite carte
+   (le nom de la colonne à gauche, la valeur à droite). Les étiquettes data-label
+   sont posées automatiquement par app.js à partir des en-têtes du tableau.
+   Exclus : planning (grille), lignes de course (saisie), tableaux marqués .no-cards.
+   ===================================================================== */
+@media (max-width: 700px) {
+  .table-wrap:has(> .table.mob) { border: 0; border-radius: 0; overflow: visible; }
+  .table.mob, .table.mob > tbody, .table.mob > tfoot, .table.mob > tbody > tr, .table.mob > tfoot > tr { display: block; width: 100%; }
+  .table.mob > thead { display: none; }
+  .table.mob > tbody > tr, .table.mob > tfoot > tr { border: 1px solid var(--border); border-radius: 12px; margin-bottom: 10px; background: #fff; padding: 4px 0; overflow: hidden; }
+  .table.mob > tfoot > tr { background: var(--primary-soft); border-color: var(--primary); }
+  .table.mob > tbody > tr > td, .table.mob > tfoot > tr > td, .table.mob > tfoot > tr > th {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; box-sizing: border-box;
+    white-space: normal; text-align: right; padding: 7px 12px; border-bottom: 1px dashed #edf0f5; word-break: break-word;
+  }
+  .table.mob > tbody > tr > td:last-child, .table.mob > tfoot > tr > td:last-child { border-bottom: 0; }
+  .table.mob > tbody > tr > td::before, .table.mob > tfoot > tr > td::before, .table.mob > tfoot > tr > th::before {
+    content: attr(data-label); flex: 0 0 auto; max-width: 48%; text-align: left;
+    color: var(--muted); font-size: .72rem; font-weight: 650; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .table.mob td[data-label=""]::before, .table.mob th[data-label=""]::before { content: none; }
+  .table.mob td[data-label=""] { justify-content: flex-end; }
+  .table.mob td:empty { display: none; }
+  .table.mob td.empty, .table.mob td[colspan] { justify-content: center; text-align: center; }
+  .table.mob td.empty::before { content: none; }
+  .table.mob > tbody > tr:hover > td { background: transparent; }
+  .table.mob .table-wrap { border: 0; }
+}

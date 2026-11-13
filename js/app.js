@@ -534,6 +534,29 @@
     }, 0);
     return { ca, qte, tickets, marge, lignes: list.length };
   }
+  // Téléphone : les tableaux s'affichent en cartes (voir style.css, classe .mob).
+  // Chaque cellule reçoit le nom de sa colonne (data-label) à partir de l'en-tête du tableau.
+  function etiqueterTableaux() {
+    document.querySelectorAll("table.table").forEach((t) => {
+      if (t.matches(".planning, .course-lines, .no-cards")) return;
+      const tete = t.querySelector(":scope > thead > tr:last-child");
+      if (!tete) return;
+      const noms = [];
+      [...tete.children].forEach((th) => { for (let k = 0; k < (th.colSpan || 1); k++) noms.push(th.textContent.replace(/\s+/g, " ").trim()); });
+      t.classList.add("mob");
+      t.querySelectorAll(":scope > tbody > tr, :scope > tfoot > tr").forEach((tr) => {
+        let i = 0;
+        [...tr.children].forEach((td) => {
+          const lib = (td.colSpan || 1) > 1 ? "" : noms[i] || "";
+          if (td.getAttribute("data-label") !== lib) td.setAttribute("data-label", lib);
+          i += td.colSpan || 1;
+        });
+      });
+    });
+  }
+  let etiqTimer = null;
+  new MutationObserver(() => { if (etiqTimer) return; etiqTimer = requestAnimationFrame(() => { etiqTimer = null; etiqueterTableaux(); }); })
+    .observe(document.body, { childList: true, subtree: true });
   function kpiHtml(items) {
     return items.map(([l, v, c, attrs]) => '<div class="kpi ' + (c || "") + '"' + (attrs ? " " + attrs : "") + '><div class="label">' + l + '</div><div class="value">' + v + "</div></div>").join("");
   }
