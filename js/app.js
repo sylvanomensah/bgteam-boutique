@@ -745,6 +745,13 @@
   function setDashComPage(on) { dashComPage = on; render("dashboard"); window.scrollTo(0, 0); }
   $("#tb-com-ouvrir").addEventListener("click", () => setDashComPage(true));
   $("#tb-com-retour").addEventListener("click", () => setDashComPage(false));
+  // Lien WhatsApp (wa.me) : numéro togolais à 8 chiffres complété par l'indicatif 228 ; message pré-rempli
+  function lienWhatsApp(tel, message) {
+    let n = String(tel || "").replace(/\D/g, "");
+    if (n.startsWith("00")) n = n.slice(2);
+    if (n.length === 8) n = "228" + n;
+    return "https://wa.me/" + n + (message ? "?text=" + encodeURIComponent(message) : "");
+  }
   // La demande de versement des commissions se fait le 1er et le 2 de chaque mois
   function jourDemande() { return Number(today().slice(8, 10)) <= 2; }
   // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)
@@ -785,7 +792,9 @@
     $("#dc-contacts").innerHTML = contacts.length ? contacts.map((x) => {
       const reste = x.boutique ? commissionInfo(x.boutique).aDeclarer : 0, tel = String(x.tel || "").trim();
       return "<tr><td>" + esc(x.boutique ? boutiqueName(x.boutique) : "Non affecté") + "</td><td><b>" + esc(ccName(x.cc)) + "</b></td><td>" +
-        (tel ? '<a class="btn small" href="tel:' + esc(tel.replace(/[^\d+]/g, "")) + '">📞 ' + esc(tel) + "</a>" : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
+        (tel ? '<span class="tel-actions"><a class="btn small" href="tel:' + esc(tel.replace(/[^\d+]/g, "")) + '">📞 ' + esc(tel) + "</a>" +
+          ' <a class="btn small btn-wa" target="_blank" rel="noopener" href="' + esc(lienWhatsApp(tel, "Bonjour " + ccName(x.cc) + (reste > 0 ? ", merci de verser la commission du crédit télécom de " + boutiqueName(x.boutique) + " : " + money0(reste) + "." : ","))) + '" title="Écrire sur WhatsApp">💬 WhatsApp</a></span>'
+          : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
     $("#dc-rows").innerHTML = infos.length ? infos.map(({ b, c, m }) => {
