@@ -2510,10 +2510,8 @@
   }
   // Notification permanente en haut de l'application pour le CC qui doit remonter des fonds
   // Remontées en espèces remises à mon CC et pas encore confirmées
-  function especesAConfirmer() {
-    if (!me || isAdmin() || !me.cc) return [];
-    return db.remontees.filter((r) => r.ccReceveur === String(me.cc) && !r.confirmeLe);
-  }
+  // Service « Reçoit les espèces » supprimé le 13/11/2026 : plus de CC receveur à notifier
+  function especesAConfirmer() { return []; }
   // Fermer les annonces d'anniversaire pour la journée
   document.addEventListener("click", (e) => {
     if (!e.target.closest("[data-anniv-ok]")) return;
@@ -2670,17 +2668,10 @@
     if (n.length < 6) return null;
     return db.remontees.find((r) => r.id !== exceptId && (r.txId === n || String(r.note || "").replace(/\D/g, "") === n)) || null;
   }
-  // CC autorisés par l'admin à recevoir les remontées en espèces (sauf soi-même)
-  function receveursEspeces() { const moi = me && !isAdmin() ? me.cc : ""; return db.settings.ccList.filter((c) => c.actif && c.recoitEspeces && c.code !== moi); }
   function syncRmNote() {
     const ref = $("#rm-mode").value !== "Espèces";
-    // Espèces : on choisit le CC qui reçoit l'argent ; Mobile money : on joint le reçu
-    $("#rm-receveur-wrap").classList.toggle("hidden", ref);
-    const cur = $("#rm-receveur").value, rec = receveursEspeces();
-    $("#rm-receveur").innerHTML = rec.length
-      ? '<option value="">— Choisir le CC —</option>' + rec.map((c) => '<option value="' + esc(c.code) + '">' + esc(ccName(c.code)) + (c.boutique ? " — " + esc(boutiqueName(c.boutique)) : "") + "</option>").join("")
-      : '<option value="">Aucun CC autorisé (voir l\'admin)</option>';
-    if (rec.some((c) => c.code === cur)) $("#rm-receveur").value = cur;
+    // Espèces : remises directement (plus de « CC qui reçoit », service supprimé) ; Mobile money : on joint le reçu
+    $("#rm-receveur-wrap").classList.add("hidden");
     $("#rm-photo-zone").classList.toggle("hidden", !ref);
     let lecture = "";
     if (rmPhotoBlob && rmOcrEnCours) lecture = '<span class="ocr-info">🔎 Lecture automatique du reçu…</span>';
@@ -2755,8 +2746,7 @@
     if (!(montant > 0)) return toast("Indiquez le montant remis.");
     // Mobile money / virement : la photo du reçu de dépôt est obligatoire (vérification par l'admin)
     const avecRecu = $("#rm-mode").value !== "Espèces";
-    const receveur = avecRecu ? "" : $("#rm-receveur").value;
-    if (!avecRecu && !receveur) return toast("Choisissez le CC qui reçoit l'argent en espèces.");
+    const receveur = ""; // service « Reçoit les espèces » supprimé
     if (avecRecu && !rmPhotoBlob) return toast("Ajoutez la capture d'écran du reçu de dépôt.");
     if (avecRecu && rmOcrEnCours) return toast("Lecture du reçu en cours, patientez quelques secondes…");
     // Deux vérifications obligatoires : la référence ET le montant doivent être lus sur la photo
@@ -4528,18 +4518,7 @@
             : '<p class="muted" style="margin:0">Aucune vente aujourd\'hui.</p>') + "</div>";
       }
     }
-    // Remontées en espèces reçues par mon CC : historique et confirmation de réception
-    const recues = code ? db.remontees.filter((r) => r.ccReceveur === String(code)).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) : [];
-    if (recues.length || (c && c.recoitEspeces)) {
-      h += '<div class="card" id="compte-especes" style="grid-column:1/-1"><h2>💵 Fonds reçus en espèces</h2>' +
-        '<p class="hint">Confirmez chaque remise d\'argent dès que vous l\'avez reçue en main. L\'admin voit votre confirmation avant de valider.</p>' +
-        (recues.length ? '<div class="table-wrap"><table class="table"><thead><tr><th>Déclarée le</th><th>De</th><th>Boutique</th><th>Semaine</th><th class="num">Montant</th><th>Réception</th></tr></thead><tbody>' +
-          recues.map((r) => "<tr><td>" + new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</td><td>" +
-            esc(r.cc ? ccName(r.cc) : "Admin") + "</td><td>" + esc(boutiqueName(r.boutique)) + "</td><td>du " + fmtDate(r.semaine) + '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" +
-            (r.confirmeLe ? '<span class="badge ok">✓ Confirmée le ' + new Date(r.confirmeLe).toLocaleDateString("fr-FR") + "</span>" + (r.statut === "Reçue" ? ' <span class="badge ok">Validée par l\'admin</span>' : "")
-              : '<button class="btn small success" data-esp-ok="' + r.id + '">✓ J\'ai bien reçu ' + money0(r.montant) + "</button>") + "</td></tr>").join("") + "</tbody></table></div>"
-          : '<p class="muted">Aucune remise d\'argent pour l\'instant.</p>') + "</div>";
-    }
+    // (cadre « Fonds reçus en espèces » supprimé avec le service « Reçoit les espèces »)
     $("#compte-body").innerHTML = h + "</div>";
   }
   $("#compte-body").addEventListener("click", (e) => {
@@ -4549,11 +4528,6 @@
       if (mvJourOuvert) { const l = $("#mv-jour-liste"); if (l) l.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
       return;
     }
-    const b = e.target.closest("[data-esp-ok]");
-    if (!b) return;
-    const r = db.remontees.find((x) => x.id === b.dataset.espOk);
-    if (!r || !confirm("Confirmer avoir reçu en main " + money0(r.montant) + " de " + (r.cc ? ccName(r.cc) : "l'admin") + " (" + boutiqueName(r.boutique) + ") ?")) return;
-    act(async () => chk(await sb.rpc("confirmer_reception_especes", { p_id: r.id })), "Réception confirmée : " + money0(r.montant) + ".", b);
   });
 
   // Création / suppression de boutique : confirmation par le mot de passe de l'admin (vérifié par la base).
@@ -4772,8 +4746,6 @@
       '<input type="checkbox" class="switch" data-cc-gerecom="' + esc(c.code) + '"' + (c.gereCom ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🗂 Gère les fiches RH</b><small>Voit l\'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC</small></span>' +
       '<input type="checkbox" class="switch" data-cc-rh="' + esc(c.code) + '"' + (c.gereRh ? " checked" : "") + "></label>" +
-      '<label class="perm"><span><b>💵 Reçoit les fonds en espèces</b><small>Peut recevoir les remontées en espèces des autres CC et doit confirmer chaque réception</small></span>' +
-      '<input type="checkbox" class="switch" data-cc-recoit="' + esc(c.code) + '"' + (c.recoitEspeces ? " checked" : "") + "></label>" +
       '<label class="perm col"><span><b>🧻 Bobines</b><small>Accès au menu Bobines</small></span>' +
       '<select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
       [["boutique", "Consultation (sa boutique)"], ["saisie", "Saisie utilisation (sa boutique)"], ["gestion", "Toutes + approvisionnement (sans saisie)"]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") +
@@ -4807,17 +4779,17 @@
     const cc = $("#rp-cc").value;
     const list = ccsBq.filter((c) => (!cc || c.code === cc) &&
       (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === "rh" && c.gereRh) || (f === "credit" && c.credit) || (f === "frigodot" && c.frigoDotation) || (f === "gerecom" && c.gereCom) ||
-        (f === "especes" && c.recoitEspeces) || (f === c.bobines)));
+        (f === c.bobines)));
     $("#rp-count").textContent = list.length + " CC affiché(s). Cochez ou décochez : chaque changement est enregistré immédiatement.";
     const caseP = (c, attr, on) => '<td class="c"><input type="checkbox" class="pt-check" data-' + attr + '="' + esc(c.code) + '"' + (on ? " checked" : "") + "></td>";
     $("#rh-perms").innerHTML = list.length ? list.map((c) => {
       return "<tr" + (c.actif ? "" : ' class="pending"') + '><td class="pt-cc">' + avatarHtml(c.code) + "<div><b>" + esc(ccName(c.code)) + "</b><small>" + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") + "</small></div></td>" +
         caseP(c, "cc-entrees", c.entrees) + caseP(c, "cc-voirstock", c.voirStock) + caseP(c, "cc-credit", c.credit) +
-        caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-gerecom", c.gereCom) + caseP(c, "cc-rh", c.gereRh) + caseP(c, "cc-recoit", c.recoitEspeces) +
+        caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-gerecom", c.gereCom) + caseP(c, "cc-rh", c.gereRh) +
         '<td><select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
           [["boutique", "Consultation"], ["saisie", "Saisie utilisation"], ["gestion", "Toutes + appro."]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></td>" +
         '<td><button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></td></tr>';
-    }).join("") : '<tr><td colspan="10" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
+    }).join("") : '<tr><td colspan="9" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
   }
   ["#rp-boutique", "#rp-cc", "#rp-filtre"].forEach((id) => $(id).addEventListener("change", renderPerms));
   // Choisir un titre : applique d'un coup ses autorisations
@@ -4960,12 +4932,6 @@
       const code = grh.dataset.ccRh, on = grh.checked;
       return act(async () => chk(await sb.from("ccs").update({ gere_rh: on }).eq("code", code)),
         ccName(code) + (on ? " peut maintenant remplir les fiches RH des CC." : " ne gère plus les fiches RH."));
-    }
-    const rec = e.target.closest("[data-cc-recoit]");
-    if (rec) {
-      const code = rec.dataset.ccRecoit, on = rec.checked;
-      return act(async () => chk(await sb.from("ccs").update({ recoit_especes: on }).eq("code", code)),
-        ccName(code) + (on ? " peut recevoir les remontées en espèces." : " ne reçoit plus les remontées en espèces."));
     }
     const bbs = e.target.closest("[data-cc-bobines]");
     if (bbs) {

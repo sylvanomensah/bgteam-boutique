@@ -1004,13 +1004,9 @@ alter table public.ccs add column if not exists recoit_especes boolean not null 
 alter table public.remontees add column if not exists cc_receveur text references public.ccs(code) on update cascade on delete set null;
 alter table public.remontees add column if not exists reception_confirmee_le timestamptz;
 alter table public.remontees add column if not exists reception_confirmee_par text not null default '';
-do $$ begin
-  if not exists (select 1 from pg_constraint where conname = 'remontees_mode_check') then
-    -- Nouvelles remontées : Espèces (avec le CC qui reçoit) ou Mobile money
-    alter table public.remontees add constraint remontees_mode_check
-      check (mode in ('Espèces', 'Mobile money') and (mode <> 'Espèces' or cc_receveur is not null)) not valid;
-  end if;
-end $$;
+-- Modes : Espèces ou Mobile money (le « CC qui reçoit » les espèces n'est plus exigé : service supprimé le 13/11/2026)
+alter table public.remontees drop constraint if exists remontees_mode_check;
+alter table public.remontees add constraint remontees_mode_check check (mode in ('Espèces', 'Mobile money')) not valid;
 -- Le CC qui reçoit voit les remontées qui lui ont été remises (même d'une autre boutique)
 drop policy if exists remontees_select on public.remontees;
 create policy remontees_select on public.remontees for select to authenticated
@@ -1090,11 +1086,8 @@ begin
   new.tx_id := nullif(regexp_replace(coalesce(new.tx_id, ''), '\D', '', 'g'), '');
   new.reception_confirmee_le := null; new.reception_confirmee_par := '';
   if new.mode = 'Espèces' then
-    -- Le CC qui reçoit doit être autorisé par l'admin, actif, et différent de l'envoyeur
-    if not exists (select 1 from public.ccs where code = new.cc_receveur and actif and recoit_especes) then
-      raise exception 'Choisissez un CC autorisé à recevoir les remontées en espèces';
-    end if;
-    if new.cc_receveur = new.cc then raise exception 'Vous ne pouvez pas vous remettre l''argent à vous-même'; end if;
+    -- Service « Reçoit les espèces » supprimé (13/11/2026) : remise directe, validée par l'admin
+    new.cc_receveur := null;
     return new;
   end if;
   if public.is_admin() then return new; end if;
