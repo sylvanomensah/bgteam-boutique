@@ -824,3 +824,110 @@ body.no-frigo .need-frigo, body.no-frigo-vente .need-frigo-vente, body.no-frigo-
   .table.mob > tbody > tr:hover > td { background: transparent; }
   .table.mob .table-wrap { border: 0; }
 }
+/* =====================================================================
+   THÈME 2026 — plus moderne : police Plus Jakarta Sans, dégradés, cases colorées,
+   titres en gras, boutons lumineux. (Couche ajoutée par-dessus le style existant.)
+   ===================================================================== */
+:root {
+  --primary: #4338ca; --primary-soft: #eef0ff;
+  --navy: #0b1230; --accent: #ff9f1c;
+  --radius: 18px; --radius-sm: 12px;
+  --shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px rgba(30, 41, 99, .07);
+  --shadow-lg: 0 16px 40px rgba(30, 41, 99, .16);
+  --g-primary: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+  --g-success: linear-gradient(135deg, #16a34a 0%, #0d9488 100%);
+}
+body {
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgba(124, 58, 237, .08), transparent 60%),
+    radial-gradient(900px 400px at -10% 10%, rgba(14, 165, 233, .08), transparent 60%),
+    #f4f6fb;
+  background-attachment: fixed;
+}
+h1 { font-weight: 800; letter-spacing: -.03em; }
+h1::after { content: ""; display: block; width: 44px; height: 4px; border-radius: 4px; margin-top: 8px; background: linear-gradient(90deg, #ff9f1c, #7c3aed); }
+.toolbar h1::after, .cr-head h1::after { display: none; }
+h2 { font-weight: 800; letter-spacing: -.02em; }
+h3, .sub-title { font-weight: 750; }
+b, strong { font-weight: 750; }
+
+/* Menu latéral : bleu nuit profond + élément actif lumineux */
+.topbar { background: linear-gradient(180deg, #0b1230 0%, #151a46 60%, #1d1b4f 100%); box-shadow: 4px 0 30px rgba(11, 18, 48, .25); }
+nav button { font-weight: 550; border-radius: 12px; }
+nav button:hover { background: rgba(255, 255, 255, .08); }
+nav button.active { background: linear-gradient(135deg, #ffb347 0%, #ff8a00 100%); color: #1b1300; font-weight: 750; box-shadow: 0 6px 18px rgba(255, 138, 0, .45); }
+.logo { background: linear-gradient(135deg, #ffd166, #ff8a00); box-shadow: 0 6px 18px rgba(255, 138, 0, .45); }
+.mobilebar { background: linear-gradient(90deg, #0b1230, #1d1b4f) !important; }
+
+/* Cartes */
+.card { border-radius: var(--radius); border: 1px solid rgba(226, 232, 245, .9); box-shadow: var(--shadow); }
+
+/* Cases d'indicateurs : fonds de couleurs variées (dégradés doux), valeurs en gras */
+.kpi { border-radius: 16px; border: 1px solid transparent; transition: transform .18s, box-shadow .18s; }
+.kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.kpi::before { width: 5px; border-radius: 0 4px 4px 0; }
+.kpi::after { content: ""; position: absolute; right: -28px; top: -28px; width: 90px; height: 90px; border-radius: 50%; background: currentColor; opacity: .06; pointer-events: none; }
+.kpi .label { font-weight: 700; color: #4b5675; }
+.kpi .value { font-weight: 800; }
+.kpis > .kpi:nth-child(6n+1) { background: linear-gradient(135deg, #e3edff 0%, #f6f9ff 100%); color: #1d4ed8; }
+.kpis > .kpi:nth-child(6n+2) { background: linear-gradient(135deg, #efe6ff 0%, #faf7ff 100%); color: #6d28d9; }
+.kpis > .kpi:nth-child(6n+3) { background: linear-gradient(135deg, #d9f7f0 0%, #f3fdfa 100%); color: #0f766e; }
+.kpis > .kpi:nth-child(6n+4) { background: linear-gradient(135deg, #ffedd6 0%, #fffaf3 100%); color: #c2410c; }
+.kpis > .kpi:nth-child(6n+5) { background: linear-gradient(135deg, #ffe3ef 0%, #fff7fb 100%); color: #be185d; }
+.kpis > .kpi:nth-child(6n+6) { background: linear-gradient(135deg, #dcf7e3 0%, #f4fdf6 100%); color: #15803d; }
+.kpis > .kpi::before { background: currentColor; }
+.kpis > .kpi .value { color: #111827; }
+.kpis > .kpi.danger .value { color: var(--danger); }
+.kpis > .kpi.warn .value { color: var(--warn); }
+.kpis > .kpi.hero-good .value { color: #15803d; }
+
+/* Cartes du frigo et du crédit : même esprit coloré */
+.frigo-cards > .fg-card:nth-child(6n+1) { background: linear-gradient(160deg, #eaf2ff 0%, #ffffff 70%); }
+.frigo-cards > .fg-card:nth-child(6n+2) { background: linear-gradient(160deg, #e6f9ee 0%, #ffffff 70%); }
+.frigo-cards > .fg-card:nth-child(6n+3) { background: linear-gradient(160deg, #f1ebff 0%, #ffffff 70%); }
+.frigo-cards > .fg-card:nth-child(6n+4) { background: linear-gradient(160deg, #e3fbf5 0%, #ffffff 70%); }
+.frigo-cards > .fg-card:nth-child(6n+6) { background: linear-gradient(160deg, #fff1e3 0%, #ffffff 70%); }
+.fg-card > b { font-weight: 800; }
+.fg-card.fg-total { background: linear-gradient(135deg, #dcfce7 0%, #f0fdf4 100%); }
+.crr-card { background: linear-gradient(160deg, #f5f7ff 0%, #ffffff 60%); border-radius: 18px; }
+.report div { border-radius: 12px; }
+.report > div:nth-child(4n+1) { background: linear-gradient(135deg, #e3edff, #f6f9ff); }
+.report > div:nth-child(4n+2) { background: linear-gradient(135deg, #efe6ff, #faf7ff); }
+.report > div:nth-child(4n+3) { background: linear-gradient(135deg, #d9f7f0, #f3fdfa); }
+.report > div:nth-child(4n+4) { background: linear-gradient(135deg, #ffedd6, #fffaf3); }
+.report strong { font-weight: 800; }
+
+/* Boutons lumineux */
+.btn { border-radius: 12px; font-weight: 700; transition: transform .12s, box-shadow .18s, background .18s; }
+.btn:hover { transform: translateY(-1px); }
+.btn.primary { background: var(--g-primary); border-color: transparent; box-shadow: 0 6px 16px rgba(79, 70, 229, .35); }
+.btn.primary:hover { background: var(--g-primary); filter: brightness(1.07); }
+.btn.success { background: var(--g-success); border-color: transparent; box-shadow: 0 6px 16px rgba(22, 163, 74, .3); }
+.btn.success:hover { background: var(--g-success); filter: brightness(1.07); }
+.btn.small { border-radius: 10px; }
+input:focus, select:focus, textarea:focus { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99, 102, 241, .15); }
+
+/* Tableaux */
+.table th { background: linear-gradient(180deg, #f5f7ff, #eef1fb); color: #4b5675; font-weight: 750; }
+.table tbody tr:hover td { background: #f7f8ff; }
+.table-wrap { border-radius: 14px; }
+.badge { font-weight: 700; border-radius: 999px; }
+
+/* Bouton WhatsApp : petit rond vert avec le logo */
+.btn.btn-wa { width: 32px; min-width: 32px; height: 32px; min-height: 32px; padding: 0; border-radius: 50%; background: #25d366; border-color: #25d366; box-shadow: 0 4px 12px rgba(37, 211, 102, .35); }
+.btn.btn-wa svg { width: 17px; height: 17px; fill: #fff; }
+.btn.btn-wa:hover { background: #1ebe5a; }
+.tel-actions { align-items: center; }
+
+/* Message du jour dans la Caisse (donne envie de revenir chaque jour) */
+.hello-cc { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 18px; margin: 0 0 18px; border-radius: 18px; color: #fff;
+  background: linear-gradient(120deg, #4f46e5 0%, #7c3aed 55%, #db2777 100%); box-shadow: 0 12px 30px rgba(124, 58, 237, .3); position: relative; overflow: hidden; }
+.hello-cc::after { content: ""; position: absolute; right: -40px; top: -60px; width: 200px; height: 200px; border-radius: 50%; background: rgba(255, 255, 255, .12); }
+.hello-cc .hc-txt { flex: 1 1 240px; position: relative; z-index: 1; }
+.hello-cc .hc-txt b { font-size: 1.15rem; display: block; }
+.hello-cc .hc-txt small { opacity: .9; }
+.hello-cc .hc-stats { display: flex; gap: 10px; flex-wrap: wrap; position: relative; z-index: 1; }
+.hello-cc .hc-stat { background: rgba(255, 255, 255, .16); backdrop-filter: blur(4px); border-radius: 14px; padding: 8px 14px; min-width: 96px; }
+.hello-cc .hc-stat span { display: block; font-size: .72rem; opacity: .85; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
+.hello-cc .hc-stat b { font-size: 1.1rem; font-weight: 800; }

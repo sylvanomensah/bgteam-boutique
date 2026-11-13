@@ -767,6 +767,8 @@
     if (!(reste > 0)) return "Bonjour " + civ + nom + ",";
     return "Bonjour " + civ + nom + ", merci de verser la commission du crédit télécom de " + boutiqueName(bq) + libelleMois(moisCommissionDus(bq)) + " : " + money0(reste) + ". Sur l'application BGTEAM";
   }
+  // Petit logo WhatsApp (SVG) pour le bouton rond
+  const ICONE_WA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm5.8 14.1c-.24.68-1.42 1.3-1.95 1.34-.5.05-.97.23-3.27-.68-2.77-1.09-4.52-3.92-4.66-4.1-.13-.18-1.11-1.48-1.11-2.82 0-1.34.7-2 .95-2.27.25-.27.54-.34.72-.34h.52c.17 0 .39-.06.6.46.23.54.77 1.88.84 2.02.07.13.11.29.02.47-.09.18-.13.29-.27.45-.13.16-.28.35-.4.47-.13.13-.27.28-.12.55.16.27.7 1.15 1.5 1.86 1.03.92 1.9 1.2 2.17 1.34.27.13.43.11.59-.07.16-.18.68-.79.86-1.06.18-.27.36-.23.61-.14.25.09 1.58.75 1.85.88.27.14.45.2.52.32.07.11.07.66-.17 1.33Z"/></svg>';
   // Lien WhatsApp (wa.me) : numéro togolais à 8 chiffres complété par l'indicatif 228 ; message pré-rempli
   function lienWhatsApp(tel, message) {
     let n = String(tel || "").replace(/\D/g, "");
@@ -815,7 +817,7 @@
       const reste = x.boutique ? commissionInfo(x.boutique).aDeclarer : 0, tel = String(x.tel || "").trim();
       return "<tr><td>" + esc(x.boutique ? boutiqueName(x.boutique) : "Non affecté") + "</td><td><b>" + esc(ccName(x.cc)) + "</b></td><td>" +
         (tel ? '<span class="tel-actions"><a class="btn small" href="tel:' + esc(tel.replace(/[^\d+]/g, "")) + '">📞 ' + esc(tel) + "</a>" +
-          ' <a class="btn small btn-wa" target="_blank" rel="noopener" href="' + esc(lienWhatsApp(tel, messageCommission(x.cc, x.boutique, reste))) + '" title="Écrire sur WhatsApp">💬 WhatsApp</a></span>'
+          ' <a class="btn small btn-wa" target="_blank" rel="noopener" href="' + esc(lienWhatsApp(tel, messageCommission(x.cc, x.boutique, reste))) + '" title="Écrire sur WhatsApp" aria-label="Écrire sur WhatsApp">' + ICONE_WA + "</a></span>"
           : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
@@ -1143,7 +1145,40 @@
     const cc = ccByCode(me.cc);
     return cc && cc.actif ? cc.code : null;
   }
+  // Message du jour pour le CC : salutation, ventes du jour comparées à hier, série de jours avec ventes, petit conseil
+  const CONSEILS = [
+    "Un sourire et un « bonjour » font revenir les clients 😊",
+    "Proposez une boisson fraîche avec chaque achat 🧊",
+    "Vérifiez le crédit restant avant le soir 📱",
+    "Chaque vente compte : notez-les toutes dans la caisse ✍️",
+    "Un client satisfait en amène deux autres 🤝",
+    "Rangez le frigo : un produit visible se vend mieux 👀",
+    "Gardez de la monnaie pour rendre vite ⚡"
+  ];
+  function renderHelloCc() {
+    const el = $("#c-hello");
+    const code = me && me.cc ? String(me.cc) : "";
+    if (!code) { el.classList.add("hidden"); return; }
+    const t = today(), hier = addDays(t, -1);
+    const mes = db.sales.filter((s) => String(s.cc) === code && isCountedSale(s));
+    const jour = summarize(mes.filter((s) => s.date === t)), veille = summarize(mes.filter((s) => s.date === hier));
+    // série : nombre de jours d'affilée (jusqu'à aujourd'hui ou hier) avec au moins une vente
+    const jours = new Set(mes.map((s) => s.date));
+    let serie = 0, d = jours.has(t) ? t : hier;
+    while (jours.has(d)) { serie++; d = addDays(d, -1); }
+    const h = new Date().getHours(), salut = h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir";
+    const nom = currentAgent(ccByCode(code)) || ccName(code);
+    const ecart = jour.ca - veille.ca;
+    const objectif = veille.ca > 0 ? (ecart >= 0 ? "🔥 Vous dépassez hier de " + money0(ecart) + " !" : "🎯 Encore " + money0(-ecart) + " pour égaler hier") : "🚀 Belle journée de ventes !";
+    const conseil = CONSEILS[Math.floor(Date.parse(t) / 86400000) % CONSEILS.length];
+    el.innerHTML = '<div class="hc-txt"><b>' + salut + " " + esc(nom) + " 👋</b><small>" + objectif + " · " + conseil + "</small></div>" +
+      '<div class="hc-stats"><div class="hc-stat"><span>Aujourd\'hui</span><b>' + money0(jour.ca) + "</b></div>" +
+      '<div class="hc-stat"><span>Tickets</span><b>' + num(jour.tickets) + "</b></div>" +
+      '<div class="hc-stat"><span>Série</span><b>' + (serie ? "🔥 " + serie + " j" : "—") + "</b></div></div>";
+    el.classList.remove("hidden");
+  }
   function renderCaisse() {
+    try { renderHelloCc(); } catch (e) { /* jamais bloquant */ }
     if (!$("#c-date").value) $("#c-date").value = today();
     $("#c-date").readOnly = !isAdmin();
     if (!isAdmin()) $("#c-date").value = today();
