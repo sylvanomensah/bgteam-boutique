@@ -3461,8 +3461,10 @@
           (f.seuilAtteint ? "🛒 <b>Seuil de " + money0(db.settings.frigoSeuil) + " atteint</b> : nouvelle course de <b>" + money0(DOTATION_STANDARD) + "</b> à faire"
             : "achats enregistrés " + money2(f.credit) + " − coût d'achat sorti " + money2(f.consomme) + " · dernière course du " + fmtDate(f.derniere.date) + " : " + money2(f.derniere.cout)) + "</small>"
           : "<small>Aucune course enregistrée pour ce frigo</small>") + "</div>";
-      h += '<div class="fg-card vert"><span>Chiffre d\'affaires du mois</span><b>' + money2(f.venduMois) + "</b><small>" + num(f.articlesMois) + " article" + (f.articlesMois > 1 ? "s" : "") +
-        " vendu" + (f.articlesMois > 1 ? "s" : "") + " en caisse en " + esc(fmtMonth(mois + "-01")) + " · aujourd'hui : " + money2(f.venteJour) + "</small></div>";
+      // Estimation des ventes du stock disponible = Σ (quantité restante × prix de vente de la fiche produit), articles épuisés exclus
+      const codesFg = [...new Set((db.fgLignes || []).filter((l) => l.boutique === bq && l.code).map((l) => l.code))];
+      const estimStock = codesFg.reduce((a, c) => { const p = db.products.find((y) => y.code === c), q = stockFrigoOf(c, bq); return a + (p && q > 0 ? q * Number(p.pv || 0) : 0); }, 0);
+      h += '<div class="fg-card vert"><span>Estimation des ventes du stock disponible</span><b>' + money2(estimStock) + "</b><small>Valeur potentielle de vente de tous les articles actuellement disponibles</small></div>";
       // 2e ligne : coût d'achat vendu | bénéfice réalisé (semaine en cours)
       h += '<div class="fg-card"><span>Coût d\'achat vendu de la semaine</span><b>' + money2(sw.cout) + "</b><small>stock au début " + money2(Math.max(0, sw.restantDebut)) + " + achats de la semaine " + money2(sw.dotations) +
         " − stock restant " + money2(Math.max(0, sw.restantFin)) + "</small></div>";
