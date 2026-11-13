@@ -1212,8 +1212,12 @@
     try { const r = await sb.rpc("mon_sexe"); monSexe = r.error ? "" : r.data || ""; } catch (e) { monSexe = ""; }
     if (currentView === "caisse") renderHelloCc();
   }
+  // Tirage au hasard une fois par chargement de la page : une nouvelle pépite à chaque actualisation
+  // (elle reste la même pendant la navigation, pour ne pas changer à chaque vente)
+  const PEPITE_ALEA = Math.floor(Math.random() * 1e6);
   function pepiteDuJour(code) {
-    const jour = Math.floor(Date.parse(today()) / 86400000), graine = jour + Number(String(code).replace(/\D/g, "") || 0);
+    void code;
+    const graine = PEPITE_ALEA;
     const cats = ["blague", "compliment", "sante", monSexe === "F" ? "beaute" : monSexe === "M" ? "bienetre" : "sante", "blague"];
     const cat = cats[graine % cats.length], liste = PEPITES[cat];
     const titre = { blague: "😄 Blague du jour", compliment: "🌟 Pour vous", sante: "🩺 Astuce santé", beaute: "💄 Astuce beauté", bienetre: "💪 Astuce bien-être" }[cat];
@@ -1222,7 +1226,7 @@
   function renderHelloCc() {
     const el = $("#c-hello");
     const admin = isAdmin(), code = me && me.cc ? String(me.cc) : admin ? "ADMIN" : "";
-    if (!code) { el.classList.add("hidden"); return; }
+    if (!code) { el.classList.add("hidden"); $("#c-pepite").classList.add("hidden"); return; }
     const t = today(), hier = addDays(t, -1);
     // Admin : ventes de toutes les boutiques ; CC : ses propres ventes
     const mes = db.sales.filter((s) => (admin || String(s.cc) === code) && isCountedSale(s));
@@ -1239,7 +1243,10 @@
     chargerMonSexe();
     // la pépite du jour (blague, compliment, astuce santé / beauté / bien-être) remplace l'ancienne ligne objectif + conseil
     void objectif; void conseil;
-    el.innerHTML = '<div class="hc-txt"><b>' + salut + " " + esc(nom) + " 👋</b><small>" + esc(pepiteDuJour(code)) + "</small></div>" +
+    // pépite affichée en gras à côté du titre « Caisse — nouvelle vente »
+    $("#c-pepite").textContent = pepiteDuJour(code);
+    $("#c-pepite").classList.remove("hidden");
+    el.innerHTML = '<div class="hc-txt"><b>' + salut + " " + esc(nom) + " 👋</b></div>" +
       '<div class="hc-stats"><div class="hc-stat"><span>' + (admin ? "Toutes boutiques" : "Aujourd'hui") + "</span><b>" + money0(jour.ca) + "</b></div>" +
       '<div class="hc-stat"><span>Tickets</span><b>' + num(jour.tickets) + "</b></div>" +
       '<div class="hc-stat"><span>Série</span><b>' + (serie ? "🔥 " + serie + " j" : "—") + "</b></div></div>";

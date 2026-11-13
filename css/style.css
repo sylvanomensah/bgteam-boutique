@@ -931,3 +931,21 @@ input:focus, select:focus, textarea:focus { border-color: #6366f1; box-shadow: 0
 .hello-cc .hc-stat { background: rgba(255, 255, 255, .16); backdrop-filter: blur(4px); border-radius: 14px; padding: 8px 14px; min-width: 96px; }
 .hello-cc .hc-stat span { display: block; font-size: .72rem; opacity: .85; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
 .hello-cc .hc-stat b { font-size: 1.1rem; font-weight: 800; }
+/* Caisse : titre + pépite du jour en gras dans l'espace à droite du titre */
+.caisse-head { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; margin-bottom: 18px; }
+.caisse-head h1 { margin: 0; flex: 0 0 auto; }
+.pepite-top { flex: 1 1 320px; align-self: center; font-weight: 800; font-size: 1rem; line-height: 1.4; color: #3b2f8f;
+  background: linear-gradient(135deg, #fff7e6 0%, #f3edff 100%); border: 1px solid #e9e1ff; border-radius: 14px; padding: 10px 14px; box-shadow: var(--shadow); }
+/* Téléphone : titre puis pépite en dessous, bandeau compact avec 3 cases côte à côte */
+@media (max-width: 700px) {
+  .caisse-head { gap: 10px; margin-bottom: 12px; }
+  .caisse-head h1 { font-size: 1.3rem; }
+  .pepite-top { flex-basis: 100%; font-size: .9rem; padding: 9px 12px; }
+  .hello-cc { padding: 12px; gap: 10px; border-radius: 16px; margin-bottom: 12px; }
+  .hello-cc .hc-txt { flex-basis: 100%; }
+  .hello-cc .hc-txt b { font-size: 1.02rem; }
+  .hello-cc .hc-stats { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .hello-cc .hc-stat { min-width: 0; padding: 7px 8px; text-align: center; }
+  .hello-cc .hc-stat span { font-size: .62rem; }
+  .hello-cc .hc-stat b { font-size: .95rem; white-space: nowrap; }
+}
