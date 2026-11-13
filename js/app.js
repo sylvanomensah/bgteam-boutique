@@ -3470,6 +3470,8 @@
       }).join("") : '<tr><td colspan="6" class="empty">Aucun frigo approvisionné : choisissez une boutique dans le filtre pour enregistrer sa première course.</td></tr>';
     }
 
+    renderReversement(scope);
+
     // Ventes du frigo du jour : faites en CAISSE, déduites automatiquement du crédit vente restant
     const sbq = frigoBq(), fi = sbq ? frigoInfo(sbq, mois) : null, sansCourse = !!sbq && !fi.courses.length;
     $("#fv-titre").innerHTML = "🧾 Ventes du frigo en caisse — " + (sbq ? esc(boutiqueName(sbq)) + " · " : "") + esc(jourLong(t));
@@ -3494,7 +3496,8 @@
         : (!fd.courses.length ? "🧊 Premier approvisionnement du frigo" : fd.seuilAtteint ? "✅ Seuil atteint (restant " + money2(Math.max(0, fd.restant)) + ")" : "👑 Dotation administrateur à tout moment (crédit vente restant actuel " + money2(Math.max(0, fd.restant)) + ")") +
           " : fixez la dotation de crédit de <b>" + esc(boutiqueName(db_)) + "</b>. La course devra être exactement égale à ce montant.";
       $("#fd-form").classList.toggle("hidden", !db_ || !!dot || (!fd.seuilAtteint && !admin));
-      if (db_ && !dot && document.activeElement !== $("#fd-montant") && !$("#fd-montant").value) { const der = db.fgDotations.filter((d) => d.boutique === db_ && d.statut === "Utilisée").sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]; if (der) $("#fd-montant").value = der.montant; }
+      // Dotation standard : 20 000 FCFA proposés par défaut (modifiable)
+      if (db_ && !dot && document.activeElement !== $("#fd-montant") && !$("#fd-montant").value) $("#fd-montant").value = DOTATION_STANDARD;
     }
     // Course (admin ou CC de la boutique) : seulement avec une dotation ouverte, et égale à cette dotation
     if (canFrigoCourse()) {
@@ -3796,6 +3799,75 @@
     window.print();
   });
   // Stock frigo (format du menu Stock) : entrées = quantités des courses du frigo, sorties = ventes en caisse de ces produits
+  const DOTATION_STANDARD = 20000;
+  // Reversement à BGTeam (boutiques avec frigo) : à reverser = coût d'achat vendu + bénéfice = CA encaissé
+  function canVoirReversement() { return isAdmin() || canFrigoDotation() || canEntrees(); }
+  function reversementInfo(bq) {
+    const f = frigoInfo(bq, today().slice(0, 7)), r2 = (n) => Math.round(n * 100) / 100;
+    const rems = db.remontees.filter((r) => r.boutique === bq), retraits = f.retire;
+    const reverse = sumMontant(rems) + retraits, attente = sumMontant(rems.filter((r) => r.statut !== "Reçue"));
+    return { stock: r2(Math.max(0, f.restant)), ca: r2(f.ca), cout: r2(f.consomme), benef: r2(f.ca - f.consomme), total: r2(f.ca),
+      reverse: r2(reverse), retraits: r2(retraits), attente: r2(attente), solde: r2(f.ca - reverse) };
+  }
+  function renderReversement(scope) {
+    const avec = scope.filter((b) => db.fgCourses.some((c) => c.boutique === b.code));
+    const voir = canVoirReversement() && avec.length > 0;
+    $("#fr-card").classList.toggle("hidden", !voir);
+    if (!voir) return;
+    const une = avec.length === 1;
+    $("#fr-titre").textContent = "💼 Reversement à BGTeam — " + (une ? avec[0].nom : "toutes les boutiques");
+    const infos = avec.map((b) => ({ b, i: reversementInfo(b.code) }));
+    const s = (k) => infos.reduce((a, x) => a + x.i[k], 0);
+    const solde = s("solde");
+    $("#fr-kpis").innerHTML = kpiHtml([
+      ["Stock restant au coût d'achat", money2(s("stock"))],
+      ["Chiffre d'affaires réalisé", money2(s("ca"))],
+      ["Coût d'achat vendu", money2(s("cout"))],
+      ["Bénéfice réalisé", money2(s("benef")), "hero-good"],
+      ["Total des recettes à reverser", money2(s("total")), "", 'title="Coût d\'achat vendu + bénéfice réalisé"'],
+      ["Montant déjà reversé", money2(s("reverse")), "", 'title="Reversements déclarés (dont ' + money2(s("attente")) + " en attente de validation)" + (s("retraits") ? " + retraits admin " + money2(s("retraits")) : "") + '"'],
+      ["Solde restant à reverser", money2(Math.max(0, solde)), solde > 0.5 ? "danger" : "hero-good"]
+    ]);
+    $("#fr-multi-wrap").classList.toggle("hidden", une);
+    $("#fr-multi").innerHTML = une ? "" : infos.map(({ b, i }) => "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money2(i.stock) + '</td><td class="num">' + money2(i.ca) + '</td><td class="num">' + money2(i.cout) +
+      '</td><td class="num">' + money2(i.benef) + '</td><td class="num"><b>' + money2(i.total) + '</b></td><td class="num">' + money2(i.reverse) + '</td><td class="num">' +
+      (i.solde > 0.5 ? '<b class="neg">' + money2(i.solde) + "</b>" : '<span class="pos">0</span>') + "</td></tr>").join("");
+
+    // Fiches hebdomadaires (semaine du lundi au dimanche ; la fiche de la semaine écoulée est prête chaque lundi)
+    const codes = avec.map((b) => b.code), sorties = db.fgSorties.filter((x) => codes.includes(x.boutique));
+    const lundi = mondayOf(today()), premier = sorties.length ? mondayOf(sorties.map((x) => x.date).sort()[0]) : lundi;
+    const semaines = []; for (let w = lundi; w >= premier; w = addDays(w, -7)) semaines.push(w);
+    const sel = $("#fr-semaine"), cur = sel.value;
+    sel.innerHTML = semaines.map((w) => '<option value="' + w + '">' + (w === lundi ? "Semaine en cours — " : w === addDays(lundi, -7) ? "Semaine écoulée — " : "") + "du " + fmtDate(w) + " au " + fmtDate(weekEnd(w)) + "</option>").join("");
+    sel.value = semaines.includes(cur) ? cur : (semaines.includes(addDays(lundi, -7)) ? addDays(lundi, -7) : lundi);
+    const w = sel.value, fin = weekEnd(w);
+    const venteCc = new Map(db.sales.map((x) => [x.id, x.cc]));
+    const r2 = (n) => Math.round(n * 100) / 100;
+    const lignes = [];
+    avec.forEach((b) => {
+      const parCc = {};
+      const get = (cc) => parCc[cc] || (parCc[cc] = { cout: 0, ca: 0, recu: 0, attente: 0 });
+      sorties.filter((x) => x.boutique === b.code && x.date >= w && x.date <= fin).forEach((x) => { const g = get(venteCc.get(x.id) || "?"); g.cout += x.consomme; g.ca += x.montant; });
+      remonteesOf(b.code, w).forEach((r) => { const g = get(r.cc || "ADMIN"); g.recu += r.montant; if (r.statut !== "Reçue") g.attente += r.montant; });
+      const ccs = Object.keys(parCc);
+      if (!ccs.length) return;
+      const tot = { cout: 0, ca: 0, recu: 0, attente: 0 };
+      ccs.sort().forEach((cc) => {
+        const g = parCc[cc]; Object.keys(tot).forEach((k) => (tot[k] += g[k]));
+        lignes.push("<tr><td>" + esc(b.nom) + "</td><td>" + esc(cc === "ADMIN" ? "Administrateur" : cc === "?" ? "—" : ccName(cc)) + '</td><td class="num">' + money2(r2(g.cout)) + '</td><td class="num">' + money2(r2(g.ca - g.cout)) +
+          '</td><td class="num">' + money2(r2(g.ca)) + '</td><td class="num">' + money2(r2(g.recu)) + (g.attente > 0 ? ' <small class="muted">(⏳ ' + money2(r2(g.attente)) + ")</small>" : "") + '</td><td class="num">' + money2(r2(g.ca - g.recu)) + "</td><td></td></tr>");
+      });
+      const reliquat = r2(tot.ca - tot.recu);
+      const etat = w === lundi ? '<span class="badge">Semaine en cours</span>'
+        : reliquat > 0.5 ? '<span class="badge danger">Reliquat ' + money2(reliquat) + "</span>"
+        : tot.attente > 0 ? '<span class="badge warn">⏳ À valider</span>' : tot.ca > 0 || tot.recu > 0 ? '<span class="badge ok">✓ Soldé</span>' : "";
+      lignes.push('<tr class="total-row"><td colspan="2"><b>Total ' + esc(b.nom) + '</b></td><td class="num"><b>' + money2(r2(tot.cout)) + '</b></td><td class="num"><b>' + money2(r2(tot.ca - tot.cout)) +
+        '</b></td><td class="num"><b>' + money2(r2(tot.ca)) + '</b></td><td class="num"><b>' + money2(r2(tot.recu)) + '</b></td><td class="num"><b' + (reliquat > 0.5 ? ' class="neg"' : "") + ">" + money2(Math.max(0, reliquat)) + "</b></td><td>" + etat + "</td></tr>");
+    });
+    $("#fr-fiches").innerHTML = lignes.join("") || '<tr><td colspan="8" class="empty">Aucune vente ni reversement pour cette semaine.</td></tr>';
+  }
+  $("#fr-semaine").addEventListener("change", () => renderFrigo());
+
   function renderStockFrigo(scope) {
     const admin = isAdmin(), codes = scope.map((b) => b.code), q = $("#fs-search").value.trim().toLowerCase();
     $("#fs-title").textContent = "Stock frigo — " + (scope.length === 1 ? scope[0].nom : scope.length ? "toutes les boutiques" : "aucune boutique");
