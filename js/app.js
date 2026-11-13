@@ -1189,6 +1189,7 @@
     $("#c-pu").readOnly = !isAdmin();
     const prodSel = $("#c-product").value;
     $("#c-product").innerHTML = productOptions(prodSel);
+    if (document.activeElement !== $("#c-search")) $("#c-search").value = cProduitLabel(productByCode($("#c-product").value));
     $("#clients-list").innerHTML = clientNames().map((c) => '<option value="' + esc(c) + '">').join("");
     updateProductInfo(!prodSel || !isAdmin());
     renderCart();
@@ -1228,6 +1229,46 @@
     $("#c-reliquat").value = $("#c-remis").value === "" ? "" : money(Math.max(0, remis - total));
   }
   $("#c-product").addEventListener("change", () => updateProductInfo(true));
+  // Recherche du produit dans la caisse (nom ou code, sans tenir compte des accents)
+  let cSugIdx = -1;
+  const sansAcc = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  function cProduitLabel(p) { return p ? p.nom + " (" + p.code + ")" : ""; }
+  function cSuggest() {
+    const q = sansAcc($("#c-search").value.trim()), bq = caisseBoutique(), cur = productByCode($("#c-product").value);
+    const mots = q && cur && q === sansAcc(cProduitLabel(cur)) ? [] : q.split(/\s+/).filter(Boolean); // champ = produit choisi : tout afficher
+    const list = db.products.filter((p) => mots.every((m) => sansAcc(p.nom + " " + p.code + " " + (p.categorie || "")).includes(m)))
+      .sort((a, b) => (stockCaisse(b, bq) > 0) - (stockCaisse(a, bq) > 0) || a.nom.localeCompare(b.nom)).slice(0, 40);
+    cSugIdx = list.length ? 0 : -1;
+    $("#c-sug").innerHTML = list.length ? list.map((p, i) => {
+      const st = stockCaisse(p, bq);
+      return '<div class="fc-opt' + (i === 0 ? " act" : "") + '" data-c-pick="' + esc(p.code) + '"><b>' + esc(p.nom) + "</b><small>" + esc(p.code) + " · " + money(p.pv) +
+        " · " + (st > 0 ? "stock " + num(st) : '<span class="neg">rupture</span>') + (p.valide ? "" : " · ⚠ à valider") + "</small></div>";
+    }).join("") : '<div class="fc-vide">Aucun produit ne correspond.</div>';
+    $("#c-sug").classList.remove("hidden");
+  }
+  function cChoisir(code) {
+    $("#c-product").value = code;
+    $("#c-search").value = cProduitLabel(productByCode(code));
+    $("#c-sug").classList.add("hidden");
+    updateProductInfo(true);
+    $("#c-qte").focus(); $("#c-qte").select();
+  }
+  $("#c-search").addEventListener("input", cSuggest);
+  $("#c-search").addEventListener("focus", () => { $("#c-search").select(); cSuggest(); });
+  $("#c-search").addEventListener("keydown", (e) => {
+    const opts = [...$("#c-sug").querySelectorAll("[data-c-pick]")];
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); if (!opts.length) return;
+      cSugIdx = (cSugIdx + (e.key === "ArrowDown" ? 1 : -1) + opts.length) % opts.length;
+      opts.forEach((o, i) => o.classList.toggle("act", i === cSugIdx)); opts[cSugIdx].scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") { e.preventDefault(); if (opts[cSugIdx]) cChoisir(opts[cSugIdx].dataset.cPick); }
+    else if (e.key === "Escape") $("#c-sug").classList.add("hidden");
+  });
+  $("#c-sug").addEventListener("mousedown", (e) => { const o = e.target.closest("[data-c-pick]"); if (o) { e.preventDefault(); cChoisir(o.dataset.cPick); } });
+  $("#c-search").addEventListener("blur", () => setTimeout(() => {
+    $("#c-sug").classList.add("hidden");
+    $("#c-search").value = cProduitLabel(productByCode($("#c-product").value)); // on réaffiche le produit choisi
+  }, 150));
   $("#c-remis").addEventListener("input", renderCart);
   $("#c-add").addEventListener("click", () => {
     const p = productByCode($("#c-product").value);

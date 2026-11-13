@@ -249,7 +249,13 @@
           <datalist id="clients-list"></datalist>
           <h2>Ajouter un produit</h2>
           <div class="form">
-            <label class="full">Produit<select id="c-product"></select></label>
+            <label class="full">Produit
+              <div class="fc-pick" style="margin-top:6px">
+                <input id="c-search" type="search" autocomplete="off" placeholder="🔍 Tapez le nom ou le code du produit…">
+                <div class="fc-sug hidden" id="c-sug"></div>
+              </div>
+              <select id="c-product" class="hidden"></select>
+            </label>
             <label>Quantité<input type="number" id="c-qte" min="1" value="1"></label>
             <label>Prix unitaire<input type="number" id="c-pu" min="0"></label>
           </div>
