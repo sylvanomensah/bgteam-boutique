@@ -3284,7 +3284,8 @@
   // Commission que la boutique doit encore verser (notification) : automatiquement à partir du 1er pour les mois passés,
   // et tout ce qui reste quand une demande est active. Déjà déclarée = plus de notification.
   function comARelancer(bq) { const c = commissionInfo(bq); return c.duAncien > 0 ? c.duAncien + (demandeActive() ? Math.max(0, c.aDeclarer - c.duAncien) : 0) : demandeActive() ? c.aDeclarer : 0; }
-  function versementOuvert() { if (Number(today().slice(8, 10)) <= 2 || demandeActive()) return true; const c = myCcRow(); return !!(c && c.creditVers); }
+  // Reversement ouvert le 1er et le 2 du mois, ou sur demande du gestionnaire des commissions
+  function versementOuvert() { return Number(today().slice(8, 10)) <= 2 || !!demandeActive(); }
   // Montant proposé : commission des mois écoulés pour un CC (tout ce qui reste si une demande est active), tout ce qui reste pour l'admin
   function resteAVerser(bq) { if (!bq) return 0; const c = commissionInfo(bq); return isAdmin() || demandeActive() ? c.aDeclarer : c.duAncien; }
   function majPreviewCredit(bq) {
@@ -4695,8 +4696,6 @@
       '<input type="checkbox" class="switch" data-cc-voirstock="' + esc(c.code) + '"' + (c.voirStock ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>📱 Achats de crédit</b><small>Enregistre les achats de crédit YAS / MOOV de sa boutique et verse la commission</small></span>' +
       '<input type="checkbox" class="switch" data-cc-credit="' + esc(c.code) + '"' + (c.credit ? " checked" : "") + "></label>" +
-      (c.credit && c.colCreditVers ? '<label class="perm"><span><b>💸 Reverser la commission à tout moment</b><small>Autorise ce CC à déclarer le reversement de la commission en dehors du 1er et du 2 du mois</small></span>' +
-        '<input type="checkbox" class="switch" data-cc-creditvers="' + esc(c.code) + '"' + (c.creditVers ? " checked" : "") + "></label>" : "") +
       '<label class="perm"><span><b>🧊 Dotation du frigo</b><small>Fixe la dotation de crédit du frigo des boutiques (la course du CC devra être égale à cette dotation)</small></span>' +
       '<input type="checkbox" class="switch" data-cc-frigodot="' + esc(c.code) + '"' + (c.frigoDotation ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🗂 Gère les fiches RH</b><small>Voit l\'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC</small></span>' +
@@ -4742,12 +4741,11 @@
     $("#rh-perms").innerHTML = list.length ? list.map((c) => {
       return "<tr" + (c.actif ? "" : ' class="pending"') + '><td class="pt-cc">' + avatarHtml(c.code) + "<div><b>" + esc(ccName(c.code)) + "</b><small>" + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") + "</small></div></td>" +
         caseP(c, "cc-entrees", c.entrees) + caseP(c, "cc-voirstock", c.voirStock) + caseP(c, "cc-credit", c.credit) +
-        (c.credit && c.colCreditVers ? caseP(c, "cc-creditvers", c.creditVers) : '<td class="c muted" title="Seulement pour les CC qui font les achats de crédit">—</td>') +
         caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-gerecom", c.gereCom) + caseP(c, "cc-rh", c.gereRh) + caseP(c, "cc-recoit", c.recoitEspeces) +
         '<td><select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
           [["boutique", "Consultation"], ["saisie", "Saisie utilisation"], ["gestion", "Toutes + appro."]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></td>" +
         '<td><button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></td></tr>';
-    }).join("") : '<tr><td colspan="11" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
+    }).join("") : '<tr><td colspan="10" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
   }
   ["#rp-boutique", "#rp-cc", "#rp-filtre"].forEach((id) => $(id).addEventListener("change", renderPerms));
   // Choisir un titre : applique d'un coup ses autorisations
@@ -4884,12 +4882,6 @@
       const code = gco.dataset.ccGerecom, on = gco.checked;
       return act(async () => chk(await sb.from("ccs").update({ gere_commissions: on }).eq("code", code)),
         ccName(code) + (on ? " gère les commissions du crédit télécom (tableau de bord, demande de versement, confirmation)." : " ne gère plus les commissions."));
-    }
-    const cvs = e.target.closest("[data-cc-creditvers]");
-    if (cvs) {
-      const code = cvs.dataset.ccCreditvers, on = cvs.checked;
-      return act(async () => chk(await sb.from("ccs").update({ credit_vers: on }).eq("code", code)),
-        ccName(code) + (on ? " peut reverser la commission à tout moment." : " ne peut reverser la commission que le 1er et le 2 du mois."));
     }
     const grh = e.target.closest("[data-cc-rh]");
     if (grh) {

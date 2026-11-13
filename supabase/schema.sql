@@ -1613,7 +1613,8 @@ begin
   new.mois := date_trunc('month', coalesce(new.mois, current_date))::date;
   if public.is_admin() then return new; end if;
   -- Reversement ouvert aux CC le 1er et le 2 du mois (heure de Lomé = UTC), ou dès que le gestionnaire l'a demandé ce mois-ci
-  if extract(day from (now() at time zone 'Africa/Lome')) > 2 and not coalesce((public.my_cc()).credit_vers, false)
+  -- (l'autorisation « Reverser à tout moment » / ccs.credit_vers a été supprimée le 13/11/2026)
+  if extract(day from (now() at time zone 'Africa/Lome')) > 2
      and not exists (select 1 from public.credit_demandes where created_at >= date_trunc('month', now() at time zone 'Africa/Lome') at time zone 'Africa/Lome') then
     raise exception 'Le reversement de la commission se fait uniquement le 1er et le 2 de chaque mois (ou sur demande du gestionnaire)';
   end if;
