@@ -745,6 +745,28 @@
   function setDashComPage(on) { dashComPage = on; render("dashboard"); window.scrollTo(0, 0); }
   $("#tb-com-ouvrir").addEventListener("click", () => setDashComPage(true));
   $("#tb-com-retour").addEventListener("click", () => setDashComPage(false));
+  // Mois dont la commission n'est pas encore versée (les versements soldent d'abord les mois les plus anciens)
+  function moisCommissionDus(bq) {
+    const parMois = {};
+    db.crAchats.filter((x) => x.boutique === bq).forEach((x) => { const m = String(x.date).slice(0, 7); parMois[m] = (parMois[m] || 0) + x.commission; });
+    let paye = sumBy(db.crVers.filter((v) => v.boutique === bq), (v) => v.montant);
+    return Object.keys(parMois).sort().filter((m) => { const reste = parMois[m] - paye; paye = Math.max(0, paye - parMois[m]); return reste > 0.5; });
+  }
+  // « du mois d'octobre 2026 » / « des mois d'octobre 2026 et de novembre 2026 »
+  function libelleMois(liste) {
+    const de = (m) => { const t = fmtMonth(m + "-01"); return (/^[aeiouyhâéè]/i.test(t) ? "d'" : "de ") + t; };
+    if (!liste.length) return "";
+    if (liste.length === 1) return " du mois " + de(liste[0]);
+    return " des mois " + liste.slice(0, -1).map(de).join(", ") + " et " + de(liste[liste.length - 1]);
+  }
+  // Message WhatsApp au CC : « Bonjour Monsieur / Madame NOM, merci de verser la commission … du mois de … : X FCFA. »
+  function messageCommission(cc, bq, reste) {
+    const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)) || {};
+    const civ = f.sexe === "M" ? "Monsieur " : f.sexe === "F" ? "Madame " : "";
+    const nom = currentAgent(ccByCode(cc)) || ccName(cc);
+    if (!(reste > 0)) return "Bonjour " + civ + nom + ",";
+    return "Bonjour " + civ + nom + ", merci de verser la commission du crédit télécom de " + boutiqueName(bq) + libelleMois(moisCommissionDus(bq)) + " : " + money0(reste) + ".";
+  }
   // Lien WhatsApp (wa.me) : numéro togolais à 8 chiffres complété par l'indicatif 228 ; message pré-rempli
   function lienWhatsApp(tel, message) {
     let n = String(tel || "").replace(/\D/g, "");
@@ -793,7 +815,7 @@
       const reste = x.boutique ? commissionInfo(x.boutique).aDeclarer : 0, tel = String(x.tel || "").trim();
       return "<tr><td>" + esc(x.boutique ? boutiqueName(x.boutique) : "Non affecté") + "</td><td><b>" + esc(ccName(x.cc)) + "</b></td><td>" +
         (tel ? '<span class="tel-actions"><a class="btn small" href="tel:' + esc(tel.replace(/[^\d+]/g, "")) + '">📞 ' + esc(tel) + "</a>" +
-          ' <a class="btn small btn-wa" target="_blank" rel="noopener" href="' + esc(lienWhatsApp(tel, "Bonjour " + ccName(x.cc) + (reste > 0 ? ", merci de verser la commission du crédit télécom de " + boutiqueName(x.boutique) + " : " + money0(reste) + "." : ","))) + '" title="Écrire sur WhatsApp">💬 WhatsApp</a></span>'
+          ' <a class="btn small btn-wa" target="_blank" rel="noopener" href="' + esc(lienWhatsApp(tel, messageCommission(x.cc, x.boutique, reste))) + '" title="Écrire sur WhatsApp">💬 WhatsApp</a></span>'
           : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
