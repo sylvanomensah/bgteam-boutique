@@ -4806,7 +4806,7 @@
     $("#rp-cc").value = ccsBq.some((c) => c.code === ccCur) ? ccCur : "";
     const cc = $("#rp-cc").value;
     const list = ccsBq.filter((c) => (!cc || c.code === cc) &&
-      (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === "rh" && c.gereRh) || (f === "credit" && c.credit) ||
+      (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === "rh" && c.gereRh) || (f === "credit" && c.credit) || (f === "frigodot" && c.frigoDotation) || (f === "gerecom" && c.gereCom) ||
         (f === "especes" && c.recoitEspeces) || (f === c.bobines)));
     $("#rp-count").textContent = list.length + " CC affiché(s). Cochez ou décochez : chaque changement est enregistré immédiatement.";
     const caseP = (c, attr, on) => '<td class="c"><input type="checkbox" class="pt-check" data-' + attr + '="' + esc(c.code) + '"' + (on ? " checked" : "") + "></td>";
