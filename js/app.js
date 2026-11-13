@@ -3236,12 +3236,12 @@
     const vers = versTous.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30);
     $("#cv-rows").innerHTML = vers.length ? vers.map((v) => {
       const canDel = admin || (v.createdBy === me.id && v.statut === "Déclarée" && Date.now() - new Date(v.createdAt).getTime() < EDIT_WINDOW_MS);
-      return "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
+      return "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + heureDe(v.createdAt) + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
         '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode) + "</td><td>" +
         (v.statut === "Reçue" ? '<span class="badge ok">✓ Reçu par l\'admin</span>' : '<span class="badge warn">⏳ En attente</span>') + "</td><td>" +
         (admin ? '<button class="btn small' + (v.statut === "Reçue" ? "" : " success") + '" data-cv-recu="' + v.id + '" data-v="' + (v.statut === "Reçue" ? "0" : "1") + '">' + (v.statut === "Reçue" ? "Annuler" : "✓ Argent reçu") + "</button> " : "") +
         (canDel ? '<button class="btn small danger" data-cv-del="' + v.id + '">✕</button>' : "") + "</td></tr>";
-    }).join("") : '<tr><td colspan="7" class="empty">Aucun versement.</td></tr>';
+    }).join("") : '<tr><td colspan="8" class="empty">Aucun versement.</td></tr>';
 
     // Réglages (admin)
     if (admin) {
@@ -3257,14 +3257,17 @@
   function controlesRows(codes, mois, admin) {
     const g = {};
     db.crSoldes.filter((x) => codes.includes(x.boutique) && x.date.slice(0, 7) === mois).forEach((x) => {
-      const k = x.date + "|" + x.boutique; g[k] = g[k] || { date: x.date, bq: x.boutique, par: x.saisiPar }; g[k][x.op] = x.solde;
+      const k = x.date + "|" + x.boutique; g[k] = g[k] || { date: x.date, bq: x.boutique, par: x.saisiPar, at: "" }; g[k][x.op] = x.solde;
+      if (x.at && String(x.at) > g[k].at) g[k].at = String(x.at); // heure de la saisie (la plus récente)
     });
     const l = Object.values(g).sort((a, b) => b.date.localeCompare(a.date) || boutiqueName(a.bq).localeCompare(boutiqueName(b.bq)));
-    return l.length ? l.map((j) => "<tr><td>" + esc(jourLong(j.date)) + "</td><td>" + esc(boutiqueName(j.bq)) + '</td><td class="num">' + (j.YAS != null ? money0(j.YAS) : "—") +
+    return l.length ? l.map((j) => "<tr><td>" + esc(jourLong(j.date)) + "</td><td>" + heureDe(j.at) + "</td><td>" + esc(boutiqueName(j.bq)) + '</td><td class="num">' + (j.YAS != null ? money0(j.YAS) : "—") +
       '</td><td class="num">' + (j.MOOV != null ? money0(j.MOOV) : "—") + "</td><td>" + esc(j.par || "—") + "</td><td>" +
       (admin ? '<button class="btn small danger" data-cvt-del="1" data-bq="' + esc(j.bq) + '" data-d="' + j.date + '">✕</button>' : "") + "</td></tr>").join("")
-      : '<tr><td colspan="6" class="empty">Aucun contrôle ce mois-ci.</td></tr>';
+      : '<tr><td colspan="7" class="empty">Aucun contrôle ce mois-ci.</td></tr>';
   }
+  // Heure de saisie (hh:mm) d'un horodatage ; « — » si inconnue
+  function heureDe(ts) { return ts ? new Date(ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"; }
   // Jour à déclarer : hier s'il manque (oubli), sinon aujourd'hui
   function venteCible(bq) { return hierManquant(bq) ? addDays(today(), -1) : today(); }
   // Jour choisi : l'admin peut prendre n'importe quel jour passé ; un CC suit la règle (hier d'abord)
@@ -3307,10 +3310,10 @@
     $("#rc-clot").innerHTML = controlesRows(codes, mois, false).replace(/<td><\/td><\/tr>/g, "</tr>");
     $("#rc-ventes").innerHTML = ventesRows(codes, mois);
     $("#rc-vers").innerHTML = vers.length ? vers.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map((v) =>
-      "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
+      "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + heureDe(v.createdAt) + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
       '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode) + "</td><td>" +
       (v.statut === "Reçue" ? '<span class="badge ok">✓ Reçu</span>' : '<span class="badge warn">⏳ En attente</span>') + "</td></tr>").join("")
-      : '<tr><td colspan="6" class="empty">Aucun versement en ' + esc(nomMois) + ".</td></tr>";
+      : '<tr><td colspan="7" class="empty">Aucun versement en ' + esc(nomMois) + ".</td></tr>";
   }
   // Reversement de commission : ouvert le 1er et le 2 du mois, ou à tout moment pour un CC autorisé par l'admin
   // Gestionnaire des commissions (ex. EDWIGE) : tableau de bord des commissions, demande de versement, confirmation de réception
