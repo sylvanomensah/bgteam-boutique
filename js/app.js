@@ -29,7 +29,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], crContacts: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -131,6 +131,8 @@
     const crAjust = await fetchAll("credit_ajustements", "created_at");
     // Demandes de versement des commissions (gestionnaire des commissions) ; table absente = aucune demande
     const crDemandes = await fetchAll("credit_demandes", "created_at").catch(() => []);
+    // Contacts des CC « Contrôle Crédit » (téléphone de la fiche RH) : la base ne répond qu'à l'admin et au gestionnaire des commissions
+    const crContacts = await sb.rpc("contacts_credit").then((r) => (r.error ? [] : r.data || []), () => []);
     // Frigo : courses et ventes visibles par la boutique ; détail des courses (prix d'achat) et retraits : admin
     const [fgCourses, fgDetails, fgVentes, fgRetraits, fgDotations] = await Promise.all([
       fetchAll("frigo_courses", "created_at"),
@@ -212,6 +214,7 @@
         qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat), transfert: !!x.transfert })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
+      crContacts: (crContacts || []).map((x) => ({ cc: String(x.cc), boutique: x.boutique || "", tel: x.telephone || "" })),
       crDemandes: (crDemandes || []).map((x) => ({ id: x.id, createdAt: x.created_at, demandeur: x.demandeur || "" })),
       crAjust: crAjust.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       crVentes: crVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
@@ -743,6 +746,15 @@
         : "Aucune boutique à relancer pour l'instant.") + "</p>" +
       (jourDemande() ? '<button class="btn primary" id="dc-demander"' + (reste > 0 ? "" : " disabled") + ">📣 Demander le versement des commissions</button>"
         : '<button class="btn" disabled title="La demande se fait le 1er et le 2 de chaque mois">📣 Demande possible le 1er et le 2 du mois (prochaine : ' + fmtDate(premierDuMois(addDays(premierDuMois(today()), 32))) + ")</button>");
+    // Contacts : CC « Contrôle Crédit » de chaque boutique, avec leur téléphone (lien pour appeler)
+    const contacts = db.crContacts.filter((x) => sel.value === "ALL" || x.boutique === sel.value)
+      .sort((a, b) => boutiqueName(a.boutique).localeCompare(boutiqueName(b.boutique)) || ccName(a.cc).localeCompare(ccName(b.cc)));
+    $("#dc-contacts").innerHTML = contacts.length ? contacts.map((x) => {
+      const reste = x.boutique ? commissionInfo(x.boutique).aDeclarer : 0, tel = String(x.tel || "").trim();
+      return "<tr><td>" + esc(x.boutique ? boutiqueName(x.boutique) : "Non affecté") + "</td><td><b>" + esc(ccName(x.cc)) + "</b></td><td>" +
+        (tel ? '<a class="btn small" href="tel:' + esc(tel.replace(/[^\d+]/g, "")) + '">📞 ' + esc(tel) + "</a>" : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
+        '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
+    }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
     $("#dc-rows").innerHTML = infos.length ? infos.map(({ b, c, m }) => {
       const etat = c.aDeclarer <= 0 && c.attente <= 0 ? '<span class="badge ok">✓ À jour</span>' : c.aDeclarer <= 0 ? '<span class="badge warn">⏳ À confirmer</span>'
         : comARelancer(b.code) > 0 ? '<span class="badge danger">🔔 Relancé</span>' : '<span class="badge">À verser</span>';

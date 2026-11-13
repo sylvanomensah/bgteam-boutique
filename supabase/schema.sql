@@ -1743,3 +1743,13 @@ select public.recompute_cmp(code) from public.products;
 revoke all on function public.credit_restant(text, text) from public, anon, authenticated;
 revoke all on function public.credit_hier_manquant(text) from public, anon, authenticated;
 revoke all on function public.frigo_hier_manquant(text) from public, anon, authenticated;
+-- Contacts des CC qui gèrent le crédit télécom (case « Contrôle Crédit ») : nom, boutique, téléphone de la fiche RH.
+-- Réservé à l'admin et au gestionnaire des commissions (ex. EDWIGE), pour les appeler.
+create or replace function public.contacts_credit() returns table (cc text, boutique text, telephone text)
+language sql stable security definer set search_path = public as $$
+  select c.code, c.boutique, coalesce(f.telephone, '')
+  from public.ccs c left join public.rh_fiches f on f.cc = c.code
+  where c.actif and c.credit and public.can_gerer_commissions();
+$$;
+revoke all on function public.contacts_credit() from public, anon;
+grant execute on function public.contacts_credit() to authenticated;
