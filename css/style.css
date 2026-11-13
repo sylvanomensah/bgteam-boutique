@@ -1006,3 +1006,52 @@ tr.cliquable:hover td { background: #fff4e5 !important; }
 @keyframes blocflash { from { box-shadow: 0 0 0 4px #ffb347; } to { box-shadow: var(--shadow); } }
 @media (hover: none) { .bloc-move { opacity: .75; } .bloc-move button { width: 26px; height: 26px; } }
 .bloc-vide > .bloc-move { display: none; }
+
+/* =====================================================================
+   Téléphone : tableaux en « liste » façon historique Mixx
+   - une ligne compacte par élément : titre en gras à gauche, montant en gras à droite,
+     détails en petit gris en dessous, boutons au bout ;
+   - quand la 1re colonne est une date : en-tête de groupe « 12/11/2026 » comme Mixx.
+   (classes posées par app.js : .mobl, .r-titre, .r-montant, .r-date, .r-act, data-date-head)
+   ===================================================================== */
+@media (max-width: 700px) {
+  .table-wrap:has(> .table.mobl) { border: 0; border-radius: 0; overflow: visible; }
+  .table.mobl, .table.mobl > tbody, .table.mobl > tfoot { display: block; width: 100%; }
+  .table.mobl > thead { display: none; }
+  .table.mobl > tbody { background: #fff; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  .table.mobl > tbody > tr, .table.mobl > tfoot > tr { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; padding: 12px 14px; border-bottom: 1px solid #eef0f6; }
+  .table.mobl > tbody > tr:last-child { border-bottom: 0; }
+  .table.mobl > tbody > tr[data-date-head]::before {
+    content: attr(data-date-head); order: 0; flex: 0 0 calc(100% + 28px); margin: -12px -14px 8px; padding: 10px 14px 6px;
+    background: linear-gradient(90deg, #f1f3fb, #f8f9fd); color: #0b1230; font-weight: 800; font-style: italic; font-size: .95rem;
+  }
+  .table.mobl > tbody > tr > td, .table.mobl > tfoot > tr > td, .table.mobl > tfoot > tr > th {
+    display: inline-flex; align-items: center; gap: 4px; order: 3; padding: 0; border: 0; background: transparent !important;
+    white-space: normal; text-align: left; font-size: .8rem; color: #6b7390; word-break: break-word;
+  }
+  .table.mobl td.r-date { display: none; }
+  .table.mobl td.r-titre { order: 1; flex: 1 1 50%; font-size: .98rem; font-weight: 700; color: #0b1230; }
+  .table.mobl td.r-montant { order: 2; margin-left: auto; justify-content: flex-end; text-align: right; font-size: 1rem; font-weight: 800; color: #0b1230; }
+  .table.mobl td.r-montant .pos, .table.mobl td.r-montant.pos { color: #16a34a; }
+  .table.mobl td.r-montant .neg, .table.mobl td.r-montant.neg { color: #e5484d; }
+  .table.mobl td:not(.r-titre):not(.r-montant):not(.r-act)::before { content: attr(data-label) " :"; font-weight: 600; color: #9aa1b8; }
+  .table.mobl td[data-label=""]::before { content: none !important; }
+  .table.mobl td:not(.r-titre):not(.r-montant):not(.r-act):not(.r-date) + td:not(.r-titre):not(.r-montant):not(.r-act):not(.r-date)::after { content: none; }
+  .table.mobl td:empty { display: none; }
+  .table.mobl td.r-act { order: 4; margin-left: auto; }
+  .table.mobl td input, .table.mobl td select { min-height: 34px; padding: 4px 8px; width: auto; max-width: 120px; font-size: .9rem; }
+  .table.mobl td[colspan] { order: 1; flex: 1 1 100%; justify-content: center; text-align: center; font-size: .9rem; }
+  .table.mobl > tfoot > tr { background: var(--g-navy); border-radius: 14px; margin-top: 8px; border: 0; }
+  .table.mobl > tfoot td, .table.mobl > tfoot th { color: #dfe3f2; }
+  .table.mobl > tfoot td.r-montant, .table.mobl > tfoot td.r-titre { color: #fff; }
+  .table.mobl > tbody > tr.pending { box-shadow: inset 4px 0 0 #f08c00; background: #fff8ec; }
+  .table.mobl .badge { font-size: .72rem; }
+}@media (max-width: 700px) {
+  /* titre + montant sur la 1re ligne, détails toujours à la ligne suivante */
+  .table.mobl > tbody > tr::after, .table.mobl > tfoot > tr::after { content: ""; order: 3; flex: 0 0 100%; height: 0; }
+  .table.mobl > tbody > tr > td, .table.mobl > tfoot > tr > td { order: 4; }
+  .table.mobl td.r-titre { order: 1; }
+  .table.mobl td.r-montant { order: 2; }
+  .table.mobl td.r-act { order: 5; }
+  .table.mobl td[colspan] { order: 1; }
+}

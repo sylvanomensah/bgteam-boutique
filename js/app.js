@@ -543,14 +543,38 @@
       if (!tete) return;
       const noms = [];
       [...tete.children].forEach((th) => { for (let k = 0; k < (th.colSpan || 1); k++) noms.push(th.textContent.replace(/\s+/g, " ").trim()); });
-      t.classList.add("mob");
+      // Téléphone : présentation « liste » façon historique Mixx (titre + montant à droite, détails en dessous, dates en en-tête)
+      t.classList.add("mobl");
+      const estDate = (n) => /^(date|jour|déclarée? le)$/i.test(n);
+      const colDate = estDate(noms[0] || "") ? 0 : -1;
+      const PRIO = [/^montant/i, /^total/i, /reste/i, /chiffre|^ca\b/i, /stock actuel/i, /commission/i, /^vendu|^ventes?\b/i, /quantit|^qté/i, /prix de vente/i, /restant/i];
+      let dateAvant = null;
       t.querySelectorAll(":scope > tbody > tr, :scope > tfoot > tr").forEach((tr) => {
         let i = 0;
-        [...tr.children].forEach((td) => {
+        const cells = [...tr.children], infos = [];
+        cells.forEach((td) => {
           const lib = (td.colSpan || 1) > 1 ? "" : noms[i] || "";
           if (td.getAttribute("data-label") !== lib) td.setAttribute("data-label", lib);
+          infos.push({ td, lib, idx: i });
           i += td.colSpan || 1;
+          td.classList.remove("r-titre", "r-montant", "r-date", "r-act");
         });
+        if (cells.length === 1 && (cells[0].colSpan || 1) > 1) return; // ligne « vide » / détail
+        const pleines = infos.filter((x) => x.td.textContent.trim() || x.td.querySelector("input, select, img, svg"));
+        // date en en-tête de groupe (comme « mercredi, 11 nov. »)
+        if (colDate === 0 && infos[0] && tr.parentElement.tagName === "TBODY") {
+          const d = infos[0].td.textContent.trim(); infos[0].td.classList.add("r-date");
+          if (d !== dateAvant) { tr.setAttribute("data-date-head", d); dateAvant = d; } else tr.removeAttribute("data-date-head");
+        }
+        const sansSaisie = (x) => !x.td.querySelector("input, select, button");
+        const candTitre = (x) => !x.td.classList.contains("r-date") && sansSaisie(x) && !x.td.classList.contains("num");
+        const titre = pleines.find((x) => candTitre(x) && /désignation|produit|^nom|article|^cc$|vendeur|client/i.test(x.lib)) || pleines.find(candTitre);
+        let montant = null;
+        for (const re of PRIO) { montant = pleines.find((x) => x !== titre && re.test(x.lib) && sansSaisie(x)); if (montant) break; }
+        if (!montant) montant = pleines.slice().reverse().find((x) => x !== titre && x.td.classList.contains("num") && sansSaisie(x));
+        if (titre) titre.td.classList.add("r-titre");
+        if (montant) montant.td.classList.add("r-montant");
+        infos.forEach((x) => { if (!x.lib && x.td.querySelector("button, a.btn") && x !== titre) x.td.classList.add("r-act"); });
       });
     });
   }
