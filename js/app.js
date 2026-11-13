@@ -765,7 +765,7 @@
     const civ = f.sexe === "M" ? "Monsieur " : f.sexe === "F" ? "Madame " : "";
     const nom = currentAgent(ccByCode(cc)) || ccName(cc);
     if (!(reste > 0)) return "Bonjour " + civ + nom + ",";
-    return "Bonjour " + civ + nom + ", merci de verser la commission du crédit télécom de " + boutiqueName(bq) + libelleMois(moisCommissionDus(bq)) + " : " + money0(reste) + ".";
+    return "Bonjour " + civ + nom + ", merci de verser la commission du crédit télécom de " + boutiqueName(bq) + libelleMois(moisCommissionDus(bq)) + " : " + money0(reste) + ". Sur l'application BGTEAM";
   }
   // Lien WhatsApp (wa.me) : numéro togolais à 8 chiffres complété par l'indicatif 228 ; message pré-rempli
   function lienWhatsApp(tel, message) {
