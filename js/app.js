@@ -747,7 +747,11 @@
       (jourDemande() ? '<button class="btn primary" id="dc-demander"' + (reste > 0 ? "" : " disabled") + ">📣 Demander le versement des commissions</button>"
         : '<button class="btn" disabled title="La demande se fait le 1er et le 2 de chaque mois">📣 Demande possible le 1er et le 2 du mois (prochaine : ' + fmtDate(premierDuMois(addDays(premierDuMois(today()), 32))) + ")</button>");
     // Contacts : CC « Contrôle Crédit » de chaque boutique, avec leur téléphone (lien pour appeler)
-    const contacts = db.crContacts.filter((x) => sel.value === "ALL" || x.boutique === sel.value)
+    // Source : fiches RH (admin et CC autorisés RH, comme EDWIGE) ; sinon la fonction contacts_credit de la base si elle existe
+    const telDe = (cc) => { const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)); return f ? f.telephone || "" : ""; };
+    const sourceContacts = db.crContacts.length ? db.crContacts
+      : db.settings.ccList.filter((c) => c.actif && c.credit).map((c) => ({ cc: c.code, boutique: c.boutique, tel: telDe(c.code) }));
+    const contacts = sourceContacts.filter((x) => sel.value === "ALL" || x.boutique === sel.value)
       .sort((a, b) => boutiqueName(a.boutique).localeCompare(boutiqueName(b.boutique)) || ccName(a.cc).localeCompare(ccName(b.cc)));
     $("#dc-contacts").innerHTML = contacts.length ? contacts.map((x) => {
       const reste = x.boutique ? commissionInfo(x.boutique).aDeclarer : 0, tel = String(x.tel || "").trim();
