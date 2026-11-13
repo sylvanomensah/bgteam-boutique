@@ -1577,6 +1577,34 @@ create trigger credit_achats_ref before insert on public.credit_achats for each 
 -- 2. Seul l'admin supprime une recharge (sinon la commission due pourrait être réduite)
 drop policy if exists credit_achats_delete on public.credit_achats;
 create policy credit_achats_delete on public.credit_achats for delete to authenticated using (public.is_admin());
+-- Gestionnaire des commissions (ex. EDWIGE) : tableau de bord des commissions, demande de versement, confirmation de réception
+alter table public.ccs add column if not exists gere_commissions boolean not null default false;
+create or replace function public.can_gerer_commissions() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin() or coalesce((public.my_cc()).gere_commissions, false);
+$$;
+-- Le gestionnaire voit les commissions et versements de toutes les boutiques
+drop policy if exists credit_achats_select on public.credit_achats;
+create policy credit_achats_select on public.credit_achats for select to authenticated
+  using (public.is_global() or public.can_gerer_commissions() or (public.is_member() and boutique = public.my_boutique()));
+drop policy if exists credit_vers_select on public.credit_versements;
+create policy credit_vers_select on public.credit_versements for select to authenticated
+  using (public.is_global() or public.can_gerer_commissions() or (public.is_member() and boutique = public.my_boutique()));
+-- Demandes de versement des commissions : ouvrent le reversement aux CC pour le reste du mois et déclenchent la notification
+create table if not exists public.credit_demandes (
+  id uuid primary key default gen_random_uuid(),
+  demandeur text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table public.credit_demandes enable row level security;
+drop policy if exists credit_demandes_select on public.credit_demandes;
+create policy credit_demandes_select on public.credit_demandes for select to authenticated using (public.is_member());
+drop policy if exists credit_demandes_insert on public.credit_demandes;
+create policy credit_demandes_insert on public.credit_demandes for insert to authenticated
+  with check (public.can_gerer_commissions() and created_by = auth.uid());
+drop policy if exists credit_demandes_delete on public.credit_demandes;
+create policy credit_demandes_delete on public.credit_demandes for delete to authenticated using (public.is_admin());
 -- 3. Un versement ne peut pas dépasser la commission encore due par la boutique
 create or replace function public.credit_vers_before() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -1584,9 +1612,10 @@ declare v_du numeric;
 begin
   new.mois := date_trunc('month', coalesce(new.mois, current_date))::date;
   if public.is_admin() then return new; end if;
-  -- Reversement ouvert aux CC uniquement le 1er et le 2 du mois (heure de Lomé = UTC)
-  if extract(day from (now() at time zone 'Africa/Lome')) > 2 and not coalesce((public.my_cc()).credit_vers, false) then
-    raise exception 'Le reversement de la commission se fait uniquement le 1er et le 2 de chaque mois';
+  -- Reversement ouvert aux CC le 1er et le 2 du mois (heure de Lomé = UTC), ou dès que le gestionnaire l'a demandé ce mois-ci
+  if extract(day from (now() at time zone 'Africa/Lome')) > 2 and not coalesce((public.my_cc()).credit_vers, false)
+     and not exists (select 1 from public.credit_demandes where created_at >= date_trunc('month', now() at time zone 'Africa/Lome') at time zone 'Africa/Lome') then
+    raise exception 'Le reversement de la commission se fait uniquement le 1er et le 2 de chaque mois (ou sur demande du gestionnaire)';
   end if;
   select coalesce((select sum(commission) from public.credit_achats where boutique = new.boutique), 0)
        - coalesce((select sum(montant) from public.credit_versements where boutique = new.boutique), 0) into v_du;
@@ -1596,12 +1625,12 @@ end $$;
 drop trigger if exists credit_vers_before on public.credit_versements;
 create trigger credit_vers_before before insert on public.credit_versements for each row execute function public.credit_vers_before();
 
--- Réception de la commission : administrateur uniquement
+-- Réception de la commission : administrateur ou gestionnaire des commissions
 create or replace function public.set_versement_recu(p_id uuid, p_recu boolean) returns void
 language plpgsql security definer set search_path = public as $$
 declare prof public.profiles%rowtype;
 begin
-  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if not public.can_gerer_commissions() then raise exception 'Réservé à l''administrateur ou au gestionnaire des commissions'; end if;
   select * into prof from public.profiles where id = auth.uid();
   update public.credit_versements set statut = case when p_recu then 'Reçue' else 'Déclarée' end,
     recu_par = case when p_recu then coalesce(nullif(prof.nom, ''), prof.email, '') else '' end,
@@ -1681,7 +1710,7 @@ update public.entries set boutique = 'B1' where boutique is null and exists (sel
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'credit_ajustements', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'credit_ajustements', 'credit_demandes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

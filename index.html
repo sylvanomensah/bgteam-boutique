@@ -99,7 +99,7 @@
       </div>
     </div>
     <nav id="nav">
-      <button data-view="dashboard" class="admin-only"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Tableau de bord</span></button>
+      <button data-view="dashboard" class="need-dash"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Tableau de bord</span></button>
       <button data-view="caisse"><svg viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg><span>Caisse</span></button>
       <button data-view="ventes"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg><span>Historique des ventes</span></button>
       <button data-view="stock" class="hidden"><svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg><span>Stock</span></button>
@@ -198,6 +198,26 @@
           <h2>Stock par boutique <span class="muted">(situation actuelle)</span></h2>
           <div class="table-wrap"><table class="table" id="tb-stock-table"></table></div>
         </div>
+      </div>
+
+      <!-- Commissions du crédit télécom : gestionnaire des commissions (ex. EDWIGE) et admin -->
+      <div class="card" id="dash-com">
+        <div class="toolbar" style="margin:0 0 10px">
+          <h2 style="margin:0;margin-right:auto">📱 Commissions du crédit télécom</h2>
+          <label class="cc-filter">Boutique<select id="dc-boutique"></select></label>
+        </div>
+        <div class="kpis" id="dc-kpis"></div>
+        <div class="dc-demande" id="dc-demande"></div>
+        <h3 class="sub-title">Par boutique</h3>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Boutique</th><th class="num">Commission du mois</th><th class="num">Commission totale</th><th class="num">Reçue</th><th class="num">Déclarée, à confirmer</th><th class="num">Reste à verser</th><th>État</th></tr></thead>
+          <tbody id="dc-rows"></tbody>
+        </table></div>
+        <h3 class="sub-title">Versements déclarés par les CC</h3>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Déclaré le</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Réception</th></tr></thead>
+          <tbody id="dc-vers"></tbody>
+        </table></div>
       </div>
     </section>
     <!-- CAISSE -->
@@ -1042,6 +1062,7 @@
               <th class="c" title="Enregistre les achats de crédit YAS / MOOV de sa boutique et verse la commission">📱<br>Contrôle Crédit</th>
               <th class="c" title="Peut déclarer le reversement de la commission en dehors du 1er et du 2 du mois">💸<br>Reverser à tout moment</th>
               <th class="c" title="Fixe la dotation de crédit du frigo des boutiques">🧊<br>Dotation frigo</th>
+              <th class="c" title="Tableau de bord des commissions du crédit télécom : demande le versement et confirme la réception">💼<br>Commissions</th>
               <th class="c" title="Voit l'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC">🗂<br>Fiches RH</th>
               <th class="c" title="Peut recevoir les remontées en espèces des autres CC et doit confirmer chaque réception">💵<br>Reçoit espèces</th>
               <th>🧻 Bobines</th><th></th></tr></thead>

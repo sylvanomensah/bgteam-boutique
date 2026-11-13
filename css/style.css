@@ -250,6 +250,10 @@ input[type=checkbox], input[type=radio] { min-height: 0; width: 18px; height: 18
 .hidden { display: none !important; }
 body.role-vendeur .admin-only { display: none !important; }
 body.no-entrees .only-entrees { display: none !important; }
+/* Tableau de bord : le gestionnaire des commissions ne voit que le cadre des commissions */
+body.no-dash .need-dash, #view-dashboard.com-only > :not(#dash-com) { display: none !important; }
+.dc-demande { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; margin: 4px 0 14px; border-radius: 10px; background: var(--primary-soft); }
+.dc-demande p { margin: 0; flex: 1 1 260px; }
 body.no-rh .need-rh,
 body.rh-limite #rh-tabs [data-rh-tab]:not([data-rh-tab="fiche"]):not([data-rh-tab="planning"]) { display: none !important; }
 /* Crédit télécom : logos des réseaux */

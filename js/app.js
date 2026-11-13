@@ -29,7 +29,7 @@
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -129,6 +129,8 @@
       fetchAll("credit_ventes", "date")
     ]);
     const crAjust = await fetchAll("credit_ajustements", "created_at");
+    // Demandes de versement des commissions (gestionnaire des commissions) ; table absente = aucune demande
+    const crDemandes = await fetchAll("credit_demandes", "created_at").catch(() => []);
     // Frigo : courses et ventes visibles par la boutique ; détail des courses (prix d'achat) et retraits : admin
     const [fgCourses, fgDetails, fgVentes, fgRetraits, fgDotations] = await Promise.all([
       fetchAll("frigo_courses", "created_at"),
@@ -156,7 +158,7 @@
         tauxYas: st.taux_yas == null ? 5 : Number(st.taux_yas), tauxMoov: st.taux_moov == null ? 5 : Number(st.taux_moov),
         creditSeuil: st.credit_seuil == null ? 5000 : Number(st.credit_seuil),
         frigoSeuil: st.frigo_seuil == null ? 5000 : Number(st.frigo_seuil),
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, frigoDotation: !!c.frigo_dotation, creditVers: !!c.credit_vers, colCreditVers: "credit_vers" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, frigoDotation: !!c.frigo_dotation, creditVers: !!c.credit_vers, colCreditVers: "credit_vers" in c, gereCom: !!c.gere_commissions, colGereCom: "gere_commissions" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -210,6 +212,7 @@
         qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat), transfert: !!x.transfert })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
+      crDemandes: (crDemandes || []).map((x) => ({ id: x.id, createdAt: x.created_at, demandeur: x.demandeur || "" })),
       crAjust: crAjust.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       crVentes: crVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, op: x.operateur, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       anniv: anniv.map((a) => ({ cc: String(a.cc), nom: a.nom || "", sexe: a.sexe || "" })),
@@ -372,6 +375,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_soldes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_ventes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_ajustements" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "credit_demandes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_courses" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_ventes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_retraits" }, onChange)      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
@@ -541,6 +545,7 @@
   function canView(view) {
     if (MENUS_RETIRES.includes(view)) return false;
     if (view === "rh" && isRhCc()) return true;
+    if (view === "dashboard" && canGererCom()) return true; // gestionnaire des commissions : tableau de bord réduit aux commissions
     if (!document.getElementById("view-" + view) || (!isAdmin() && ADMIN_VIEWS.includes(view))) return false;
     if (view === "fonds") return canFonds();
     if (view === "bobines") return bobinesDroit() !== "non";
@@ -585,6 +590,8 @@
     document.body.classList.toggle("no-frigo-dot", !canFrigoDotation());
     document.body.classList.toggle("no-frigo-course", !canFrigoCourse());
     document.body.classList.toggle("rh-limite", isRhCc());
+    document.body.classList.toggle("no-dash", !canView("dashboard"));
+    $("#view-dashboard").classList.toggle("com-only", !isAdmin());
     if (!canView(view)) return show(view); // droit retiré en direct : on quitte la page
     try { renderAppAlert(); } catch (e) { /* jamais bloquant */ }
     $("#brand-name").textContent = db.settings.nom;
@@ -696,7 +703,64 @@
     charts[id] = new Chart(el, config);
   }
 
+  // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)
+  function renderDashCom() {
+    const card = $("#dash-com");
+    card.classList.toggle("hidden", !canGererCom());
+    if (!canGererCom()) return;
+    const bqs = boutiquesCredit(), sel = $("#dc-boutique"), cur = sel.value || "ALL";
+    sel.innerHTML = '<option value="ALL">Toutes les boutiques</option>' + bqs.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    sel.value = cur === "ALL" || bqs.some((b) => b.code === cur) ? cur : "ALL";
+    const scope = sel.value === "ALL" ? bqs : bqs.filter((b) => b.code === sel.value), codes = scope.map((b) => b.code);
+    const mois = today().slice(0, 7);
+    const infos = scope.map((b) => ({ b, c: commissionInfo(b.code), m: sumBy(db.crAchats.filter((x) => x.boutique === b.code && String(x.date).slice(0, 7) === mois), (x) => x.commission) }));
+    const s = (f) => infos.reduce((a, x) => a + f(x), 0);
+    const reste = s((x) => x.c.aDeclarer), attente = s((x) => x.c.attente);
+    $("#dc-kpis").innerHTML = kpiHtml([
+      [sel.value === "ALL" ? "Commissions — toutes les boutiques" : "Commissions — " + esc(scope[0] ? scope[0].nom : ""), money0(s((x) => x.c.total)), "", 'title="Total des commissions gagnées sur les recharges"'],
+      ["Commission du mois", money0(s((x) => x.m))],
+      ["Reçue (confirmée)", money0(s((x) => x.c.recu)), "hero-good"],
+      ["Déclarée, à confirmer", money0(attente), attente > 0 ? "warn" : ""],
+      ["Reste à verser", money0(reste), reste > 0 ? "danger" : "hero-good"]
+    ]);
+    // Demande de versement
+    const dem = demandeActive(), aRelancer = scope.filter((b) => comARelancer(b.code) > 0);
+    $("#dc-demande").innerHTML = "<p>" + (dem ? "📣 Demande de versement envoyée le <b>" + new Date(dem.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</b> par " + esc(dem.demandeur || "—") +
+        " — les CC peuvent verser tout de suite. " : "🔔 Rappel automatique le <b>1er et le 2</b> de chaque mois pour les commissions des mois passés. ") +
+      (aRelancer.length ? "<b>" + aRelancer.length + "</b> boutique" + (aRelancer.length > 1 ? "s" : "") + " reçoi" + (aRelancer.length > 1 ? "vent" : "t") + " la notification jusqu'au versement : " + aRelancer.map((b) => esc(b.nom)).join(", ") + "."
+        : "Aucune boutique à relancer pour l'instant.") + "</p>" +
+      '<button class="btn primary" id="dc-demander"' + (reste > 0 ? "" : " disabled") + ">📣 Demander le versement des commissions</button>";
+    $("#dc-rows").innerHTML = infos.length ? infos.map(({ b, c, m }) => {
+      const etat = c.aDeclarer <= 0 && c.attente <= 0 ? '<span class="badge ok">✓ À jour</span>' : c.aDeclarer <= 0 ? '<span class="badge warn">⏳ À confirmer</span>'
+        : comARelancer(b.code) > 0 ? '<span class="badge danger">🔔 Relancé</span>' : '<span class="badge">À verser</span>';
+      return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money0(m) + '</td><td class="num">' + money0(c.total) + '</td><td class="num">' + money0(c.recu) + '</td><td class="num">' + money0(c.attente) +
+        '</td><td class="num">' + (c.aDeclarer > 0 ? '<b class="neg">' + money0(c.aDeclarer) + "</b>" : '<span class="pos">0</span>') + "</td><td>" + etat + "</td></tr>";
+    }).join("") : '<tr><td colspan="7" class="empty">Aucune boutique.</td></tr>';
+    const vers = db.crVers.filter((v) => codes.includes(v.boutique)).sort((a, b) => (a.statut === "Reçue") - (b.statut === "Reçue") || String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 60);
+    $("#dc-vers").innerHTML = vers.length ? vers.map((v) => "<tr><td>" + (v.createdAt ? new Date(v.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—") + "</td><td>" + esc(boutiqueName(v.boutique)) +
+      "</td><td>" + esc(v.cc ? ccName(v.cc) : "Admin") + '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode || "") + "</td><td>" +
+      (v.statut === "Reçue" ? '<span class="badge ok">✓ Reçue</span> <small class="muted">' + esc(v.recuPar || "") + "</small>"
+        : '<button class="btn small success" data-dc-recu="' + v.id + '">✓ J\'ai reçu ' + money0(v.montant) + "</button>") + "</td></tr>").join("")
+      : '<tr><td colspan="6" class="empty">Aucun versement déclaré.</td></tr>';
+  }
+  $("#dc-boutique").addEventListener("change", () => renderDashCom());
+  $("#dash-com").addEventListener("click", (e) => {
+    if (e.target.closest("#dc-demander")) {
+      const n = boutiquesCredit().filter((b) => commissionInfo(b.code).aDeclarer > 0).length;
+      if (!confirm("Demander le versement des commissions du crédit télécom ?\n\nLes CC de " + n + " boutique(s) qui n'ont pas encore versé recevront la notification dans l'application jusqu'à ce qu'ils versent. Le versement leur est ouvert tout de suite.")) return;
+      return act(async () => chk(await sb.from("credit_demandes").insert({ demandeur: me.nom || me.email || "" })), "Demande envoyée : les CC concernés sont notifiés.", e.target);
+    }
+    const r = e.target.closest("[data-dc-recu]");
+    if (r) {
+      const v = db.crVers.find((x) => x.id === r.dataset.dcRecu);
+      if (!v || !confirm("Confirmer avoir reçu " + money0(v.montant) + " de " + (v.cc ? ccName(v.cc) : "l'admin") + " (" + boutiqueName(v.boutique) + ") sur votre portable ?")) return;
+      act(async () => chk(await sb.rpc("set_versement_recu", { p_id: v.id, p_recu: true })), "Réception confirmée : " + money0(v.montant) + ".", r);
+    }
+  });
+
   function renderDashboard() {
+    renderDashCom();
+    if (!isAdmin()) return; // gestionnaire des commissions : seulement le cadre des commissions
     if (!dash.boutique) dash.boutique = "ALL";
     const bsel = $("#d-boutique");
     bsel.innerHTML = '<option value="ALL">Toutes les boutiques</option>' + db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
@@ -2453,10 +2517,20 @@
         '<button class="btn small" data-view-link="frigo">Faire la course</button></div>';
     }
     // Commission de crédit des mois passés pas encore reversée (CC autorisé aux achats de crédit)
+    // Relance : à partir du 1er du mois (mois passés) ou dès que le gestionnaire demande le versement ; s'arrête quand c'est déclaré
     if (me && !isAdmin() && canCreditSaisie() && myBoutiqueCode()) {
-      const c = commissionInfo(myBoutiqueCode());
-      if (c.duAncien > 0) h += '<div class="alert-line">📱 <span><b>Commission de crédit à reverser : ' + money0(c.duAncien) + "</b> (mois passés)</span>" +
+      const du = comARelancer(myBoutiqueCode()), dem = demandeActive();
+      const gest = db.settings.ccList.filter((x) => x.actif && x.gereCom).map((x) => ccName(x.code)).join(" ou ");
+      if (du > 0) h += '<div class="alert-line">📱 <span><b>Commission de crédit à reverser : ' + money0(du) + "</b>" +
+        (dem ? " — demandée par " + esc(dem.demandeur || "le gestionnaire") + " le " + fmtDate(String(dem.createdAt).slice(0, 10)) : " (mois passés)") +
+        (gest ? ". Transférez-la sur le portable de <b>" + esc(gest) + "</b>, puis déclarez le versement." : ".") + "</span>" +
         '<button class="btn small" data-view-link="credit">Verser la commission</button></div>';
+    }
+    // Gestionnaire des commissions : versements déclarés à confirmer
+    if (me && !isAdmin() && canGererCom()) {
+      const att = db.crVers.filter((v) => v.statut !== "Reçue");
+      if (att.length) h += '<div class="alert-line">💸 <span><b>' + att.length + " versement" + (att.length > 1 ? "s" : "") + " de commission à confirmer</b> — " + money0(sumBy(att, (v) => v.montant)) +
+        " déclarés. Confirmez dès que l'argent est arrivé sur votre portable.</span>" + '<button class="btn small" data-view-link="dashboard">Confirmer</button></div>';
     }
     if (r.total) {
       h += '<div class="alert-line">⚠ <span><b>Fonds à remonter : ' + money0(r.total) + "</b> — " +
@@ -3203,9 +3277,16 @@
       : '<tr><td colspan="6" class="empty">Aucun versement en ' + esc(nomMois) + ".</td></tr>";
   }
   // Reversement de commission : ouvert le 1er et le 2 du mois, ou à tout moment pour un CC autorisé par l'admin
-  function versementOuvert() { if (Number(today().slice(8, 10)) <= 2) return true; const c = myCcRow(); return !!(c && c.creditVers); }
-  // Montant proposé : commission des mois écoulés pour un CC, tout ce qui reste pour l'admin
-  function resteAVerser(bq) { if (!bq) return 0; const c = commissionInfo(bq); return isAdmin() ? c.aDeclarer : c.duAncien; }
+  // Gestionnaire des commissions (ex. EDWIGE) : tableau de bord des commissions, demande de versement, confirmation de réception
+  function canGererCom() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.gereCom); }
+  // Demande de versement lancée ce mois-ci par le gestionnaire : ouvre le reversement à tout moment du mois
+  function demandeActive() { const m = today().slice(0, 7); return db.crDemandes.filter((d) => String(d.createdAt).slice(0, 7) === m).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0] || null; }
+  // Commission que la boutique doit encore verser (notification) : automatiquement à partir du 1er pour les mois passés,
+  // et tout ce qui reste quand une demande est active. Déjà déclarée = plus de notification.
+  function comARelancer(bq) { const c = commissionInfo(bq); return c.duAncien > 0 ? c.duAncien + (demandeActive() ? Math.max(0, c.aDeclarer - c.duAncien) : 0) : demandeActive() ? c.aDeclarer : 0; }
+  function versementOuvert() { if (Number(today().slice(8, 10)) <= 2 || demandeActive()) return true; const c = myCcRow(); return !!(c && c.creditVers); }
+  // Montant proposé : commission des mois écoulés pour un CC (tout ce qui reste si une demande est active), tout ce qui reste pour l'admin
+  function resteAVerser(bq) { if (!bq) return 0; const c = commissionInfo(bq); return isAdmin() || demandeActive() ? c.aDeclarer : c.duAncien; }
   function majPreviewCredit(bq) {
     const m = Number($("#cr-montant").value) || 0;
     $("#cr-preview").innerHTML = !bq ? (isAdmin() ? "Choisissez une boutique dans le filtre pour enregistrer une recharge." : "Vous n'êtes affecté à aucune boutique.")
@@ -4662,11 +4743,11 @@
       return "<tr" + (c.actif ? "" : ' class="pending"') + '><td class="pt-cc">' + avatarHtml(c.code) + "<div><b>" + esc(ccName(c.code)) + "</b><small>" + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") + "</small></div></td>" +
         caseP(c, "cc-entrees", c.entrees) + caseP(c, "cc-voirstock", c.voirStock) + caseP(c, "cc-credit", c.credit) +
         (c.credit && c.colCreditVers ? caseP(c, "cc-creditvers", c.creditVers) : '<td class="c muted" title="Seulement pour les CC qui font les achats de crédit">—</td>') +
-        caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-rh", c.gereRh) + caseP(c, "cc-recoit", c.recoitEspeces) +
+        caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-gerecom", c.gereCom) + caseP(c, "cc-rh", c.gereRh) + caseP(c, "cc-recoit", c.recoitEspeces) +
         '<td><select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
           [["boutique", "Consultation"], ["saisie", "Saisie utilisation"], ["gestion", "Toutes + appro."]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></td>" +
         '<td><button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></td></tr>';
-    }).join("") : '<tr><td colspan="10" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
+    }).join("") : '<tr><td colspan="11" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
   }
   ["#rp-boutique", "#rp-cc", "#rp-filtre"].forEach((id) => $(id).addEventListener("change", renderPerms));
   // Choisir un titre : applique d'un coup ses autorisations
@@ -4797,6 +4878,12 @@
       const code = fdt.dataset.ccFrigodot, on = fdt.checked;
       return act(async () => chk(await sb.from("ccs").update({ frigo_dotation: on }).eq("code", code)),
         ccName(code) + (on ? " peut fixer la dotation de crédit du frigo." : " ne fixe plus la dotation du frigo."));
+    }
+    const gco = e.target.closest("[data-cc-gerecom]");
+    if (gco) {
+      const code = gco.dataset.ccGerecom, on = gco.checked;
+      return act(async () => chk(await sb.from("ccs").update({ gere_commissions: on }).eq("code", code)),
+        ccName(code) + (on ? " gère les commissions du crédit télécom (tableau de bord, demande de versement, confirmation)." : " ne gère plus les commissions."));
     }
     const cvs = e.target.closest("[data-cc-creditvers]");
     if (cvs) {
