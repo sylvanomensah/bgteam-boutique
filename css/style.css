@@ -756,6 +756,12 @@ body.no-frigo .need-frigo, body.no-frigo-vente .need-frigo-vente, body.no-frigo-
 .fg-card.fg-total > b { font-size: 2.4rem; color: #15803d; }
 .fg-card .vert-txt { color: #15803d; } .fg-card .orange-txt { color: #c2410c; } .fg-card .rouge-txt { color: var(--danger); }
 .fg-card.rouge { border-top-color: var(--danger); }
+.fg-duo { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.fg-duo > div { display: flex; flex-direction: column; gap: 6px; }
+.fg-duo > div + div { border-left: 1px solid var(--border); padding-left: 14px; }
+.fg-duo span { font-size: .78rem; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.fg-duo b { font-size: 2rem; letter-spacing: -.02em; }
+@media (max-width: 1100px) { .fg-duo b { font-size: 1.5rem; } }
 @media (max-width: 700px) { .frigo-cards.fg-2col { grid-template-columns: 1fr; } .fg-card.fg-total > b { font-size: 1.9rem; } }
 .fg-bar { height: 10px; background: #e9edf4; border-radius: 99px; overflow: hidden; margin-top: 4px; }
 .fg-bar > i { display: block; height: 100%; background: #0ea5e9; border-radius: 99px; }

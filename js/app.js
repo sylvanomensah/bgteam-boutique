@@ -3464,7 +3464,11 @@
       // Estimation des ventes du stock disponible = Σ (quantité restante × prix de vente de la fiche produit), articles épuisés exclus
       const codesFg = [...new Set((db.fgLignes || []).filter((l) => l.boutique === bq && l.code).map((l) => l.code))];
       const estimStock = codesFg.reduce((a, c) => { const p = db.products.find((y) => y.code === c), q = stockFrigoOf(c, bq); return a + (p && q > 0 ? q * Number(p.pv || 0) : 0); }, 0);
-      h += '<div class="fg-card vert"><span>Estimation des ventes du stock disponible</span><b>' + money2(estimStock) + "</b><small>Valeur potentielle de vente de tous les articles actuellement disponibles</small></div>";
+      // Bénéfice attendu du stock disponible = estimation des ventes − stock restant au coût d'achat
+      const benefAttendu = Math.round((estimStock - Math.max(0, f.restant)) * 100) / 100;
+      h += '<div class="fg-card vert"><div class="fg-duo"><div><span>Estimation des ventes du stock disponible</span><b>' + money2(estimStock) + "</b></div>" +
+        '<div><span>Bénéfice attendu du stock disponible</span><b class="' + (benefAttendu < 0 ? "rouge-txt" : "vert-txt") + '">' + money2(benefAttendu) + "</b></div></div>" +
+        "<small>Valeur potentielle de vente de tous les articles actuellement disponibles · bénéfice attendu = estimation − stock restant au coût d'achat (" + money2(Math.max(0, f.restant)) + ")</small></div>";
       // 2e ligne : coût d'achat vendu | bénéfice réalisé (semaine en cours)
       h += '<div class="fg-card"><span>Coût d\'achat vendu de la semaine</span><b>' + money2(sw.cout) + "</b><small>stock au début " + money2(Math.max(0, sw.restantDebut)) + " + achats de la semaine " + money2(sw.dotations) +
         " − stock restant " + money2(Math.max(0, sw.restantFin)) + "</small></div>";
