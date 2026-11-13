@@ -158,7 +158,7 @@
         tauxYas: st.taux_yas == null ? 5 : Number(st.taux_yas), tauxMoov: st.taux_moov == null ? 5 : Number(st.taux_moov),
         creditSeuil: st.credit_seuil == null ? 5000 : Number(st.credit_seuil),
         frigoSeuil: st.frigo_seuil == null ? 5000 : Number(st.frigo_seuil),
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, frigoDotation: !!c.frigo_dotation, creditVers: !!c.credit_vers, colCreditVers: "credit_vers" in c, gereCom: !!c.gere_commissions, colGereCom: "gere_commissions" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, frigoDotation: !!c.frigo_dotation, gereCom: !!c.gere_commissions, colGereCom: "gere_commissions" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -344,7 +344,7 @@
   }
   // Temps réel : une vente, une entrée ou une course enregistrée ailleurs met à jour cet écran.
   let rtChannel = null, rtTimer = null, rtLive = false;
-  const RT_VIEWS = ["ventes", "dashboard", "stock", "stats", "facture", "rh", "compte", "fonds", "credit"];
+  const RT_VIEWS = ["ventes", "dashboard", "stats", "facture", "rh", "compte", "fonds", "credit", "frigo", "bobines"];
   function startRealtime() {
     if (rtChannel || !sb) return;
     const onChange = () => {
@@ -353,8 +353,9 @@
         if (!me || document.querySelector("dialog[open]")) return;
         try {
           await reload();
-          if (RT_VIEWS.includes(currentView)) render(currentView);
-          else if (currentView === "entrees") renderEntryHistory();
+          // pas de rafraîchissement pendant une saisie (ex. ligne de course du frigo)
+          const saisie = document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+          if (RT_VIEWS.includes(currentView) && !saisie) render(currentView);
         } catch (e) { /* hors ligne */ }
       }, 700);
     };
@@ -378,7 +379,9 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "credit_demandes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_courses" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_ventes" }, onChange)
-      .on("postgres_changes", { event: "*", schema: "public", table: "frigo_retraits" }, onChange)      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
+      .on("postgres_changes", { event: "*", schema: "public", table: "frigo_retraits" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "frigo_dotations" }, onChange)
+      .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
     if (rtChannel) { sb.removeChannel(rtChannel); rtChannel = null; rtLive = false; }
@@ -576,7 +579,14 @@
   $("#nav-toggle").addEventListener("click", () => document.body.classList.toggle("nav-open"));
   $("#nav-overlay").addEventListener("click", () => document.body.classList.remove("nav-open"));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.body.classList.remove("nav-open"); });
+  let jourAffiche = today();
   function render(view) {
+    // Application restée ouverte après minuit : on remet les dates du jour (caisse, tableau de bord)
+    if (today() !== jourAffiche) {
+      if (dash.ref === jourAffiche) dash.ref = today();
+      if ($("#c-date").value === jourAffiche) $("#c-date").value = today();
+      jourAffiche = today();
+    }
     // CC non autorisé : pas de formulaire de saisie, seulement l'historique des courses.
     document.body.classList.toggle("no-entrees", !canEntrees());
     document.body.classList.toggle("no-fonds", !canFonds());
@@ -843,7 +853,7 @@
     if (nonRem.length) add("warning", "💰", "Fonds de la semaine du " + fmtDate(semPrec) + " non remontés", nonRem.map((b) => esc(b.nom) + " (" + money0(ventesDeclarees(b.code, semPrec, weekEnd(semPrec))) + ")").join(", ") + ".");
     const aConf = db.remontees.filter((r) => r.statut !== "Reçue");
     if (aConf.length) add("warning", "💰", aConf.length + " remontée(s) de fonds à valider", "Total " + money0(sumMontant(aConf)) + " (rubrique Fonds & dépenses).");
-    if (aValider.length) add("warning", "📝", aValider.length + " produit(s) à valider", aValider.map((p) => esc(p.nom)).join(", ") + " (rubrique Stock).");
+    if (aValider.length) add("warning", "📝", aValider.length + " produit(s) à valider", aValider.map((p) => esc(p.nom)).join(", ") + " (Frigo → Stock frigo, bouton ✓ Valider).");
     alerts.sort((a, b) => (a.lvl === b.lvl ? 0 : a.lvl === "critical" ? -1 : 1));
     $("#tb-alert-count").textContent = alerts.length ? "(" + alerts.length + ")" : "";
     $("#tb-alerts").innerHTML = '<div class="alert-list">' + (alerts.length ? alerts.map((a) => a.html).join("") : '<div class="alert-item good"><span class="ico">✅</span><div><b>Rien à signaler</b>Pas de perte, de rupture ni de baisse marquée sur la période.</div></div>') + "</div>";
@@ -2185,7 +2195,8 @@
       "</table><hr>" +
       '<div class="center r-merci">Merci de votre visite<br>À bientôt !<br><br>Conservez ce ticket<br>' + esc(ref) + "</div>";
   }
-  $("#f-ticket").addEventListener("change", renderReceipt);
+  // Changer de ticket : on efface le montant remis de la vente précédente (sinon « Espèces / Rendu » faux)
+  $("#f-ticket").addEventListener("change", () => { $("#f-remis").value = ""; renderReceipt(); });
   $("#f-remis").addEventListener("input", renderReceipt);
   $("#f-print").addEventListener("click", () => window.print());
 
@@ -2206,14 +2217,24 @@
   const REM_TOTAL_DEPUIS = "2026-11-12T17:00";
   function fgSemaine(bq, w) {
     const ls = db.fgSorties.filter((x) => x.boutique === bq && x.date >= w && x.date <= weekEnd(w));
-    const achat = Math.round(sumBy(ls, (x) => x.consomme) * 100) / 100;
-    return { ventes: ventesDeclarees(bq, w, weekEnd(w)), achat };
+    const achat = Math.round(sumBy(ls, (x) => x.consomme) * 100) / 100, ca = Math.round(sumBy(ls, (x) => x.montant) * 100) / 100;
+    // ventes = toutes les ventes de la boutique (frigo + stock principal) ; ca = ventes du frigo seulement
+    return { ventes: ventesDeclarees(bq, w, weekEnd(w)), ca, achat };
   }
-  // Part « bénéfice » d'une remontée d'une boutique avec frigo
+  const r2_ = (n) => Math.round(n * 100) / 100;
+  // Part « frigo » d'une remontée : une boutique qui vend aussi des produits du stock principal remonte
+  // toutes ses ventes ; seule la part des ventes du frigo concerne le reversement du frigo.
+  function remFrigoPart(r) {
+    if (String(r.createdAt || "") < REM_TOTAL_DEPUIS) return r.montant; // ancienne remontée = bénéfice du frigo
+    const s = fgSemaine(r.boutique, r.semaine);
+    if (s.ventes <= 0) return r.montant;
+    return r2_(Math.min(r.montant, r.montant * Math.min(1, s.ca / s.ventes)));
+  }
+  // Part « bénéfice » d'une remontée d'une boutique avec frigo (jamais plus que le bénéfice de la semaine)
   function remBenefPart(r) {
     if (String(r.createdAt || "") < REM_TOTAL_DEPUIS) return r.montant;
-    const s = fgSemaine(r.boutique, r.semaine);
-    return s.ventes > 0 ? Math.round(r.montant * Math.max(0, s.ventes - s.achat) / s.ventes * 100) / 100 : 0;
+    const s = fgSemaine(r.boutique, r.semaine), benef = Math.max(0, s.ca - s.achat);
+    return s.ca > 0 ? r2_(Math.min(benef, remFrigoPart(r) * benef / s.ca)) : 0;
   }
   // Validation des remontées : admin, ou CC gestionnaire du frigo (ccs.frigo_dotation) pour les boutiques avec frigo
   function canValiderRem(bq) { return isAdmin() || (canFrigoDotation() && db.fgCourses.some((c) => c.boutique === bq)); }
@@ -2290,7 +2311,7 @@
       (totE < -0.5 ? '<span class="badge danger">⚠ Manque ' + money0(-totE) + "</span>" : totE > 0.5 ? '<span class="badge warn">Excédent ' + money0(totE) + "</span>" : '<span class="badge ok">✅ Conforme</span>') + "</td></tr>" : "";
 
     // Remontées du mois
-    const rems = db.remontees.filter((r) => codes.includes(r.boutique) && r.semaine >= mondayOf(du) && r.semaine <= au)
+    const rems = db.remontees.filter((r) => codes.includes(r.boutique) && r.semaine >= du && r.semaine <= au) // une semaine appartient au mois de son lundi (comme le rapprochement)
       .sort((a, b) => b.semaine.localeCompare(a.semaine) || String(b.createdAt).localeCompare(String(a.createdAt)));
     $("#fd-rem").innerHTML = rems.length ? rems.map((r) => {
       const canDel = admin || (r.createdBy === me.id && r.statut === "Déclarée" && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
@@ -2960,7 +2981,8 @@
   // Clôtures du soir
   function soldeLe(bq, op, d) { const r = db.crSoldes.find((x) => x.boutique === bq && x.op === op && x.date === d); return r ? r.solde : null; }
   // Dernier contrôle = le dernier SAISI (c'est la lecture la plus récente de la puce, même s'il est daté d'hier)
-  const ordreCtrl = (a, b) => String(a.at || a.date).localeCompare(String(b.at || b.date)) || a.date.localeCompare(b.date);
+  // Ordre des contrôles : par JOUR d'abord (une correction par l'admin d'un ancien jour ne devient pas « le dernier »), puis par heure de saisie
+  const ordreCtrl = (a, b) => a.date.localeCompare(b.date) || String(a.at || a.date).localeCompare(String(b.at || b.date));
   function dernierSolde(bq, op) { return db.crSoldes.filter((x) => x.boutique === bq && x.op === op && x.date <= today()).sort((a, b) => ordreCtrl(b, a))[0] || null; }
   // Une recharge / un ajustement est-il postérieur à un contrôle ? (comparé à l'heure de saisie du contrôle)
   const apresCloture = (x, r) => (r.at && x.createdAt ? new Date(x.createdAt) > new Date(r.at) : x.date > r.date);
@@ -3491,7 +3513,7 @@
     const ca = sumBy(sorties, (x) => x.montant); // argent encaissé (prix de vente)
     const derniere = courses[0] || null;
     const retire = sumBy(db.fgRetraits.filter((r) => r.boutique === bq), (r) => r.montant);
-    const remonte = sumBy(db.remontees.filter((r) => r.boutique === bq), remBenefPart); // part bénéfice déjà remontée (Fonds & dépenses)
+    const remonte = sumBy(db.remontees.filter((r) => r.boutique === bq && r.statut === "Reçue"), remBenefPart); // part bénéfice remontée et confirmée (Fonds & dépenses)
     const sMois = sorties.filter((x) => x.date.slice(0, 7) === mois), venduMois = sumBy(sMois, (x) => x.montant), articlesMois = sumBy(sMois, (x) => x.qte);
     const sJour = sorties.filter((x) => x.date === today());
     // Estimation des ventes et bénéfice estimé du mois : d'après les produits des courses du mois (prix de vente × quantité)
@@ -3916,8 +3938,9 @@
   // Montants effectivement reçus par BGTeam : reversements VALIDÉS (+ retraits admin du frigo) ; ⏳ = déclarés pas encore validés
   function fgRecu(bq, filtreRem, filtreDate) {
     const rems = db.remontees.filter((r) => r.boutique === bq && filtreRem(r));
-    return { recu: sumMontant(rems.filter((r) => r.statut === "Reçue")) + sumBy(db.fgRetraits.filter((x) => x.boutique === bq && filtreDate(x.date)), (x) => x.montant),
-      attente: sumMontant(rems.filter((r) => r.statut !== "Reçue")) };
+    // seule la part « frigo » de chaque remontée compte (une boutique peut aussi remonter des ventes du stock principal)
+    return { recu: sumBy(rems.filter((r) => r.statut === "Reçue"), remFrigoPart) + sumBy(db.fgRetraits.filter((x) => x.boutique === bq && filtreDate(x.date)), (x) => x.montant),
+      attente: sumBy(rems.filter((r) => r.statut !== "Reçue"), remFrigoPart) };
   }
   // Calcul de la semaine w (lundi → dimanche) : uniquement les mouvements de la semaine
   function reversementSemaine(bq, w) {
@@ -3945,7 +3968,7 @@
     $("#fr-card").classList.toggle("hidden", !voir);
     if (!voir) return;
     const une = avec.length === 1;
-    $("#fr-titre").textContent = "💼 Reversement à BGTeam — " + (une ? avec[0].nom : "toutes les boutiques");
+    $("#frv-titre").textContent = "💼 Reversement à BGTeam — " + (une ? avec[0].nom : "toutes les boutiques");
     // Choix de la semaine (par défaut la semaine écoulée : c'est la fiche du lundi)
     const codes = avec.map((b) => b.code);
     const dates = db.fgCourses.filter((c) => codes.includes(c.boutique)).map((c) => c.date).sort();
@@ -3958,7 +3981,7 @@
     const infos = avec.map((b) => ({ b, i: reversementSemaine(b.code, w) }));
     const s = (k) => infos.reduce((a, x) => a + x.i[k], 0);
     const solde = s("solde"), attente = s("attente");
-    $("#fr-kpis").innerHTML = kpiHtml([
+    $("#frv-kpis").innerHTML = kpiHtml([
       ["Crédit restant (stock au coût d'achat)", money2(Math.max(0, s("restantFin"))), s("restantFin") <= db.settings.frigoSeuil ? "warn" : "", 'title="À la fin de la semaine' + (fin > today() ? " (aujourd'hui)" : "") + '"'],
       ["Chiffre d'affaires de la semaine", money2(s("ca"))],
       ["Coût d'achat vendu", money2(s("cout")), "", 'title="Crédit restant au début (' + money2(s("restantDebut")) + ") + dotations de la semaine (" + money2(s("dotations")) + ") − crédit restant à la fin (" + money2(s("restantFin")) + ')"'],
@@ -3984,7 +4007,7 @@
       const parCc = {};
       const get = (cc) => parCc[cc] || (parCc[cc] = { cout: 0, ca: 0, recu: 0, attente: 0 });
       db.fgSorties.filter((x) => x.boutique === b.code && x.date >= w && x.date <= fin).forEach((x) => { const g = get(venteCc.get(x.id) || "?"); g.cout += x.consomme; g.ca += x.montant; });
-      remonteesOf(b.code, w).forEach((r) => { const g = get(r.cc || "ADMIN"); if (r.statut === "Reçue") g.recu += r.montant; else g.attente += r.montant; });
+      remonteesOf(b.code, w).forEach((r) => { const g = get(r.cc || "ADMIN"), m = remFrigoPart(r); if (r.statut === "Reçue") g.recu += m; else g.attente += m; });
       const retW = sumBy(db.fgRetraits.filter((x) => x.boutique === b.code && x.date >= w && x.date <= fin), (x) => x.montant);
       if (retW) get("ADMIN").recu += retW;
       const ccs = Object.keys(parCc);
@@ -4045,6 +4068,7 @@
     $("#fs-rows").innerHTML = list.length ? list.map((r) =>
       "<tr><td>" + esc(r.code) + "</td><td>" + esc(r.nom) +
       (admin && db.products.some((p) => p.code === r.code) ? ' <button class="btn-bic" data-fs-nom="' + esc(r.code) + '" title="Modifier le nom du produit">✏️</button>' : "") +
+      (admin && (productByCode(r.code) || {}).valide === false ? ' <button class="btn small success" data-fs-valid="' + esc(r.code) + '" title="Produit créé par un CC : à valider">✓ Valider</button>' : "") +
       "</td><td>" + esc(r.categorie) +
       '</td><td class="num admin-only">' + (r.achat != null ? money2(r.achat) : '<span class="muted">—</span>') + '</td><td class="num">' +
       (admin && db.products.some((p) => p.code === r.code)
@@ -4063,6 +4087,13 @@
   $("#fs-kpis").addEventListener("click", (e) => { const t = e.target.closest("[data-fsv]"); if (!t) return; fsVue = t.dataset.fsv; renderStockFrigo(frigoScope()); });
   // Modifier le nom d'un produit (admin) : petit crayon à côté de la désignation
   $("#fs-rows").addEventListener("click", (e) => {
+    // Validation des produits créés par un CC (l'ancien bouton était dans le menu Stock, retiré)
+    const va = e.target.closest("[data-fs-valid]");
+    if (va && isAdmin()) {
+      const p = productByCode(va.dataset.fsValid); if (!p) return;
+      if (!confirm("Valider le produit « " + p.nom + " » ?\nCatégorie : " + p.categorie + "\nPrix de vente : " + money(p.pv) + "\n\nVérifiez le nom (✏️) et le prix de vente avant de valider.")) return;
+      return act(async () => chk(await sb.from("products").update({ valide: true }).eq("code", p.code)), "Produit validé : " + p.nom, va);
+    }
     const b = e.target.closest("[data-fs-nom]"); if (!b || !isAdmin()) return;
     const p = productByCode(b.dataset.fsNom); if (!p) return;
     const v = prompt("Nouveau nom du produit " + p.code + " :", p.nom); if (v == null) return;
@@ -4698,6 +4729,8 @@
       '<input type="checkbox" class="switch" data-cc-credit="' + esc(c.code) + '"' + (c.credit ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🧊 Dotation du frigo</b><small>Fixe la dotation de crédit du frigo des boutiques (la course du CC devra être égale à cette dotation)</small></span>' +
       '<input type="checkbox" class="switch" data-cc-frigodot="' + esc(c.code) + '"' + (c.frigoDotation ? " checked" : "") + "></label>" +
+      '<label class="perm"><span><b>💼 Commissions</b><small>Tableau de bord des commissions du crédit télécom : demande le versement et confirme la réception</small></span>' +
+      '<input type="checkbox" class="switch" data-cc-gerecom="' + esc(c.code) + '"' + (c.gereCom ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🗂 Gère les fiches RH</b><small>Voit l\'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC</small></span>' +
       '<input type="checkbox" class="switch" data-cc-rh="' + esc(c.code) + '"' + (c.gereRh ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>💵 Reçoit les fonds en espèces</b><small>Peut recevoir les remontées en espèces des autres CC et doit confirmer chaque réception</small></span>' +
@@ -4774,7 +4807,7 @@
   }
   $("#rh-tabs").addEventListener("click", (e) => { const b = e.target.closest("[data-rh-tab]"); if (b) setRhTab(b.dataset.rhTab); });
   function openFiche(cc) {
-    if (ccBoutique(cc)) $("#rh-boutique").value = ccBoutique(cc);
+    $("#rh-boutique").value = ccBoutique(cc) || "NONE"; // CC non affecté : filtre « non affectés »
     renderRhFilters();
     $("#rh-cc").value = cc;
     renderFiche(); renderPlanning();
@@ -4915,8 +4948,13 @@
     }
     return false;
   }
-  $("#rh-perms").addEventListener("change", onPermChange);
-  $("#rh-fiche").addEventListener("change", onPermChange);
+  // Si l'enregistrement échoue (réseau, droits), la case reprend son ancien état
+  function onPermChangeSur(e) {
+    const p = onPermChange(e);
+    if (p && p.then && e.target.type === "checkbox") p.then((r) => { if (r && !r.ok) e.target.checked = !e.target.checked; });
+  }
+  $("#rh-perms").addEventListener("change", onPermChangeSur);
+  $("#rh-fiche").addEventListener("change", onPermChangeSur);
   $("#cc-rows").addEventListener("change", (e) => {
     const sel = e.target.closest("[data-cc-bq]");
     if (sel) {
@@ -4989,7 +5027,9 @@
     const data = {
       version: 4, exportedAt: new Date().toISOString(), settings: db.settings, products: db.products, entries: db.entries, sales: db.sales, courses: db.courses,
       boutiques: db.boutiques, charges: db.charges, remontees: db.remontees, bobines: db.bobines, conges: db.conges, fiches: db.fiches,
-      creditAchats: db.crAchats, creditVersements: db.crVers,
+      creditAchats: db.crAchats, creditVersements: db.crVers, creditSoldes: db.crSoldes, creditVentes: db.crVentes, creditAjustements: db.crAjust, creditDemandes: db.crDemandes,
+      retraits: db.retraits, stocksInitiaux: db.stocksInit,
+      frigoCourses: db.fgCourses, frigoLignes: db.fgLignes, frigoSorties: db.fgSorties, frigoDotations: db.fgDotations, frigoRetraits: db.fgRetraits, frigoVentes: db.fgVentes,
       utilisateurs: db.users.map((u) => ({ nom: u.nom, email: u.email, role: u.role, cc: u.cc, actif: u.actif }))
     };
     download("sauvegarde-" + (db.settings.nom || "boutique") + "-" + today() + ".json", JSON.stringify(data, null, 2), "application/json");

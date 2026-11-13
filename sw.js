@@ -35,7 +35,8 @@ self.addEventListener("fetch", (e) => {
 
   e.respondWith(
     fetch(req).then((res) => {
-      if (res.ok) {
+      // la vérification de mise à jour (?maj=…) n'est jamais mise en cache (sinon une copie par vérification)
+      if (res.ok && !url.searchParams.has("maj")) {
         const copy = res.clone();
         caches.open(CACHE).then((c) => c.put(req, copy));
       }

@@ -177,6 +177,8 @@ begin
       new.date := current_date;
       new.statut := 'Validée';
       new.boutique := (select boutique from public.ccs where code = prof.cc);
+      -- un CC ne fixe pas lui-même le coût d'une entrée hors course (il fausserait le CMP)
+      new.cout_unitaire := null; new.prix_total := null; new.frais_part := null;
     elsif new.boutique is null then
       new.boutique := (select boutique from public.ccs where code = new.cc);
     end if;
@@ -187,6 +189,9 @@ begin
     if not public.is_admin() then
       new.cc := old.cc;
       new.date := old.date;
+      -- un CC ne déplace pas une entrée vers une autre boutique ni ne change son produit ou son coût
+      new.boutique := old.boutique; new.code := old.code;
+      new.cout_unitaire := old.cout_unitaire; new.prix_total := old.prix_total; new.frais_part := old.frais_part;
     end if;
   end if;
   return new;
@@ -241,6 +246,10 @@ begin
   if not public.is_member() then raise exception 'Compte non autorisé'; end if;
   if p_lines is null or jsonb_array_length(p_lines) = 0 then raise exception 'Ticket vide'; end if;
   if not exists (select 1 from public.ccs where code = p_cc and actif) then raise exception 'Code commercial inactif ou inconnu'; end if;
+  -- un vendeur vend uniquement sous son propre code commercial
+  if not admin and p_cc is distinct from (select cc from public.profiles where id = auth.uid()) then
+    raise exception 'Vous ne pouvez vendre que sous votre propre code commercial';
+  end if;
   t := nextval('public.ticket_seq');
   for l in select * from jsonb_array_elements(p_lines) loop
     select * into prod from public.products where code = l ->> 'code';
@@ -499,7 +508,8 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values ('recus', 'recus', false, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 drop policy if exists recus_select on storage.objects;
-create policy recus_select on storage.objects for select to authenticated using (bucket_id = 'recus' and public.is_member());
+create policy recus_select on storage.objects for select to authenticated using (bucket_id = 'recus' and public.is_member()
+  and (public.is_admin() or public.is_global() or public.can_entrees() or public.can_frigo_dotation()));
 drop policy if exists recus_insert on storage.objects;
 create policy recus_insert on storage.objects for insert to authenticated
   with check (bucket_id = 'recus' and public.can_entrees() and (name like 'courses/%' or name like 'remontees/%'));
@@ -1278,8 +1288,8 @@ create or replace function public.credit_restant(p_boutique text, p_op text) ret
 language plpgsql security definer set search_path = public as $$
 declare r public.credit_soldes%rowtype;
 begin
-  -- dernier contrôle SAISI (lecture la plus récente de la puce, même s'il est daté d'un jour passé)
-  select * into r from public.credit_soldes where boutique = p_boutique and operateur = p_op and date <= current_date order by updated_at desc, date desc limit 1;
+  -- dernier contrôle par JOUR, puis par heure de saisie (une correction d'un ancien jour par l'admin ne devient pas « le dernier »)
+  select * into r from public.credit_soldes where boutique = p_boutique and operateur = p_op and date <= current_date order by date desc, updated_at desc limit 1;
   return coalesce(r.solde, 0) + coalesce((select sum(a.montant + a.commission) from public.credit_achats a
     where a.boutique = p_boutique and a.operateur = p_op and (r.id is null or a.created_at > r.updated_at)), 0)
     + coalesce((select sum(j.montant) from public.credit_ajustements j
@@ -1618,6 +1628,8 @@ begin
      and not exists (select 1 from public.credit_demandes where created_at >= date_trunc('month', now() at time zone 'Africa/Lome') at time zone 'Africa/Lome') then
     raise exception 'Le reversement de la commission se fait uniquement le 1er et le 2 de chaque mois (ou sur demande du gestionnaire)';
   end if;
+  -- deux versements simultanés ne doivent pas dépasser ensemble la commission due
+  perform pg_advisory_xact_lock(hashtext('credit_vers:' || new.boutique));
   select coalesce((select sum(commission) from public.credit_achats where boutique = new.boutique), 0)
        - coalesce((select sum(montant) from public.credit_versements where boutique = new.boutique), 0) into v_du;
   if new.montant > v_du then raise exception 'Le versement (% F) dépasse la commission encore due (% F)', new.montant, greatest(v_du, 0); end if;
@@ -1681,7 +1693,7 @@ create policy bobines_select on public.bobines_mvts for select to authenticated
   using (public.bobines_droit() = 'gestion' or (public.bobines_droit() in ('boutique', 'saisie') and boutique = public.my_boutique()));
 drop policy if exists bobines_insert on public.bobines_mvts;
 create policy bobines_insert on public.bobines_mvts for insert to authenticated
-  with check (created_by = auth.uid() and date <= current_date and (public.is_admin()
+  with check (created_by = auth.uid() and date <= current_date and (public.is_admin() or date >= current_date - 1) and (public.is_admin()
     or (public.bobines_droit() = 'gestion' and type = 'Approvisionnement')
     or (public.bobines_droit() = 'saisie' and boutique = public.my_boutique() and type = 'Utilisation')));
 drop policy if exists bobines_delete on public.bobines_mvts;
@@ -1720,3 +1732,11 @@ end $$;
 
 -- Calcule le coût moyen de tous les produits (sans effet si déjà à jour).
 select public.recompute_cmp(code) from public.products;
+
+-- =====================================================================
+-- Revue de sécurité du 13/11/2026 : fonctions internes non appelables depuis l'extérieur
+-- (elles ne servent qu'aux déclencheurs, qui s'exécutent avec les droits du propriétaire)
+-- =====================================================================
+revoke all on function public.credit_restant(text, text) from public, anon, authenticated;
+revoke all on function public.credit_hier_manquant(text) from public, anon, authenticated;
+revoke all on function public.frigo_hier_manquant(text) from public, anon, authenticated;
