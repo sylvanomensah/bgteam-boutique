@@ -536,6 +536,17 @@
   }
   // Téléphone : les tableaux s'affichent en cartes (voir style.css, classe .mob).
   // Chaque cellule reçoit le nom de sa colonne (data-label) à partir de l'en-tête du tableau.
+  // « 12/11/2026 », « jeudi 12/11/2026 » ou « 12/11 14:05 » → « Aujourd'hui, 13 nov. » / « Hier, 12 nov. » / « mercredi, 11 nov. »
+  const MOIS_COURTS = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+  function titreDateMixx(txt) {
+    const m = String(txt).match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
+    if (!m) return txt;
+    const auj = parse(today()), an = m[3] ? Number(m[3]) : auj.getFullYear();
+    const d = new Date(an, Number(m[2]) - 1, Number(m[1]), 12); // midi, comme parse()
+    const ecart = Math.round((auj - d) / 86400000);
+    const jour = ecart === 0 ? "Aujourd'hui" : ecart === 1 ? "Hier" : d.toLocaleDateString("fr-FR", { weekday: "long" });
+    return jour + ", " + d.getDate() + " " + MOIS_COURTS[d.getMonth()] + (an !== auj.getFullYear() ? " " + an : "");
+  }
   function etiqueterTableaux() {
     document.querySelectorAll("table.table").forEach((t) => {
       if (t.matches(".planning, .course-lines, .no-cards")) return;
@@ -545,8 +556,9 @@
       [...tete.children].forEach((th) => { for (let k = 0; k < (th.colSpan || 1); k++) noms.push(th.textContent.replace(/\s+/g, " ").trim()); });
       // Téléphone : présentation « liste » façon historique Mixx (titre + montant à droite, détails en dessous, dates en en-tête)
       t.classList.add("mobl");
-      const estDate = (n) => /^(date|jour|déclarée? le)$/i.test(n);
-      const colDate = estDate(noms[0] || "") ? 0 : -1;
+      const estDate = (n) => /^(date|jour|déclarée? le|semaine)$/i.test(n);
+      const colDate = estDate(noms[0] || "") ? 0 : -1, parSemaine = /^semaine$/i.test(noms[0] || "");
+      const colHeure = noms.findIndex((n) => /^heure$/i.test(n));
       const PRIO = [/^montant/i, /^total/i, /reste/i, /chiffre|^ca\b/i, /stock actuel/i, /commission/i, /^vendu|^ventes?\b/i, /quantit|^qté/i, /prix de vente/i, /restant/i];
       let dateAvant = null;
       t.querySelectorAll(":scope > tbody > tr, :scope > tfoot > tr").forEach((tr) => {
@@ -562,10 +574,16 @@
         if (cells.length === 1 && (cells[0].colSpan || 1) > 1) return; // ligne « vide » / détail
         const pleines = infos.filter((x) => x.td.textContent.trim() || x.td.querySelector("input, select, img, svg"));
         // date en en-tête de groupe (comme « mercredi, 11 nov. »)
+        let heure = "";
         if (colDate === 0 && infos[0] && tr.parentElement.tagName === "TBODY") {
-          const d = infos[0].td.textContent.trim(); infos[0].td.classList.add("r-date");
+          const brut = infos[0].td.textContent.trim(); infos[0].td.classList.add("r-date");
+          const hm = brut.match(/(\d{1,2}):(\d{2})/); if (hm) heure = hm[0];
+          const d = parSemaine ? "Semaine du " + brut.replace(/^du\s*/i, "") : titreDateMixx(brut);
           if (d !== dateAvant) { tr.setAttribute("data-date-head", d); dateAvant = d; } else tr.removeAttribute("data-date-head");
         }
+        // colonne « Heure » : affichée sous le montant, à droite (comme Mixx)
+        const ih = infos.find((x) => x.idx === colHeure);
+        if (ih) { heure = ih.td.textContent.trim(); ih.td.classList.add("r-date"); }
         const sansSaisie = (x) => !x.td.querySelector("input, select, button");
         const candTitre = (x) => !x.td.classList.contains("r-date") && sansSaisie(x) && !x.td.classList.contains("num");
         const titre = pleines.find((x) => candTitre(x) && /désignation|produit|^nom|article|^cc$|vendeur|client/i.test(x.lib)) || pleines.find(candTitre);
@@ -574,6 +592,8 @@
         if (!montant) montant = pleines.slice().reverse().find((x) => x !== titre && x.td.classList.contains("num") && sansSaisie(x));
         if (titre) titre.td.classList.add("r-titre");
         if (montant) montant.td.classList.add("r-montant");
+        cells.forEach((td) => { if (td.dataset.heure && (td !== (montant && montant.td) || !heure)) td.removeAttribute("data-heure"); });
+        if (montant && heure && heure !== "—") montant.td.setAttribute("data-heure", heure);
         infos.forEach((x) => { if (!x.lib && x.td.querySelector("button, a.btn") && x !== titre) x.td.classList.add("r-act"); });
       });
     });
