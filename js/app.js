@@ -1221,17 +1221,18 @@
   }
   function renderHelloCc() {
     const el = $("#c-hello");
-    const code = me && me.cc ? String(me.cc) : "";
+    const admin = isAdmin(), code = me && me.cc ? String(me.cc) : admin ? "ADMIN" : "";
     if (!code) { el.classList.add("hidden"); return; }
     const t = today(), hier = addDays(t, -1);
-    const mes = db.sales.filter((s) => String(s.cc) === code && isCountedSale(s));
+    // Admin : ventes de toutes les boutiques ; CC : ses propres ventes
+    const mes = db.sales.filter((s) => (admin || String(s.cc) === code) && isCountedSale(s));
     const jour = summarize(mes.filter((s) => s.date === t)), veille = summarize(mes.filter((s) => s.date === hier));
     // série : nombre de jours d'affilée (jusqu'à aujourd'hui ou hier) avec au moins une vente
     const jours = new Set(mes.map((s) => s.date));
     let serie = 0, d = jours.has(t) ? t : hier;
     while (jours.has(d)) { serie++; d = addDays(d, -1); }
     const h = new Date().getHours(), salut = h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir";
-    const nom = currentAgent(ccByCode(code)) || ccName(code);
+    const nom = admin ? (me.nom || "Admin") : currentAgent(ccByCode(code)) || ccName(code);
     const ecart = jour.ca - veille.ca;
     const objectif = veille.ca > 0 ? (ecart >= 0 ? "🔥 Vous dépassez hier de " + money0(ecart) + " !" : "🎯 Encore " + money0(-ecart) + " pour égaler hier") : "🚀 Belle journée de ventes !";
     const conseil = CONSEILS[Math.floor(Date.parse(t) / 86400000) % CONSEILS.length];
@@ -1239,7 +1240,7 @@
     // la pépite du jour (blague, compliment, astuce santé / beauté / bien-être) remplace l'ancienne ligne objectif + conseil
     void objectif; void conseil;
     el.innerHTML = '<div class="hc-txt"><b>' + salut + " " + esc(nom) + " 👋</b><small>" + esc(pepiteDuJour(code)) + "</small></div>" +
-      '<div class="hc-stats"><div class="hc-stat"><span>Aujourd\'hui</span><b>' + money0(jour.ca) + "</b></div>" +
+      '<div class="hc-stats"><div class="hc-stat"><span>' + (admin ? "Toutes boutiques" : "Aujourd'hui") + "</span><b>" + money0(jour.ca) + "</b></div>" +
       '<div class="hc-stat"><span>Tickets</span><b>' + num(jour.tickets) + "</b></div>" +
       '<div class="hc-stat"><span>Série</span><b>' + (serie ? "🔥 " + serie + " j" : "—") + "</b></div></div>";
     el.classList.remove("hidden");
