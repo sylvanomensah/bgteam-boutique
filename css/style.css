@@ -253,6 +253,9 @@ body.no-entrees .only-entrees { display: none !important; }
 /* Tableau de bord : le gestionnaire des commissions ne voit que le cadre des commissions */
 body.no-dash .need-dash, #view-dashboard.com-only > :not(#dash-com) { display: none !important; }
 .tb-liens { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.tel-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.btn.btn-wa { background: #25d366; border-color: #25d366; color: #fff; }
+.btn.btn-wa:hover { background: #1ebe5a; }
 /* Admin : le cadre des commissions est une page à part (ouverte par le bouton du tableau de bord) */
 #view-dashboard:not(.com-only) #dash-com { display: none !important; }
 .dc-demande { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 14px; margin: 4px 0 14px; border-radius: 10px; background: var(--primary-soft); }
