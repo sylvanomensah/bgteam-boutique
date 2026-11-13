@@ -1155,6 +1155,70 @@
     "Rangez le frigo : un produit visible se vend mieux 👀",
     "Gardez de la monnaie pour rendre vite ⚡"
   ];
+  // « Pépite du jour » : une blague, un compliment, une astuce santé, une astuce beauté (femme) ou bien-être (homme)
+  const PEPITES = {
+    blague: [
+      "Pourquoi les poissons détestent l'ordinateur ? Parce qu'ils ont peur du net ! 🐟",
+      "Le comble pour un vendeur de frigo ? Recevoir un accueil glacial ! 🧊",
+      "Que dit une imprimante dans l'eau ? « J'ai papier ! » 🖨️",
+      "Pourquoi le livre de maths est triste ? Parce qu'il a trop de problèmes 📘",
+      "Quel est le sport préféré des téléphones ? Le recharge-ball 📱",
+      "Le comble pour un caissier ? Ne pas avoir le sens de la monnaie ! 💰",
+      "Pourquoi les canards sont toujours à l'heure ? Parce qu'ils sont dans l'étang 🦆",
+      "Que fait une fraise sur un cheval ? Tagada, tagada ! 🍓",
+      "Pourquoi l'épouvantail a reçu un prix ? Parce qu'il était exceptionnel dans son champ 🌾",
+      "Comment appelle-t-on un chat tombé dans un pot de peinture le jour de Noël ? Un chat-peint de Noël 🎄"
+    ],
+    compliment: [
+      "Votre travail fait vivre la boutique. Merci pour votre sérieux 🙏",
+      "Les clients reviennent grâce à votre accueil. Bravo ! 🌟",
+      "Chaque vente que vous notez rend BGTeam plus fort 💪",
+      "Votre régularité est une vraie force. Continuez comme ça ! 🏆",
+      "Vous êtes un pilier de l'équipe BGTeam 🧱",
+      "Votre bonne humeur est contagieuse 😄",
+      "Merci pour votre honnêteté : c'est la plus belle des qualités 💎"
+    ],
+    sante: [
+      "Buvez au moins 6 à 8 verres d'eau aujourd'hui 💧",
+      "Levez-vous et marchez 5 minutes toutes les heures 🚶",
+      "Un fruit vaut mieux qu'un biscuit pour le goûter 🍌",
+      "Respirez profondément 3 fois quand vous êtes stressé 🌬️",
+      "Dormir 7 à 8 heures, c'est le meilleur médicament 😴",
+      "Protégez-vous du soleil aux heures chaudes ☀️",
+      "Lavez-vous souvent les mains : c'est la première protection 🧼"
+    ],
+    beaute: [
+      "Un peu d'huile de karité le soir garde la peau douce ✨",
+      "Buvez de l'eau : c'est le secret d'un teint lumineux 💧",
+      "Un masque au miel 10 minutes adoucit la peau 🍯",
+      "Protégez vos cheveux du soleil avec un foulard 🧣",
+      "Démaquillez-vous toujours avant de dormir 🌙",
+      "Un sourire reste le plus beau des maquillages 😊",
+      "L'aloe vera apaise la peau après une journée au soleil 🌿"
+    ],
+    bienetre: [
+      "Une tenue propre et repassée inspire confiance aux clients 👔",
+      "Un peu de sport le matin donne de l'énergie toute la journée 🏃",
+      "Gardez une barbe ou une coupe soignée : ça fait la différence ✂️",
+      "Le beurre de karité protège aussi les mains et les lèvres 🤲",
+      "Prenez 10 minutes pour vous ce soir : musique, marche, famille 🎶"
+    ]
+  };
+  let monSexe = null; // sexe du CC connecté (fiche RH), lu une fois
+  async function chargerMonSexe() {
+    if (monSexe !== null || !me || !me.cc) return;
+    const f = (db.fiches || []).find((x) => String(x.cc) === String(me.cc));
+    if (f) { monSexe = f.sexe || ""; return; }
+    try { const r = await sb.rpc("mon_sexe"); monSexe = r.error ? "" : r.data || ""; } catch (e) { monSexe = ""; }
+    if (currentView === "caisse") renderHelloCc();
+  }
+  function pepiteDuJour(code) {
+    const jour = Math.floor(Date.parse(today()) / 86400000), graine = jour + Number(String(code).replace(/\D/g, "") || 0);
+    const cats = ["blague", "compliment", "sante", monSexe === "F" ? "beaute" : monSexe === "M" ? "bienetre" : "sante", "blague"];
+    const cat = cats[graine % cats.length], liste = PEPITES[cat];
+    const titre = { blague: "😄 Blague du jour", compliment: "🌟 Pour vous", sante: "🩺 Astuce santé", beaute: "💄 Astuce beauté", bienetre: "💪 Astuce bien-être" }[cat];
+    return titre + " : " + liste[Math.floor(graine / cats.length) % liste.length];
+  }
   function renderHelloCc() {
     const el = $("#c-hello");
     const code = me && me.cc ? String(me.cc) : "";
@@ -1171,7 +1235,10 @@
     const ecart = jour.ca - veille.ca;
     const objectif = veille.ca > 0 ? (ecart >= 0 ? "🔥 Vous dépassez hier de " + money0(ecart) + " !" : "🎯 Encore " + money0(-ecart) + " pour égaler hier") : "🚀 Belle journée de ventes !";
     const conseil = CONSEILS[Math.floor(Date.parse(t) / 86400000) % CONSEILS.length];
-    el.innerHTML = '<div class="hc-txt"><b>' + salut + " " + esc(nom) + " 👋</b><small>" + objectif + " · " + conseil + "</small></div>" +
+    chargerMonSexe();
+    // la pépite du jour (blague, compliment, astuce santé / beauté / bien-être) remplace l'ancienne ligne objectif + conseil
+    void objectif; void conseil;
+    el.innerHTML = '<div class="hc-txt"><b>' + salut + " " + esc(nom) + " 👋</b><small>" + esc(pepiteDuJour(code)) + "</small></div>" +
       '<div class="hc-stats"><div class="hc-stat"><span>Aujourd\'hui</span><b>' + money0(jour.ca) + "</b></div>" +
       '<div class="hc-stat"><span>Tickets</span><b>' + num(jour.tickets) + "</b></div>" +
       '<div class="hc-stat"><span>Série</span><b>' + (serie ? "🔥 " + serie + " j" : "—") + "</b></div></div>";

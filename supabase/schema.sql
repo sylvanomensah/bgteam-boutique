@@ -1746,3 +1746,10 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.contacts_credit() from public, anon;
 grant execute on function public.contacts_credit() to authenticated;
+-- Sexe du CC connecté (sa propre fiche RH uniquement) : pour adapter la « pépite du jour » de la caisse
+create or replace function public.mon_sexe() returns text
+language sql stable security definer set search_path = public as $$
+  select coalesce((select f.sexe from public.rh_fiches f where f.cc = (public.my_cc()).code), '');
+$$;
+revoke all on function public.mon_sexe() from public, anon;
+grant execute on function public.mon_sexe() to authenticated;
