@@ -27,6 +27,7 @@
   let currentView = null;
   let lastReload = 0;
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
+  let dashComPage = false; // admin : page « Commissions du crédit télécom » du tableau de bord
 
   function emptyDb() {
     return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], crContacts: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [] };
@@ -561,6 +562,7 @@
   }
   function show(view) {
     if (!canView(view)) view = isAdmin() ? "dashboard" : "caisse";
+    dashComPage = false; // le menu ramène au tableau de bord principal
     currentView = view;
     // Mémorise le menu ouvert (adresse + navigateur) pour le retrouver après une actualisation
     try { if (location.hash !== "#" + view) history.replaceState(null, "", "#" + view); } catch (e) {}
@@ -604,7 +606,7 @@
     document.body.classList.toggle("no-frigo-course", !canFrigoCourse());
     document.body.classList.toggle("rh-limite", isRhCc());
     document.body.classList.toggle("no-dash", !canView("dashboard"));
-    $("#view-dashboard").classList.toggle("com-only", !isAdmin());
+    $("#view-dashboard").classList.toggle("com-only", !isAdmin() || dashComPage);
     if (!canView(view)) return show(view); // droit retiré en direct : on quitte la page
     try { renderAppAlert(); } catch (e) { /* jamais bloquant */ }
     $("#brand-name").textContent = db.settings.nom;
@@ -716,6 +718,10 @@
     charts[id] = new Chart(el, config);
   }
 
+  // Admin : page « Commissions du crédit télécom » ouverte depuis le tableau de bord (bouton sous « Statistiques détaillées »)
+  function setDashComPage(on) { dashComPage = on; render("dashboard"); window.scrollTo(0, 0); }
+  $("#tb-com-ouvrir").addEventListener("click", () => setDashComPage(true));
+  $("#tb-com-retour").addEventListener("click", () => setDashComPage(false));
   // La demande de versement des commissions se fait le 1er et le 2 de chaque mois
   function jourDemande() { return Number(today().slice(8, 10)) <= 2; }
   // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)

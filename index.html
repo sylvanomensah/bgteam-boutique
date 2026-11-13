@@ -129,7 +129,10 @@
     <section id="view-dashboard" class="view">
       <div class="toolbar"><h1 style="margin:0;margin-right:auto">Tableau de bord</h1>
         <span class="hint" id="tb-live" style="margin:0"></span>
-        <button class="btn small" data-view-link="stats">Statistiques détaillées par CC</button>
+        <div class="tb-liens">
+          <button class="btn small" data-view-link="stats">Statistiques détaillées par CC</button>
+          <button class="btn small" id="tb-com-ouvrir">📱 Commissions du crédit télécom</button>
+        </div>
       </div>
       <div class="card filterbar" style="margin-top:12px">
         <div class="seg" id="d-periode">
@@ -203,6 +206,7 @@
       <!-- Commissions du crédit télécom : gestionnaire des commissions (ex. EDWIGE) et admin -->
       <div class="card" id="dash-com">
         <div class="toolbar" style="margin:0 0 10px">
+          <button class="btn small admin-only" id="tb-com-retour">← Tableau de bord</button>
           <h2 style="margin:0;margin-right:auto">📱 Commissions du crédit télécom</h2>
           <label class="cc-filter">Boutique<select id="dc-boutique"></select></label>
         </div>
