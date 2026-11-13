@@ -766,7 +766,7 @@
     const crSansClot = boutiquesCredit().filter((b) => hierManquant(b.code));
     if (crSansClot.length) add("warning", "🌙", "Contrôle du crédit restant d'hier non fait", crSansClot.map((b) => esc(b.nom)).join(", ") + " — recharges bloquées pour ces boutiques (rubrique Crédit télécom).");
     const fgSeuil = boutiquesFrigo().filter((b) => frigoInfo(b.code, today().slice(0, 7)).seuilAtteint && !dotOuverte(b.code));
-    if (fgSeuil.length) add("warning", "🧊", "Frigo à réapprovisionner", fgSeuil.map((b) => esc(b.nom) + " (reste " + money0(frigoInfo(b.code, today().slice(0, 7)).restant) + ")").join(", ") + " — fixez la dotation de crédit pour la prochaine course (rubrique Frigo).");
+    if (fgSeuil.length) add("warning", "🧊", "Frigo à réapprovisionner", fgSeuil.map((b) => esc(b.nom) + " (reste " + money0(frigoInfo(b.code, today().slice(0, 7)).restant) + ")").join(", ") + " — crédit restant ≤ " + money0(db.settings.frigoSeuil) + " : nouvelle course de " + money0(DOTATION_STANDARD) + " à doter (rubrique Frigo).");
     const crAValider = db.crVers.filter((v) => v.statut !== "Reçue");
     if (crAValider.length) add("warning", "📱", crAValider.length + " versement(s) de commission à valider", "Total " + money0(crAValider.reduce((a, v) => a + v.montant, 0)) + " (rubrique Crédit télécom).");
     // Bobines et remontées de fonds
@@ -2440,6 +2440,12 @@
         "</b> — " + (manqueHier ? "les nouvelles recharges sont bloquées tant qu'il n'est pas déclaré." : "lisez le crédit restant YAS et MOOV sur les puces et notez-le.") + "</span>" +
         '<button class="btn small" data-view-link="credit">Faire le contrôle</button></div>';
     }
+    // 🧊 Seuil de réapprovisionnement atteint : alerte au gestionnaire du frigo (l'admin l'a dans le tableau de bord)
+    if (me && !isAdmin() && canFrigoDotation()) {
+      const bas = boutiquesFrigo().filter((b) => frigoInfo(b.code, today().slice(0, 7)).seuilAtteint && !dotOuverte(b.code));
+      if (bas.length) h += '<div class="alert-line">🧊 <span><b>Frigo à réapprovisionner</b> — ' + bas.map((b) => esc(b.nom) + " (reste " + money0(Math.max(0, frigoInfo(b.code, today().slice(0, 7)).restant)) + ")").join(", ") +
+        " : nouvelle course de " + money0(DOTATION_STANDARD) + " à doter.</span>" + '<button class="btn small" data-view-link="frigo">Doter</button></div>';
+    }
     // 💰 Dotation du frigo en attente de course (CC de la boutique)
     if (me && !isAdmin() && myBoutiqueCode()) {
       const dfr = dotOuverte(myBoutiqueCode());
@@ -3447,7 +3453,7 @@
       const pct = f.base > 0 ? Math.max(0, Math.min(100, Math.round((f.restant / f.base) * 100))) : 0;
       let h = '<div class="fg-card' + (f.courses.length && f.seuilAtteint ? " orange" : "") + '"><span>Crédit vente restant</span><b>' + (f.courses.length ? money2(Math.max(0, f.restant)) : "—") + "</b>" + (f.restant < 0 ? '<small class="pos">✅ Course remboursée · <b>+' + money2(-f.restant) + "</b> de bénéfice déjà vendu</small>" : "") +
         (f.courses.length ? '<div class="fg-bar' + (f.seuilAtteint ? " bas" : "") + '"><i style="width:' + pct + '%"></i></div><small>' +
-          (f.seuilAtteint ? "🛒 <b>Seuil atteint</b> : nouvelle course possible" : "Dernière course du " + fmtDate(f.derniere.date) + " : " + money2(f.derniere.cout)) + "</small>"
+          (f.seuilAtteint ? "🛒 <b>Seuil atteint</b> : nouvelle course de <b>" + money0(DOTATION_STANDARD) + "</b> à faire" : "Dernière course du " + fmtDate(f.derniere.date) + " : " + money2(f.derniere.cout)) + "</small>"
           : "<small>Aucune course enregistrée pour ce frigo</small>") + "</div>";
       h += '<div class="fg-card vert"><span>Estimation des ventes du mois</span><b>' + money2(f.estimationMois) + "</b><small>prix de vente des produits des courses · vendu en caisse ce mois : <b>" + money2(f.venduMois) +
         "</b> (" + num(f.articlesMois) + " article" + (f.articlesMois > 1 ? "s" : "") + ") · aujourd'hui : " + money2(f.venteJour) + "</small></div>";
@@ -3802,12 +3808,35 @@
   const DOTATION_STANDARD = 20000;
   // Reversement à BGTeam (boutiques avec frigo) : à reverser = coût d'achat vendu + bénéfice = CA encaissé
   function canVoirReversement() { return isAdmin() || canFrigoDotation() || canEntrees(); }
-  function reversementInfo(bq) {
-    const f = frigoInfo(bq, today().slice(0, 7)), r2 = (n) => Math.round(n * 100) / 100;
-    const rems = db.remontees.filter((r) => r.boutique === bq), retraits = f.retire;
-    const reverse = sumMontant(rems) + retraits, attente = sumMontant(rems.filter((r) => r.statut !== "Reçue"));
-    return { stock: r2(Math.max(0, f.restant)), ca: r2(f.ca), cout: r2(f.consomme), benef: r2(f.ca - f.consomme), total: r2(f.ca),
-      reverse: r2(reverse), retraits: r2(retraits), attente: r2(attente), solde: r2(f.ca - reverse) };
+  // Crédit restant d'une boutique à la fin du jour d (dotations/courses jusqu'à d − coût d'achat vendu jusqu'à d)
+  function fgRestantAu(bq, d) {
+    return sumBy(db.fgCourses.filter((c) => c.boutique === bq && c.date <= d), (c) => c.cout) - sumBy(db.fgSorties.filter((x) => x.boutique === bq && x.date <= d), (x) => x.consomme);
+  }
+  // Montants effectivement reçus par BGTeam : reversements VALIDÉS (+ retraits admin du frigo) ; ⏳ = déclarés pas encore validés
+  function fgRecu(bq, filtreRem, filtreDate) {
+    const rems = db.remontees.filter((r) => r.boutique === bq && filtreRem(r));
+    return { recu: sumMontant(rems.filter((r) => r.statut === "Reçue")) + sumBy(db.fgRetraits.filter((x) => x.boutique === bq && filtreDate(x.date)), (x) => x.montant),
+      attente: sumMontant(rems.filter((r) => r.statut !== "Reçue")) };
+  }
+  // Calcul de la semaine w (lundi → dimanche) : uniquement les mouvements de la semaine
+  function reversementSemaine(bq, w) {
+    const r2 = (n) => Math.round(n * 100) / 100, fin = weekEnd(w), finCalc = fin > today() ? today() : fin;
+    const dotations = sumBy(db.fgCourses.filter((c) => c.boutique === bq && c.date >= w && c.date <= fin), (c) => c.cout);
+    const restantDebut = fgRestantAu(bq, addDays(w, -1)), restantFin = fgRestantAu(bq, finCalc);
+    const ls = db.fgSorties.filter((x) => x.boutique === bq && x.date >= w && x.date <= fin);
+    // 1. Coût d'achat vendu = dotations − crédit restant (sur la semaine : restant début + dotations de la semaine − restant fin)
+    const cout = r2(restantDebut + dotations - restantFin);
+    // 2. Bénéfice généré = somme des marges réelles des produits vendus
+    const benef = r2(sumBy(ls, (x) => x.montant - x.consomme));
+    // 3. Total à reverser = coût d'achat vendu + bénéfice généré
+    const total = r2(cout + benef);
+    // 4. Solde = total − montants effectivement reçus pour cette semaine
+    const rc = fgRecu(bq, (r) => r.semaine === w, (d) => d >= w && d <= fin);
+    // Reliquat des semaines précédentes (non payé avant cette semaine)
+    const avant = sumBy(db.fgSorties.filter((x) => x.boutique === bq && x.date < w), (x) => x.montant);
+    const rcAvant = fgRecu(bq, (r) => r.semaine < w, (d) => d < w);
+    return { dotations: r2(dotations), restantDebut: r2(restantDebut), restantFin: r2(restantFin), cout, benef, total, ca: r2(sumBy(ls, (x) => x.montant)),
+      recu: r2(rc.recu), attente: r2(rc.attente), solde: r2(total - rc.recu), reliquatAvant: r2(Math.max(0, avant - rcAvant.recu)) };
   }
   function renderReversement(scope) {
     const avec = scope.filter((b) => db.fgCourses.some((c) => c.boutique === b.code));
@@ -3816,53 +3845,61 @@
     if (!voir) return;
     const une = avec.length === 1;
     $("#fr-titre").textContent = "💼 Reversement à BGTeam — " + (une ? avec[0].nom : "toutes les boutiques");
-    const infos = avec.map((b) => ({ b, i: reversementInfo(b.code) }));
-    const s = (k) => infos.reduce((a, x) => a + x.i[k], 0);
-    const solde = s("solde");
-    $("#fr-kpis").innerHTML = kpiHtml([
-      ["Stock restant au coût d'achat", money2(s("stock"))],
-      ["Chiffre d'affaires réalisé", money2(s("ca"))],
-      ["Coût d'achat vendu", money2(s("cout"))],
-      ["Bénéfice réalisé", money2(s("benef")), "hero-good"],
-      ["Total des recettes à reverser", money2(s("total")), "", 'title="Coût d\'achat vendu + bénéfice réalisé"'],
-      ["Montant déjà reversé", money2(s("reverse")), "", 'title="Reversements déclarés (dont ' + money2(s("attente")) + " en attente de validation)" + (s("retraits") ? " + retraits admin " + money2(s("retraits")) : "") + '"'],
-      ["Solde restant à reverser", money2(Math.max(0, solde)), solde > 0.5 ? "danger" : "hero-good"]
-    ]);
-    $("#fr-multi-wrap").classList.toggle("hidden", une);
-    $("#fr-multi").innerHTML = une ? "" : infos.map(({ b, i }) => "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money2(i.stock) + '</td><td class="num">' + money2(i.ca) + '</td><td class="num">' + money2(i.cout) +
-      '</td><td class="num">' + money2(i.benef) + '</td><td class="num"><b>' + money2(i.total) + '</b></td><td class="num">' + money2(i.reverse) + '</td><td class="num">' +
-      (i.solde > 0.5 ? '<b class="neg">' + money2(i.solde) + "</b>" : '<span class="pos">0</span>') + "</td></tr>").join("");
-
-    // Fiches hebdomadaires (semaine du lundi au dimanche ; la fiche de la semaine écoulée est prête chaque lundi)
-    const codes = avec.map((b) => b.code), sorties = db.fgSorties.filter((x) => codes.includes(x.boutique));
-    const lundi = mondayOf(today()), premier = sorties.length ? mondayOf(sorties.map((x) => x.date).sort()[0]) : lundi;
-    const semaines = []; for (let w = lundi; w >= premier; w = addDays(w, -7)) semaines.push(w);
+    // Choix de la semaine (par défaut la semaine écoulée : c'est la fiche du lundi)
+    const codes = avec.map((b) => b.code);
+    const dates = db.fgCourses.filter((c) => codes.includes(c.boutique)).map((c) => c.date).sort();
+    const lundi = mondayOf(today()), premier = dates.length ? mondayOf(dates[0]) : lundi;
+    const semaines = []; for (let x = lundi; x >= premier; x = addDays(x, -7)) semaines.push(x);
     const sel = $("#fr-semaine"), cur = sel.value;
-    sel.innerHTML = semaines.map((w) => '<option value="' + w + '">' + (w === lundi ? "Semaine en cours — " : w === addDays(lundi, -7) ? "Semaine écoulée — " : "") + "du " + fmtDate(w) + " au " + fmtDate(weekEnd(w)) + "</option>").join("");
+    sel.innerHTML = semaines.map((x) => '<option value="' + x + '">' + (x === lundi ? "Semaine en cours — " : x === addDays(lundi, -7) ? "Semaine écoulée — " : "") + "du " + fmtDate(x) + " au " + fmtDate(weekEnd(x)) + "</option>").join("");
     sel.value = semaines.includes(cur) ? cur : (semaines.includes(addDays(lundi, -7)) ? addDays(lundi, -7) : lundi);
     const w = sel.value, fin = weekEnd(w);
+    const infos = avec.map((b) => ({ b, i: reversementSemaine(b.code, w) }));
+    const s = (k) => infos.reduce((a, x) => a + x.i[k], 0);
+    const solde = s("solde"), attente = s("attente");
+    $("#fr-kpis").innerHTML = kpiHtml([
+      ["Crédit restant (stock au coût d'achat)", money2(Math.max(0, s("restantFin"))), s("restantFin") <= db.settings.frigoSeuil ? "warn" : "", 'title="À la fin de la semaine' + (fin > today() ? " (aujourd'hui)" : "") + '"'],
+      ["Chiffre d'affaires de la semaine", money2(s("ca"))],
+      ["Coût d'achat vendu", money2(s("cout")), "", 'title="Crédit restant au début (' + money2(s("restantDebut")) + ") + dotations de la semaine (" + money2(s("dotations")) + ") − crédit restant à la fin (" + money2(s("restantFin")) + ')"'],
+      ["Bénéfice généré", money2(s("benef")), "hero-good"],
+      ["Total à reverser", money2(s("total")), "", 'title="Coût d\'achat vendu + bénéfice généré"'],
+      ["Montant reçu", money2(s("recu")) + (attente > 0 ? ' <small class="muted">⏳ ' + money2(attente) + "</small>" : ""), "", 'title="Reversements validés pour cette semaine' + (attente > 0 ? " — " + money2(attente) + " déclarés en attente de validation" : "") + '"'],
+      ["Solde de la semaine", money2(Math.max(0, solde)), solde > 0.5 ? "danger" : "hero-good"],
+      ["Reliquat semaines précédentes", money2(s("reliquatAvant")), s("reliquatAvant") > 0.5 ? "danger" : ""]
+    ]);
+    $("#fr-calc").innerHTML = "Semaine du <b>" + fmtDate(w) + "</b> au <b>" + fmtDate(fin) + "</b> : coût d'achat vendu = crédit restant au début <b>" + money2(s("restantDebut")) + "</b> + dotations de la semaine <b>" + money2(s("dotations")) +
+      "</b> − crédit restant à la fin <b>" + money2(s("restantFin")) + "</b> = <b>" + money2(s("cout")) + "</b> · total à reverser = " + money2(s("cout")) + " + bénéfice " + money2(s("benef")) + " = <b>" + money2(s("total")) + "</b>.";
+    $("#fr-multi-wrap").classList.toggle("hidden", une);
+    $("#fr-multi").innerHTML = une ? "" : infos.map(({ b, i }) => "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money2(i.dotations) + '</td><td class="num">' + money2(Math.max(0, i.restantFin)) + '</td><td class="num">' + money2(i.cout) +
+      '</td><td class="num">' + money2(i.benef) + '</td><td class="num"><b>' + money2(i.total) + '</b></td><td class="num">' + money2(i.recu) + (i.attente > 0 ? ' <small class="muted">⏳ ' + money2(i.attente) + "</small>" : "") + '</td><td class="num">' +
+      (i.solde > 0.5 ? '<b class="neg">' + money2(i.solde) + "</b>" : '<span class="pos">0</span>') + '</td><td class="num">' + (i.reliquatAvant > 0.5 ? '<b class="neg">' + money2(i.reliquatAvant) + "</b>" : "0") + "</td></tr>").join("");
+
+    // Fiche du lundi : par boutique et par collaborateur (mouvements de la semaine uniquement)
+    $("#fr-fiche-titre").textContent = "🗓 Fiche de reversement — semaine du " + fmtDate(w) + " au " + fmtDate(fin) + " — par boutique et par collaborateur";
     const venteCc = new Map(db.sales.map((x) => [x.id, x.cc]));
     const r2 = (n) => Math.round(n * 100) / 100;
     const lignes = [];
-    avec.forEach((b) => {
+    infos.forEach(({ b, i }) => {
       const parCc = {};
       const get = (cc) => parCc[cc] || (parCc[cc] = { cout: 0, ca: 0, recu: 0, attente: 0 });
-      sorties.filter((x) => x.boutique === b.code && x.date >= w && x.date <= fin).forEach((x) => { const g = get(venteCc.get(x.id) || "?"); g.cout += x.consomme; g.ca += x.montant; });
-      remonteesOf(b.code, w).forEach((r) => { const g = get(r.cc || "ADMIN"); g.recu += r.montant; if (r.statut !== "Reçue") g.attente += r.montant; });
+      db.fgSorties.filter((x) => x.boutique === b.code && x.date >= w && x.date <= fin).forEach((x) => { const g = get(venteCc.get(x.id) || "?"); g.cout += x.consomme; g.ca += x.montant; });
+      remonteesOf(b.code, w).forEach((r) => { const g = get(r.cc || "ADMIN"); if (r.statut === "Reçue") g.recu += r.montant; else g.attente += r.montant; });
+      const retW = sumBy(db.fgRetraits.filter((x) => x.boutique === b.code && x.date >= w && x.date <= fin), (x) => x.montant);
+      if (retW) get("ADMIN").recu += retW;
       const ccs = Object.keys(parCc);
       if (!ccs.length) return;
-      const tot = { cout: 0, ca: 0, recu: 0, attente: 0 };
       ccs.sort().forEach((cc) => {
-        const g = parCc[cc]; Object.keys(tot).forEach((k) => (tot[k] += g[k]));
+        const g = parCc[cc];
         lignes.push("<tr><td>" + esc(b.nom) + "</td><td>" + esc(cc === "ADMIN" ? "Administrateur" : cc === "?" ? "—" : ccName(cc)) + '</td><td class="num">' + money2(r2(g.cout)) + '</td><td class="num">' + money2(r2(g.ca - g.cout)) +
           '</td><td class="num">' + money2(r2(g.ca)) + '</td><td class="num">' + money2(r2(g.recu)) + (g.attente > 0 ? ' <small class="muted">(⏳ ' + money2(r2(g.attente)) + ")</small>" : "") + '</td><td class="num">' + money2(r2(g.ca - g.recu)) + "</td><td></td></tr>");
       });
-      const reliquat = r2(tot.ca - tot.recu);
+      const reliquat = i.solde;
       const etat = w === lundi ? '<span class="badge">Semaine en cours</span>'
+        : reliquat > 0.5 && i.attente >= reliquat - 0.5 ? '<span class="badge warn">⏳ À valider</span>'
         : reliquat > 0.5 ? '<span class="badge danger">Reliquat ' + money2(reliquat) + "</span>"
-        : tot.attente > 0 ? '<span class="badge warn">⏳ À valider</span>' : tot.ca > 0 || tot.recu > 0 ? '<span class="badge ok">✓ Soldé</span>' : "";
-      lignes.push('<tr class="total-row"><td colspan="2"><b>Total ' + esc(b.nom) + '</b></td><td class="num"><b>' + money2(r2(tot.cout)) + '</b></td><td class="num"><b>' + money2(r2(tot.ca - tot.cout)) +
-        '</b></td><td class="num"><b>' + money2(r2(tot.ca)) + '</b></td><td class="num"><b>' + money2(r2(tot.recu)) + '</b></td><td class="num"><b' + (reliquat > 0.5 ? ' class="neg"' : "") + ">" + money2(Math.max(0, reliquat)) + "</b></td><td>" + etat + "</td></tr>");
+        : i.total > 0 || i.recu > 0 ? '<span class="badge ok">✓ Soldé</span>' : "";
+      lignes.push('<tr class="total-row"><td colspan="2"><b>Total ' + esc(b.nom) + '</b></td><td class="num"><b>' + money2(i.cout) + '</b></td><td class="num"><b>' + money2(i.benef) +
+        '</b></td><td class="num"><b>' + money2(i.total) + '</b></td><td class="num"><b>' + money2(i.recu) + '</b></td><td class="num"><b' + (reliquat > 0.5 ? ' class="neg"' : "") + ">" + money2(Math.max(0, reliquat)) + "</b></td><td>" + etat + "</td></tr>");
     });
     $("#fr-fiches").innerHTML = lignes.join("") || '<tr><td colspan="8" class="empty">Aucune vente ni reversement pour cette semaine.</td></tr>';
   }

@@ -814,13 +814,14 @@
         <div class="card hidden" id="fr-card">
           <h2 id="fr-titre">💼 Reversement à BGTeam</h2>
           <p class="hint" style="margin-top:0">Recettes à reverser = <b>coût d'achat des produits vendus + bénéfice réalisé</b> = chiffre d'affaires encaissé. Le capital des marchandises vendues ET le bénéfice sont reversés intégralement chaque lundi.</p>
+          <div class="form form-inline" style="margin-bottom:8px"><label>Semaine<select id="fr-semaine"></select></label></div>
           <div class="kpis" id="fr-kpis"></div>
+          <p class="hint" style="margin:0 0 10px" id="fr-calc"></p>
           <div class="table-wrap hidden" id="fr-multi-wrap"><table class="table">
-            <thead><tr><th>Boutique</th><th class="num">Stock restant (coût d'achat)</th><th class="num">Chiffre d'affaires</th><th class="num">Coût d'achat vendu</th><th class="num">Bénéfice réalisé</th><th class="num">Total à reverser</th><th class="num">Déjà reversé</th><th class="num">Solde à reverser</th></tr></thead>
+            <thead><tr><th>Boutique</th><th class="num">Dotations de la semaine</th><th class="num">Crédit restant (fin de semaine)</th><th class="num">Coût d'achat vendu</th><th class="num">Bénéfice généré</th><th class="num">Total à reverser</th><th class="num">Reçu</th><th class="num">Solde de la semaine</th><th class="num">Reliquat semaines précédentes</th></tr></thead>
             <tbody id="fr-multi"></tbody>
           </table></div>
-          <h3 class="sub-title">🗓 Fiches de reversement du lundi — par boutique et par collaborateur</h3>
-          <div class="form form-inline" style="margin-bottom:8px"><label>Semaine<select id="fr-semaine"></select></label></div>
+          <h3 class="sub-title" id="fr-fiche-titre">🗓 Fiche de reversement du lundi — par boutique et par collaborateur</h3>
           <div class="table-wrap"><table class="table">
             <thead><tr><th>Boutique</th><th>Collaborateur</th><th class="num">Coût d'achat vendu</th><th class="num">Bénéfice réalisé</th><th class="num">Montant attendu</th><th class="num">Montant reçu</th><th class="num">Reliquat</th><th>État</th></tr></thead>
             <tbody id="fr-fiches"></tbody>
