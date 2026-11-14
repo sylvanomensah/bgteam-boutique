@@ -1584,6 +1584,8 @@
     if (!(pu >= 0)) return toast("Prix invalide.");
     const inCart = cart.filter((l) => l.code === p.code).reduce((a, l) => a + l.qte, 0);
     const bq = caisseBoutique();
+    // Tout est lié au stock frigo : une vente doit toujours être rattachée à une boutique (son frigo)
+    if (!bq) return toast("Choisissez le CC (et donc la boutique) : la vente sort du stock frigo de sa boutique.");
     // Stock insuffisant (rupture) : le produit n'est pas ajouté au panier
     const dispoAj = stockCaisse(p, bq) - inCart;
     if (dispoAj < qte) return toast(dispoAj <= 0 ? "⛔ " + p.nom + " est en rupture" + (bq ? " à " + boutiqueName(bq) : "") + " : impossible de l'ajouter au panier."
