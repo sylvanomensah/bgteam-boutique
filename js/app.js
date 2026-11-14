@@ -4645,21 +4645,24 @@
     const sorties = db.fgSorties.filter((x) => codes.includes(x.boutique));
     const parCode = new Map();
     lignes.forEach((l) => {
-      const r = parCode.get(l.code) || { code: l.code, nom: l.nom, entrees: 0, sorties: 0, achat: null, achatAt: "" };
-      r.entrees += l.qte;
+      const r = parCode.get(l.code) || { code: l.code, nom: l.nom, entrees: 0, sorties: 0, achat: null, achatAt: "", coutIn: 0, coutOut: 0 };
+      r.entrees += l.qte; r.coutIn += l.qte * (l.achat || 0);
       if (l.achat != null && String(l.createdAt) >= r.achatAt) { r.achat = l.achat; r.achatAt = String(l.createdAt); }
       parCode.set(l.code, r);
     });
-    sorties.forEach((x) => { const r = parCode.get(x.code); if (r) r.sorties += x.qte; });
+    sorties.forEach((x) => { const r = parCode.get(x.code); if (r) { r.sorties += x.qte; r.coutOut += x.consomme || 0; } });
     // Tous les produits du catalogue apparaissent (stock 0 tant qu'aucune course ne les contient)
     db.products.forEach((p) => { if (!parCode.has(p.code)) parCode.set(p.code, { code: p.code, nom: p.nom, entrees: 0, sorties: 0, achat: null, achatAt: "" }); });
     const rows = Array.from(parCode.values()).map((r) => {
       const p = db.products.find((y) => y.code === r.code);
-      r.ajust = sumBy((db.fgAjust || []).filter((a) => codes.includes(a.boutique) && a.code === r.code), (a) => a.qte);
+      const aj = (db.fgAjust || []).filter((a) => codes.includes(a.boutique) && a.code === r.code);
+      r.ajust = sumBy(aj, (a) => a.qte);
+      // valeur d'achat exacte du stock = achats des courses − coût d'achat des ventes ± corrections (même calcul que le Récap)
+      r.valAchatExact = r2_((r.coutIn || 0) - (r.coutOut || 0) + sumBy(aj, (a) => a.qte * (a.coutUnit || 0)));
       const stock = r.entrees - r.sorties + r.ajust, pv = p ? Number(p.pv) : 0, s = Math.max(0, stock);
       const statut = stock <= 0 ? "RUPTURE" : p && Number(p.stockMin) > 0 && stock <= Number(p.stockMin) ? "STOCK FAIBLE" : "OK";
       return Object.assign(r, { nom: p ? p.nom : r.nom, categorie: p ? p.categorie : "", pv, stock, statut,
-        valAchat: r.achat != null ? s * r.achat : 0, valVente: s * pv });
+        valAchat: r.achat != null ? Math.max(0, r.valAchatExact) : 0, valVente: s * pv });
     }).sort((a, b) => (a.stock > 0) === (b.stock > 0) ? a.nom.localeCompare(b.nom) : a.stock > 0 ? -1 : 1);
     // Vue choisie en cliquant sur les cases : tous les produits, en stock, en rupture, sous le seuil
     const enVue = { tous: () => true, stock: (r) => r.stock > 0, rupture: (r) => r.statut === "RUPTURE", seuil: (r) => r.statut === "STOCK FAIBLE" };
@@ -4761,6 +4764,17 @@
       k("Vendu en caisse", money2(sumBy(ventes, (x) => x.montant)), num(sumBy(ventes, (x) => x.qte)) + " article(s)" + (admin ? " · crédit consommé " + money2(sumBy(ventes, (x) => x.consomme)) : "")) +
       (admin ? k("Bénéfice estimé", money2(sumBy(courses, (c) => c.valeur - c.cout)), "somme des marges des produits achetés", "hero") +
         k("Retraits", money2(sumBy(retraits, (r) => r.montant)), retraits.length + " retrait" + (retraits.length > 1 ? "s" : "")) : "");
+    // Concordance avec le Stock frigo (depuis le début) : achats − coût vendu ± corrections = stock au coût d'achat ; estimation − vendu ≈ stock au prix de vente
+    const toutC = db.fgCourses.filter((c) => codes.includes(c.boutique)), toutV = db.fgSorties.filter((x) => codes.includes(x.boutique));
+    const ajV = sumBy((db.fgAjust || []).filter((a) => codes.includes(a.boutique)), (a) => a.qte * (a.coutUnit || 0));
+    const stAchat = r2_(sumBy(toutC, (c) => c.cout) - sumBy(toutV, (x) => x.consomme) + ajV);
+    const stVente = r2_(db.products.reduce((a, p) => a + codes.reduce((b, bq) => b + Math.max(0, stockFrigoOf(p.code, bq)), 0) * Number(p.pv || 0), 0));
+    const attendu = r2_(sumBy(toutC, (c) => c.valeur) - sumBy(toutV, (x) => x.montant)), ecartPv = r2_(stVente - attendu);
+    $("#fr-kpis").innerHTML += admin && toutC.length ? k("Reste en stock (= Stock frigo)", money2(stAchat) + " <small>au coût d'achat</small>",
+      "achats des courses " + money2(sumBy(toutC, (c) => c.cout)) + " − coût d'achat vendu " + money2(sumBy(toutV, (x) => x.consomme)) + (Math.abs(ajV) > 0.005 ? (ajV < 0 ? " − " : " + ") + "corrections " + money2(Math.abs(ajV)) : "") + " (depuis le début)") +
+      k("Reste en stock au prix de vente", money2(stVente), "estimation des ventes " + money2(sumBy(toutC, (c) => c.valeur)) + " − vendu en caisse " + money2(sumBy(toutV, (x) => x.montant)) + " = " + money2(attendu) +
+        (Math.abs(ecartPv) > 0.5 ? " · écart " + (ecartPv > 0 ? "+" : "−") + money2(Math.abs(ecartPv)) + " : produits vendus à un autre prix que prévu ou prix de vente modifié" : " ✔")) +
+      k("Bénéfice restant dans le stock", money2(r2_(stVente - stAchat)), "bénéfice estimé − bénéfice déjà réalisé par les ventes (" + money2(r2_(sumBy(toutV, (x) => x.montant - x.consomme))) + ")", "hero") : "";
     $("#fr-bq-card").classList.toggle("hidden", scope.length < 2);
     if (scope.length > 1) {
       $("#fr-bq-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Vendu en caisse</th><th class=\"num\">Estimation des ventes</th><th class=\"num\">Crédit vente restant</th>" + (admin ? '<th class="num">Bénéfice estimé</th><th class="num">Retraits</th>' : "") + "</tr>";
