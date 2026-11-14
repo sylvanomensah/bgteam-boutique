@@ -1208,6 +1208,7 @@
   document.addEventListener("click", (e) => {
     const l = e.target.closest("[data-view-link]");
     if (l) show(l.dataset.viewLink);
+    if (e.target.closest("[data-fg-stock-go]")) { fgTab = "stock"; try { localStorage.setItem("onglet-frigo", fgTab); } catch (er) {} show("frigo"); window.scrollTo({ top: 0 }); }
   });
   // Charges
   $("#ch-new").addEventListener("click", () => {
@@ -2961,6 +2962,13 @@
       const att = db.crVers.filter((v) => v.statut !== "Reçue");
       if (att.length) h += '<div class="alert-line">💸 <span><b>' + att.length + " versement" + (att.length > 1 ? "s" : "") + " de commission à confirmer</b> — " + money0(sumBy(att, (v) => v.montant)) +
         " déclarés. Confirmez dès que l'argent est arrivé sur votre portable.</span>" + '<button class="btn small" data-view-link="dashboard">Confirmer</button></div>';
+    }
+    // 📝 Produits créés par un CC, en attente de validation : notification à l'admin dès la connexion
+    if (me && isAdmin()) {
+      const av = db.products.filter((p) => !p.valide);
+      if (av.length) h += '<div class="alert-line">📝 <span><b>' + av.length + " produit" + (av.length > 1 ? "s" : "") + " à valider</b> — " +
+        av.slice(0, 8).map((p) => esc(p.nom) + (p.creePar ? " (créé par " + esc(p.creePar) + ")" : "")).join(", ") + (av.length > 8 ? "…" : "") +
+        ". Vérifiez le nom et le prix, puis cliquez sur ✓ Valider.</span>" + '<button class="btn small success" data-fg-stock-go>Voir et valider</button></div>';
     }
     if (r.total) {
       h += '<div class="alert-line">⚠ <span><b>Fonds à remonter : ' + money0(r.total) + "</b> — " +
