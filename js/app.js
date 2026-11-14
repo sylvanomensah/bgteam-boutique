@@ -161,6 +161,7 @@
         tauxYas: st.taux_yas == null ? 5 : Number(st.taux_yas), tauxMoov: st.taux_moov == null ? 5 : Number(st.taux_moov),
         creditSeuil: st.credit_seuil == null ? 5000 : Number(st.credit_seuil),
         frigoSeuil: st.frigo_seuil == null ? 5000 : Number(st.frigo_seuil),
+        ordreBlocs: st.ordre_blocs && typeof st.ordre_blocs === "object" ? st.ordre_blocs : {},
         ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, frigoDotation: !!c.frigo_dotation, gereCom: !!c.gere_commissions, colGereCom: "gere_commissions" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
@@ -604,17 +605,19 @@
       });
     });
   }
-  // Cadres déplaçables (▲ ▼) dans les pages Crédit télécom et Frigo : l'ordre est gardé sur l'appareil, par utilisateur
+  // Cadres déplaçables (▲ ▼) dans les pages Crédit télécom et Frigo : SEUL L'ADMIN les déplace ; l'ordre est enregistré
+  // dans la base (settings.ordre_blocs) et s'applique à tous les CC (au chargement / à l'actualisation).
   const BLOC_CONTENEURS = ["#cr-main", "#fg-main"];
   const blocsDe = (c) => [...c.children].filter((e) => e.matches(".card, .op-cards, .frigo-cards, details"));
   BLOC_CONTENEURS.forEach((sel) => { const c = document.querySelector(sel); if (c) blocsDe(c).forEach((b, i) => { b.dataset.bloc = b.id || c.id + "-" + i; b.classList.add("bloc-mobile"); }); });
-  const blocCle = (c) => "ordre-blocs-" + c.id + "-" + (me ? me.id : "");
-  const blocsAppliques = new Set();
+  const ordresBlocs = () => (db.settings && db.settings.ordreBlocs) || {};
+  const blocsAppliques = {}; // dernier ordre appliqué par page (réappliqué si l'admin le change)
   function appliquerOrdreBlocs(view) {
     const sel = view === "credit" ? "#cr-main" : view === "frigo" ? "#fg-main" : "";
-    const c = sel && document.querySelector(sel); if (!c || !me || blocsAppliques.has(blocCle(c))) return;
-    blocsAppliques.add(blocCle(c));
-    let ordre = []; try { ordre = JSON.parse(localStorage.getItem(blocCle(c)) || "[]"); } catch (e) {}
+    const c = sel && document.querySelector(sel); if (!c || !me) return;
+    const ordre = Array.isArray(ordresBlocs()[c.id]) ? ordresBlocs()[c.id] : [];
+    const sig = JSON.stringify(ordre); if (blocsAppliques[c.id] === sig) return;
+    blocsAppliques[c.id] = sig;
     if (!ordre.length) return;
     const blocs = blocsDe(c), rang = (b) => { const i = ordre.indexOf(b.dataset.bloc); return i < 0 ? 1000 + blocs.indexOf(b) : i; };
     blocs.slice().sort((a, b) => rang(a) - rang(b)).forEach((b) => c.appendChild(b));
@@ -623,6 +626,7 @@
     BLOC_CONTENEURS.forEach((sel) => {
       const c = document.querySelector(sel); if (!c) return;
       blocsDe(c).forEach((b) => {
+        if (!isAdmin()) { const m = b.querySelector(":scope > .bloc-move"); if (m) m.remove(); return; } // flèches pour l'admin seulement
         if (!b.querySelector(":scope > .bloc-move")) {
           const m = document.createElement("div");
           m.className = "bloc-move";
@@ -640,11 +644,20 @@
     const visibles = blocsDe(c).filter((x) => x === b || (x.offsetHeight > 20 && !x.classList.contains("bloc-vide")));
     const i = visibles.indexOf(b), cible = visibles[i + dir];
     if (!cible) return toast(dir < 0 ? "Ce cadre est déjà tout en haut." : "Ce cadre est déjà tout en bas.");
+    if (!isAdmin()) return;
     c.insertBefore(b, dir < 0 ? cible : cible.nextSibling);
-    try { localStorage.setItem(blocCle(c), JSON.stringify(blocsDe(c).map((x) => x.dataset.bloc))); } catch (er) {}
+    enregistrerOrdre(c.id, blocsDe(c).map((x) => x.dataset.bloc));
     b.classList.remove("bloc-flash"); void b.offsetWidth; b.classList.add("bloc-flash");
     b.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, true);
+  // Enregistre un ordre (cadres d'une page ou cartes boutiques) dans la base : il s'applique à tous les CC
+  async function enregistrerOrdre(cle, ordre) {
+    const tout = { ...ordresBlocs(), [cle]: ordre };
+    db.settings.ordreBlocs = tout; blocsAppliques[cle] = JSON.stringify(ordre);
+    const { error } = await sb.from("settings").update({ ordre_blocs: tout }).eq("id", 1);
+    if (error) toast("Ordre non enregistré pour les CC : " + errMsg(error));
+    else toast("Nouvel ordre enregistré : il s'applique à tous les CC après actualisation.");
+  }
   // Lignes / cartes cliquables : choisissent la boutique dans le filtre de la page (si l'utilisateur y a accès)
   document.addEventListener("click", (e) => {
     if (e.target.closest("a, button, input, select, [data-bloc-mv]")) return;
@@ -3372,7 +3385,7 @@
   function creditSaisieBq() { return isAdmin() ? ($("#cr-boutique").value !== "ALL" ? $("#cr-boutique").value : "") : myBoutiqueCode(); }
 
   // Ordre des cadres « boutique » du Crédit télécom : l'admin les déplace par glisser-déposer (échange de places)
-  function crOrdre() { try { return JSON.parse(localStorage.getItem("ordre-credit") || "[]"); } catch (e) { return []; } }
+  function crOrdre() { const o = ordresBlocs()["credit-cartes"]; return Array.isArray(o) ? o : []; }
   let crDrag = null;
   $("#cr-resume").addEventListener("dragstart", (e) => {
     const c = e.target.closest(".crr-move"); if (!c) return;
@@ -3394,7 +3407,7 @@
     const i = codes.indexOf(crDrag), j = codes.indexOf(cible);
     [codes[i], codes[j]] = [codes[j], codes[i]];
     const reste = crOrdre().filter((x) => !codes.includes(x));
-    try { localStorage.setItem("ordre-credit", JSON.stringify(codes.concat(reste))); } catch (er) {}
+    enregistrerOrdre("credit-cartes", codes.concat(reste));
     crDrag = null;
     renderCredit();
     toast("Cadres échangés : " + boutiqueName(codes[j]) + " ⇄ " + boutiqueName(codes[i]) + ".");

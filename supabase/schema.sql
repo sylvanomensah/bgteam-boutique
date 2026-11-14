@@ -1753,3 +1753,6 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.mon_sexe() from public, anon;
 grant execute on function public.mon_sexe() to authenticated;
+-- Ordre des cadres déplaçables (pages Crédit télécom et Frigo, cartes boutiques du crédit) choisi par l'admin :
+-- il s'applique à tous les CC. Format : { "cr-main": [...], "fg-main": [...], "credit-cartes": [...] }
+alter table public.settings add column if not exists ordre_blocs jsonb not null default '{}'::jsonb;
