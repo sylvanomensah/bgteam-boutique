@@ -1727,6 +1727,8 @@ create table if not exists public.frigo_ajustements (
   created_by uuid default auth.uid() references auth.users(id) on delete set null,
   created_at timestamptz not null default now()
 );
+-- Prix d'achat unitaire au moment de la correction (valeur de la perte ou du surplus au coût d'achat)
+alter table public.frigo_ajustements add column if not exists cout_unit numeric;
 alter table public.frigo_ajustements enable row level security;
 drop policy if exists frigo_ajust_select on public.frigo_ajustements;
 create policy frigo_ajust_select on public.frigo_ajustements for select to authenticated

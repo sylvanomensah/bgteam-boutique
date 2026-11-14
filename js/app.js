@@ -218,7 +218,7 @@
       fgLignes: fgLignes.map((x) => ({ courseId: x.course_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, code: x.code || "", nom: x.nom || x.code || "",
         qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat), transfert: !!x.transfert })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
-      fgAjust: (fgAjust || []).map((x) => ({ id: x.id, boutique: x.boutique, code: x.code, qte: Number(x.qte) || 0, date: x.date, note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
+      fgAjust: (fgAjust || []).map((x) => ({ id: x.id, boutique: x.boutique, code: x.code, qte: Number(x.qte) || 0, coutUnit: x.cout_unit == null ? null : Number(x.cout_unit), date: x.date, note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       crContacts: (crContacts || []).map((x) => ({ cc: String(x.cc), boutique: x.boutique || "", tel: x.telephone || "" })),
       crDemandes: (crDemandes || []).map((x) => ({ id: x.id, createdAt: x.created_at, demandeur: x.demandeur || "" })),
@@ -1466,6 +1466,14 @@
   function estFrigo(code, bq) { return !!bq && ((db.fgLignes || []).some((l) => l.boutique === bq && l.code === code) || (db.fgAjust || []).some((a) => a.boutique === bq && a.code === code)); }
   // Correction du stock frigo par l'admin (somme des écarts saisis)
   function ajustFrigoOf(code, bq) { return sumBy((db.fgAjust || []).filter((a) => a.boutique === bq && a.code === code), (a) => a.qte); }
+  // Valeur au coût d'achat des corrections de stock du frigo jusqu'au jour d (perte = négatif, surplus = positif)
+  function ajustValeurAu(bq, d) { return sumBy((db.fgAjust || []).filter((a) => a.boutique === bq && a.date <= d), (a) => a.qte * (a.coutUnit || 0)); }
+  // Dernier prix d'achat unitaire d'un produit dans les courses du frigo d'une boutique (admin)
+  function dernierAchatFrigo(code, bq) {
+    const l = (db.fgLignes || []).filter((x) => x.boutique === bq && x.code === code && x.achat != null).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+    if (l) return l.achat;
+    const p = productByCode(code); return p ? Number(p.cmp) || 0 : 0;
+  }
   function stockFrigoOf(code, bq) {
     return sumBy((db.fgLignes || []).filter((l) => l.boutique === bq && l.code === code), (l) => l.qte) - sumBy((db.fgSorties || []).filter((x) => x.boutique === bq && x.code === code), (x) => x.qte) + ajustFrigoOf(code, bq);
   }
@@ -3980,7 +3988,7 @@
     const courses = db.fgCourses.filter((c) => c.boutique === bq).sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt)));
     // Sorties = ventes en caisse des produits du frigo ; chacune consomme son prix d'achat (frais compris) du crédit
     const sorties = db.fgSorties.filter((x) => x.boutique === bq);
-    const credit = sumBy(courses, (c) => c.cout), consomme = sumBy(sorties, (x) => x.consomme), restant = credit - consomme;
+    const credit = sumBy(courses, (c) => c.cout), consomme = sumBy(sorties, (x) => x.consomme), ajustVal = ajustValeurAu(bq, "9999-12-31"), restant = credit - consomme + ajustVal;
     const ca = sumBy(sorties, (x) => x.montant); // argent encaissé (prix de vente)
     const derniere = courses[0] || null;
     const retire = sumBy(db.fgRetraits.filter((r) => r.boutique === bq), (r) => r.montant);
@@ -3991,7 +3999,7 @@
     const cMois = courses.filter((c) => c.date.slice(0, 7) === mois), estimationMois = sumBy(cMois, (c) => c.valeur), benefMois = sumBy(cMois, (c) => c.valeur - c.cout);
     // base de la barre : restant + consommé depuis la dernière course
     const base = derniere ? restant + sumBy(sorties.filter((x) => String(x.createdAt) >= String(derniere.createdAt)), (x) => x.consomme) : 0;
-    return { courses, sorties, credit, consomme, restant, ca, derniere, retire, benefVentes: ca - consomme, remonte, aRetirer: ca - consomme - retire - remonte, venduMois, articlesMois,
+    return { courses, sorties, credit, consomme, ajustVal, restant, ca, derniere, retire, benefVentes: ca - consomme, remonte, aRetirer: ca - consomme - retire - remonte, venduMois, articlesMois,
       venteJour: sumBy(sJour, (x) => x.montant), consJour: sumBy(sJour, (x) => x.consomme), articlesJour: sumBy(sJour, (x) => x.qte),
       estimationMois, benefMois, taux: estimationMois > 0 ? benefMois / estimationMois : null, base, seuilAtteint: !courses.length || restant <= db.settings.frigoSeuil };
   }
@@ -4034,7 +4042,7 @@
       let h = '<div class="fg-card' + (f.courses.length && f.seuilAtteint ? " orange" : "") + '"><span>Stock restant au coût d\'achat</span><b>' + (f.courses.length ? money2(Math.max(0, f.restant)) : "—") + "</b>" +
         (f.courses.length ? '<div class="fg-bar' + (f.seuilAtteint ? " bas" : "") + '"><i style="width:' + pct + '%"></i></div><small>' +
           (f.seuilAtteint ? "🛒 <b>Seuil de " + money0(db.settings.frigoSeuil) + " atteint</b> : nouvelle course de <b>" + money0(DOTATION_STANDARD) + "</b> à faire"
-            : "achats enregistrés " + money2(f.credit) + " − coût d'achat sorti " + money2(f.consomme) + " · dernière course du " + fmtDate(f.derniere.date) + " : " + money2(f.derniere.cout)) + "</small>"
+            : "achats enregistrés " + money2(f.credit) + " − coût d'achat sorti " + money2(f.consomme) + (Math.abs(f.ajustVal) > 0.005 ? (f.ajustVal < 0 ? " − " : " + ") + "corrections de stock " + money2(Math.abs(f.ajustVal)) : "") + " · dernière course du " + fmtDate(f.derniere.date) + " : " + money2(f.derniere.cout)) + "</small>"
           : "<small>Aucune course enregistrée pour ce frigo</small>") + "</div>";
       // Estimation des ventes du stock disponible = Σ (quantité restante × prix de vente de la fiche produit), articles épuisés exclus
       const codesFg = [...new Set((db.fgLignes || []).filter((l) => l.boutique === bq && l.code).map((l) => l.code))];
@@ -4046,7 +4054,7 @@
         "<small>Valeur potentielle de vente de tous les articles actuellement disponibles · bénéfice attendu = estimation − stock restant au coût d'achat (" + money2(Math.max(0, f.restant)) + ")</small></div>";
       // 2e ligne : coût d'achat vendu | bénéfice réalisé (semaine en cours)
       h += '<div class="fg-card"><span>Coût d\'achat vendu de la semaine</span><b>' + money2(sw.cout) + "</b><small>stock au début " + money2(Math.max(0, sw.restantDebut)) + " + achats de la semaine " + money2(sw.dotations) +
-        " − stock restant " + money2(Math.max(0, sw.restantFin)) + "</small></div>";
+        " − stock restant " + money2(Math.max(0, sw.restantFin)) + (Math.abs(sw.pertes) > 0.005 ? " · dont " + (sw.pertes > 0 ? "pertes de stock " : "surplus de stock −") + money2(Math.abs(sw.pertes)) + " (corrections de l'admin)" : "") + "</small></div>";
       h += '<div class="fg-card vert"><span>Bénéfice réalisé de la semaine</span><b class="vert-txt">' + money2(sw.benef) + "</b><small>somme des marges des ventes du " + fmtDate(lundiC) + " au " + fmtDate(t) + " (prix de vente − coût d'achat)</small></div>";
       // 3e ligne : total à reverser lundi (pleine largeur)
       h += '<div class="fg-card fg-total fg-plein"><span>Total des recettes à reverser lundi ' + fmtDate(lundiRev) + "</span><b>" + money2(sw.total) + "</b><small>coût d'achat vendu de la semaine " + money2(sw.cout) +
@@ -4404,7 +4412,7 @@
   function canVoirReversement() { return isAdmin() || canFrigoDotation() || canEntrees(); }
   // Crédit restant d'une boutique à la fin du jour d (dotations/courses jusqu'à d − coût d'achat vendu jusqu'à d)
   function fgRestantAu(bq, d) {
-    return sumBy(db.fgCourses.filter((c) => c.boutique === bq && c.date <= d), (c) => c.cout) - sumBy(db.fgSorties.filter((x) => x.boutique === bq && x.date <= d), (x) => x.consomme);
+    return sumBy(db.fgCourses.filter((c) => c.boutique === bq && c.date <= d), (c) => c.cout) - sumBy(db.fgSorties.filter((x) => x.boutique === bq && x.date <= d), (x) => x.consomme) + ajustValeurAu(bq, d);
   }
   // Montants effectivement reçus par BGTeam : reversements VALIDÉS (+ retraits admin du frigo) ; ⏳ = déclarés pas encore validés
   function fgRecu(bq, filtreRem, filtreDate) {
@@ -4423,6 +4431,8 @@
     const cout = r2(restantDebut + dotations - restantFin);
     // 2. Bénéfice généré = somme des marges réelles des produits vendus
     const benef = r2(sumBy(ls, (x) => x.montant - x.consomme));
+    // dont pertes de stock constatées par l'admin (corrections de la semaine) : comptées dans le coût d'achat à reverser
+    const pertes = r2(-(ajustValeurAu(bq, fin) - ajustValeurAu(bq, addDays(w, -1))));
     // 3. Total à reverser = coût d'achat vendu + bénéfice généré
     const total = r2(cout + benef);
     // 4. Solde = total − montants effectivement reçus pour cette semaine
@@ -4430,7 +4440,7 @@
     // Reliquat des semaines précédentes (non payé avant cette semaine)
     const avant = sumBy(db.fgSorties.filter((x) => x.boutique === bq && x.date < w), (x) => x.montant);
     const rcAvant = fgRecu(bq, (r) => r.semaine < w, (d) => d < w);
-    return { dotations: r2(dotations), restantDebut: r2(restantDebut), restantFin: r2(restantFin), cout, benef, total, ca: r2(sumBy(ls, (x) => x.montant)),
+    return { dotations: r2(dotations), pertes, restantDebut: r2(restantDebut), restantFin: r2(restantFin), cout, benef, total, ca: r2(sumBy(ls, (x) => x.montant)),
       recu: r2(rc.recu), attente: r2(rc.attente), solde: r2(total - rc.recu), reliquatAvant: r2(Math.max(0, avant - rcAvant.recu)) };
   }
   function renderReversement(scope) {
@@ -4590,8 +4600,8 @@
     if (!(inp.value !== "" && v >= 0)) { inp.value = actuel; return toast("Indiquez un stock valide (0 ou plus)."); }
     const ecart = r2_(v - actuel);
     if (!ecart) return;
-    if (!confirm("Corriger le stock frigo de « " + nom + " » à " + boutiqueName(bq) + " : " + num(actuel) + " → " + num(v) + " (" + (ecart > 0 ? "+" : "") + num(ecart) + ").\n\nLe nouveau stock s'applique partout (Caisse, valeur du stock, tableau de bord). Confirmer ?")) { inp.value = actuel; return; }
-    act(async () => chk(await sb.from("frigo_ajustements").insert({ boutique: bq, code, qte: ecart, date: today(), note: "Stock corrigé de " + actuel + " à " + v, saisi_par: me.nom || me.email || "" })),
+    if (!confirm("Corriger le stock frigo de « " + nom + " » à " + boutiqueName(bq) + " : " + num(actuel) + " → " + num(v) + " (" + (ecart > 0 ? "+" : "") + num(ecart) + ").\n\nValeur au coût d'achat : " + (ecart > 0 ? "+" : "−") + money2(Math.abs(ecart) * dernierAchatFrigo(code, bq)) + " (" + money2(dernierAchatFrigo(code, bq)) + " l'unité)." + (ecart < 0 ? " Une perte est comptée dans le coût d'achat à reverser de la semaine." : "") + "\n\nLe nouveau stock s'applique partout (Caisse, valeur du stock, tableau de bord, reversement). Confirmer ?")) { inp.value = actuel; return; }
+    act(async () => chk(await sb.from("frigo_ajustements").insert({ boutique: bq, code, qte: ecart, cout_unit: dernierAchatFrigo(code, bq), date: today(), note: "Stock corrigé de " + actuel + " à " + v, saisi_par: me.nom || me.email || "" })),
       "Stock frigo de " + nom + " corrigé : " + num(v) + ".", inp);
   });
   // Modifier le prix de vente d'un produit du frigo (admin) : c'est le prix du catalogue, utilisé aussi par la Caisse
