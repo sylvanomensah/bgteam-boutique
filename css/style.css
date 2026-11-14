@@ -1073,3 +1073,8 @@ tr.cliquable:hover td { background: #fff4e5 !important; }
 /* Ligne mise en évidence (ex. produit à valider ouvert depuis la notification) */
 tr.ligne-flash > td { animation: ligneflash 2.4s ease-out; }
 @keyframes ligneflash { 0%, 40% { background: #fff1c2; } 100% { background: transparent; } }
+
+/* Contrôle du crédit : indication « C'est ici » quand on arrive depuis la notification */
+#cs-ici { margin: 4px 0 12px; padding: 10px 14px; border-radius: 12px; background: #fff3cd; border: 2px dashed #f59e0b; color: #7a4b00; font-size: .95rem; }
+#cs-card.cs-pointe { animation: cspointe 1.2s ease-out 2; }
+@keyframes cspointe { 0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, .7); } 100% { box-shadow: 0 0 0 16px rgba(245, 158, 11, 0); } }

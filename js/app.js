@@ -417,6 +417,7 @@
   window.addEventListener("focus", () => checkUpdate());
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkUpdate(); });
   setInterval(() => checkUpdate(), 2 * 60 * 1000);
+  setInterval(() => { try { if (me) renderAppAlert(); } catch (e) {} }, 60 * 1000);
   setInterval(() => { if (document.visibilityState === "visible") softRefresh(); }, 120000);
   // « Actualiser » : charge d'abord la nouvelle version de l'application s'il y en a une, sinon recharge les données
   $("#btn-refresh").addEventListener("click", async () => {
@@ -1216,6 +1217,21 @@
   document.addEventListener("click", (e) => {
     const l = e.target.closest("[data-view-link]");
     if (l) show(l.dataset.viewLink);
+    // « Faire le contrôle » : ouvre Crédit télécom → Opérations et amène au cadre du contrôle, avec une indication
+    if (e.target.closest("[data-cs-go]")) {
+      crTab = "ops"; try { localStorage.setItem("onglet-credit", crTab); } catch (er) {}
+      show("credit");
+      setTimeout(() => {
+        const card = $("#cs-card"); if (!card) return;
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        let ind = $("#cs-ici");
+        if (!ind) { ind = document.createElement("div"); ind.id = "cs-ici"; card.insertBefore(ind, card.querySelector("#cs-form")); }
+        ind.innerHTML = "👇 <b>C'est ici</b> : notez le crédit restant lu sur la puce YAS et sur la puce MOOV, puis cliquez sur « Enregistrer le contrôle ».";
+        card.classList.remove("cs-pointe"); void card.offsetWidth; card.classList.add("cs-pointe");
+        const champ = $("#cs-yas"); if (champ && !champ.disabled) setTimeout(() => champ.focus({ preventScroll: true }), 600);
+      }, 80);
+      return;
+    }
     const go = e.target.closest("[data-fg-stock-go]");
     if (go) {
       // Ouvre Frigo → Stock frigo sur tous les produits, puis amène à la ligne du produit à valider
@@ -2977,10 +2993,12 @@
     }
     // 🌙 Clôture du soir du crédit : rappel à tous les CC de la boutique (dès 17 h, ou si celle d'hier manque)
     if (me && !isAdmin() && canCloture() && boutiquesCredit().some((b) => b.code === myBoutiqueCode())) {
-      const bqc = myBoutiqueCode(), manqueHier = hierManquant(bqc), manqueSoir = !venteFaite(bqc, today()) && new Date().getHours() >= 17;
+      const bqc = myBoutiqueCode(), manqueHier = hierManquant(bqc), manqueSoir = !venteFaite(bqc, today()) && new Date().getHours() >= 15;
+      // Notification dès 15 h ; bouton « Faire le contrôle » à partir de 20 h (ou tout de suite si le contrôle d'hier manque)
+      const boutonCs = manqueHier || new Date().getHours() >= 20;
       if (manqueHier || manqueSoir) h += '<div class="alert-line">🌙 <span><b>' + (manqueHier ? "Contrôle du crédit restant d'hier non fait" : "Contrôle du crédit restant de ce soir à faire") +
         "</b> — " + (manqueHier ? "les nouvelles recharges sont bloquées tant qu'il n'est pas déclaré." : "lisez le crédit restant YAS et MOOV sur les puces et notez-le.") + "</span>" +
-        '<button class="btn small" data-view-link="credit">Faire le contrôle</button></div>';
+        (boutonCs ? '<button class="btn small" data-cs-go>Faire le contrôle</button>' : "") + "</div>";
     }
     // 🧊 Seuil de réapprovisionnement atteint : alerte au gestionnaire du frigo (l'admin l'a dans le tableau de bord)
     if (me && !isAdmin() && canFrigoDotation()) {
@@ -3678,8 +3696,9 @@
     $("#cs-form").classList.toggle("hidden", !sbq || faitAuj);
     if (faitAuj) { $("#cs-yas").value = ""; $("#cs-moov").value = ""; }
     $("#cs-save").disabled = !sbq;
-    $("#cs-card").classList.toggle("a-faire", !!sbq && (oubli || !faitAuj && new Date().getHours() >= 17));
+    $("#cs-card").classList.toggle("a-faire", !!sbq && (oubli || !faitAuj && new Date().getHours() >= 15));
     $("#cs-card").classList.toggle("fait", faitAuj);
+    if (faitAuj) { const ici = $("#cs-ici"); if (ici) ici.remove(); }
     $("#cs-info").innerHTML = !sbq ? (isAdmin() ? "Choisissez une boutique dans le filtre pour enregistrer son contrôle." : "")
       : faitAuj ? "Contrôle fait : " + OPS.map((op) => logoOp(op, true) + " <b>" + money0(venteLe(sbq, op, t) || 0) + "</b>").join(" &nbsp; ") + ". Pour une correction, voyez l'administrateur."
       : oubli ? '<b class="neg">Le contrôle d\'hier n\'a pas été fait.</b> Faites-le d\'abord : sans cela, le contrôle d\'aujourd\'hui et les nouvelles recharges sont bloqués.'
