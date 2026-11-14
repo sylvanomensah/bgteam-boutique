@@ -875,6 +875,18 @@
     return " des mois " + liste.slice(0, -1).map(de).join(", ") + " et " + de(liste[liste.length - 1]);
   }
   // Message WhatsApp au CC : « Bonjour Monsieur / Madame NOM, merci de verser la commission … du mois de … : X FCFA. »
+  // « Monsieur NOM » / « Madame NOM » selon la fiche RH (sans civilité si le sexe n'est pas renseigné)
+  function civiliteNom(cc) {
+    const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)) || {};
+    return (f.sexe === "M" ? "Monsieur " : f.sexe === "F" ? "Madame " : "") + (currentAgent(ccByCode(cc)) || ccName(cc));
+  }
+  // Relance du contrôle du soir (crédit restant lu sur les puces non déclaré aujourd'hui)
+  function messageControle(cc, bq) {
+    const h = new Date().getHours() >= 17 ? "Bonsoir " : "Bonjour ";
+    return h + civiliteNom(cc) + ", le contrôle du crédit restant (YAS et MOOV) de " + boutiqueName(bq) + " n'est pas encore déclaré aujourd'hui (" + fmtDate(today()) + ")" +
+      (hierManquant(bq) ? ", ni celui d'hier" : "") + ". Merci de lire le crédit restant sur les puces et de le déclarer sur l'application BGTEAM.";
+  }
+  let relanceOuverte = false, relanceEnvoyees = new Set(), relanceJour = "";
   function messageCommission(cc, bq, reste) {
     const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)) || {};
     const civ = f.sexe === "M" ? "Monsieur " : f.sexe === "F" ? "Madame " : "";
@@ -936,6 +948,23 @@
           : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
+    // 📲 Relance WhatsApp : CC « Contrôle Crédit » dont la boutique n'a pas déclaré le contrôle d'aujourd'hui
+    if (relanceJour !== today()) { relanceJour = today(); relanceEnvoyees = new Set(); }
+    const nonFait = contacts.filter((x) => x.boutique && boutiquesCredit().some((b) => b.code === x.boutique) && !venteFaite(x.boutique, today()));
+    $("#dc-relance-btn").innerHTML = '<button class="btn small ' + (nonFait.length ? "primary" : "") + '" id="dc-relance-ouvrir"' + (nonFait.length ? "" : " disabled") + ">📲 Relancer le contrôle du soir" + (nonFait.length ? " (" + nonFait.length + ")" : " : tout est fait ✓") + "</button>";
+    const zone = $("#dc-relance");
+    zone.classList.toggle("hidden", !relanceOuverte || !nonFait.length);
+    if (relanceOuverte && nonFait.length) {
+      const restants = nonFait.filter((x) => !relanceEnvoyees.has(x.cc));
+      zone.innerHTML = '<div class="dc-relance-tete"><p><b>' + nonFait.length + " CC</b> n'ont pas encore déclaré le crédit restant lu sur la puce aujourd'hui. Appuyez sur le bouton vert de chaque CC : WhatsApp s'ouvre avec le message déjà écrit, il suffit d'appuyer sur Envoyer.</p>" +
+        (restants.length ? '<button class="btn small success" id="dc-relance-suivant">💬 Ouvrir le suivant (' + restants.length + " restant" + (restants.length > 1 ? "s" : "") + ")</button>" : '<span class="badge ok">✓ Tous relancés</span>') + "</div>" +
+        nonFait.map((x) => {
+          const tel = String(x.tel || "").trim(), env = relanceEnvoyees.has(x.cc);
+          return '<div class="dc-relance-ligne' + (env ? " envoye" : "") + '"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · " + (hierManquant(x.boutique) ? "⚠ hier aussi manquant" : "contrôle : pas encore") + "</small></div>" +
+            (tel ? '<a class="btn small btn-wa" target="_blank" rel="noopener" data-relance-cc="' + esc(x.cc) + '" href="' + esc(lienWhatsApp(tel, messageControle(x.cc, x.boutique))) + '" title="Relancer sur WhatsApp">' + ICONE_WA + "</a>"
+              : '<span class="muted">pas de numéro (fiche RH)</span>') + (env ? '<span class="badge ok">✓ envoyé</span>' : "") + "</div>";
+        }).join("");
+    }
     $("#dc-rows").innerHTML = infos.length ? infos.map(({ b, c, m }) => {
       const etat = c.aDeclarer <= 0 && c.attente <= 0 ? '<span class="badge ok">✓ À jour</span>' : c.aDeclarer <= 0 ? '<span class="badge warn">⏳ À confirmer</span>'
         : comARelancer(b.code) > 0 ? '<span class="badge danger">🔔 Relancé</span>' : '<span class="badge">À verser</span>';
@@ -950,6 +979,16 @@
       : '<tr><td colspan="6" class="empty">Aucun versement déclaré.</td></tr>';
   }
   $("#dc-boutique").addEventListener("change", () => renderDashCom());
+  // Relance WhatsApp : ouvrir / fermer la liste, marquer « envoyé », ouvrir le CC suivant
+  $("#dash-com").addEventListener("click", (e) => {
+    if (e.target.closest("#dc-relance-ouvrir")) { relanceOuverte = !relanceOuverte; return renderDashCom(); }
+    const wa = e.target.closest("[data-relance-cc]");
+    if (wa) { relanceEnvoyees.add(wa.dataset.relanceCc); setTimeout(renderDashCom, 300); return; }
+    if (e.target.closest("#dc-relance-suivant")) {
+      const lien = [...document.querySelectorAll("#dc-relance [data-relance-cc]")].find((a) => !relanceEnvoyees.has(a.dataset.relanceCc));
+      if (lien) { relanceEnvoyees.add(lien.dataset.relanceCc); window.open(lien.href, "_blank", "noopener"); renderDashCom(); }
+    }
+  });
   $("#dash-com").addEventListener("click", (e) => {
     if (e.target.closest("#dc-demander")) {
       if (!jourDemande()) return toast("La demande de versement se fait uniquement le 1er et le 2 de chaque mois.");
