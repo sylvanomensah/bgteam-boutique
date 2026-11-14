@@ -782,13 +782,13 @@
       <!-- Stock frigo (format du menu Stock) -->
       <div id="fg-stock" class="hidden">
         <div class="card filterbar">
-          <p class="hint" style="margin:0">STOCK FRIGO = Quantités achetées dans les courses du frigo − Ventes en caisse de ces produits dans la boutique. Ces ventes ne sont plus déduites du stock principal.</p>
+          <p class="hint" style="margin:0">STOCK FRIGO = Quantités achetées dans les courses du frigo − Ventes en caisse de ces produits dans la boutique. Toutes les boutiques utilisent ce stock : la Caisse ne vend que ce qui est dans le frigo de la boutique.</p>
         </div>
         <div class="kpis" id="fs-kpis"></div>
         <div class="card">
           <div class="toolbar">
             <h2 id="fs-title">Stock frigo</h2>
-            <button class="btn small admin-only hidden" id="fs-transfert" title="Mettre dans le frigo le stock restant de l'ancien stock principal de la boutique">⇄ Transférer le stock principal</button>
+            <button class="btn small danger admin-only hidden" id="fs-raz" title="Mettre le stock et le stock restant au coût d'achat de ce frigo à zéro (pas une perte pour la boutique), pour repartir d'une nouvelle course">⟲ Remettre le frigo à zéro</button>
             <input id="fs-search" placeholder="Rechercher un produit">
           </div>
           <div id="fs-transfert-info"></div>

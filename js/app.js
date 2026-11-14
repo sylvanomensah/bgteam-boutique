@@ -524,7 +524,11 @@
   }
   // Stock transféré du stock principal vers le frigo de la boutique (course de transfert)
   function totalTransfert(code, bq) { return (db.fgLignes || []).filter((l) => l.transfert && l.code === code && inBq(bq, l.boutique)).reduce((a, l) => a + l.qte, 0); }
-  function stockActuel(p, bq) { return stockInitialOf(p, bq) + totalEntrees(p.code, bq) - totalVentes(p.code, bq) - totalTransfert(p.code, bq); }
+  // L'ancien stock principal est retiré (14/11/2026) : toutes les boutiques utilisent le STOCK FRIGO
+  function stockActuel(p, bq) {
+    if (bq && bq !== "ALL") return stockFrigoOf(p.code, bq);
+    return db.boutiques.reduce((a, b) => a + stockFrigoOf(p.code, b.code), 0);
+  }
   function statutStock(p, bq) {
     const s = stockActuel(p, bq);
     if (s <= 0) return "RUPTURE";
@@ -820,8 +824,9 @@
   }
   // Produits "suivis" dans une boutique : stock initial ou au moins un mouvement
   function handledIn(p, bq) {
-    if (bq === "ALL") return true;
-    return stockInitialOf(p, bq) > 0 || db.entries.some((e) => e.code === p.code && e.boutique === bq) || db.sales.some((s) => s.code === p.code && saleBoutique(s) === bq);
+    // produits du frigo de la boutique (au moins une course ou correction)
+    if (!bq || bq === "ALL") return db.boutiques.some((b) => estFrigo(p.code, b.code));
+    return estFrigo(p.code, bq);
   }
   function stockStats(bq) {
     const prods = db.products.filter((p) => handledIn(p, bq));
@@ -4087,7 +4092,7 @@
         "<small>Valeur potentielle de vente de tous les articles actuellement disponibles · bénéfice attendu = estimation − stock restant au coût d'achat (" + money2(Math.max(0, f.restant)) + ")</small></div>";
       // 2e ligne : coût d'achat vendu | bénéfice réalisé (semaine en cours)
       h += '<div class="fg-card"><span>Coût d\'achat vendu de la semaine</span><b>' + money2(sw.cout) + "</b><small>stock au début " + money2(Math.max(0, sw.restantDebut)) + " + achats de la semaine " + money2(sw.dotations) +
-        " − stock restant " + money2(Math.max(0, sw.restantFin)) + (Math.abs(sw.pertes) > 0.005 ? " · dont " + (sw.pertes > 0 ? "pertes de stock " : "surplus de stock −") + money2(Math.abs(sw.pertes)) + " (corrections de l'admin)" : "") + "</small></div>";
+        " − stock restant " + money2(Math.max(0, sw.restantFin)) + (sw.raz > 0.005 ? " · dont remise à zéro du frigo " + money2(sw.raz) + " (non comptée comme vendue)" : "") + (Math.abs(sw.pertes) > 0.005 ? " · dont " + (sw.pertes > 0 ? "pertes de stock " : "surplus de stock −") + money2(Math.abs(sw.pertes)) + " (corrections de l'admin)" : "") + "</small></div>";
       h += '<div class="fg-card vert"><span>Bénéfice réalisé de la semaine</span><b class="vert-txt">' + money2(sw.benef) + "</b><small>somme des marges des ventes du " + fmtDate(lundiC) + " au " + fmtDate(t) + " (prix de vente − coût d'achat)</small></div>";
       // 3e ligne : total à reverser lundi (pleine largeur)
       h += '<div class="fg-card fg-total fg-plein"><span>Total des recettes à reverser lundi ' + fmtDate(lundiRev) + "</span><b>" + money2(sw.total) + "</b><small>coût d'achat vendu de la semaine " + money2(sw.cout) +
@@ -4461,11 +4466,12 @@
     const restantDebut = fgRestantAu(bq, addDays(w, -1)), restantFin = fgRestantAu(bq, finCalc);
     const ls = db.fgSorties.filter((x) => x.boutique === bq && x.date >= w && x.date <= fin);
     // 1. Coût d'achat vendu = dotations − crédit restant (sur la semaine : restant début + dotations de la semaine − restant fin)
-    const cout = r2(restantDebut + dotations - restantFin);
+    const razV = r2(sumBy((db.fgAjust || []).filter((a) => a.boutique === bq && estRaz(a) && a.date >= w && a.date <= fin), (a) => a.qte * (a.coutUnit || 0)));
+    const cout = r2(restantDebut + dotations - restantFin + razV); // + razV : la valeur remise à zéro ne compte pas comme vendue
     // 2. Bénéfice généré = somme des marges réelles des produits vendus
     const benef = r2(sumBy(ls, (x) => x.montant - x.consomme));
     // dont pertes de stock constatées par l'admin (corrections de la semaine) : comptées dans le coût d'achat à reverser
-    const pertes = r2(-(ajustValeurAu(bq, fin) - ajustValeurAu(bq, addDays(w, -1))));
+    const pertes = r2(-(ajustValeurAu(bq, fin) - ajustValeurAu(bq, addDays(w, -1)) - razV));
     // 3. Total à reverser = coût d'achat vendu + bénéfice généré
     const total = r2(cout + benef);
     // 4. Solde = total − montants effectivement reçus pour cette semaine
@@ -4473,7 +4479,7 @@
     // Reliquat des semaines précédentes (non payé avant cette semaine)
     const avant = sumBy(db.fgSorties.filter((x) => x.boutique === bq && x.date < w), (x) => x.montant);
     const rcAvant = fgRecu(bq, (r) => r.semaine < w, (d) => d < w);
-    return { dotations: r2(dotations), pertes, restantDebut: r2(restantDebut), restantFin: r2(restantFin), cout, benef, total, ca: r2(sumBy(ls, (x) => x.montant)),
+    return { dotations: r2(dotations), pertes, raz: -razV, restantDebut: r2(restantDebut), restantFin: r2(restantFin), cout, benef, total, ca: r2(sumBy(ls, (x) => x.montant)),
       recu: r2(rc.recu), attente: r2(rc.attente), solde: r2(total - rc.recu), reliquatAvant: r2(Math.max(0, avant - rcAvant.recu)) };
   }
   function renderReversement(scope) {
@@ -4549,15 +4555,32 @@
   const stockPrincipalRestant = (bq) => db.products.map((p) => ({ p, q: r2_(stockActuel(p, bq)) })).filter((x) => x.q > 0);
   function renderTransfertInfo(scope) {
     const admin = isAdmin(), une = scope.length === 1, bq = une ? scope[0].code : "";
-    const reste = admin && une ? stockPrincipalRestant(bq) : [];
-    $("#fs-transfert").classList.toggle("hidden", !reste.length);
-    if (reste.length) $("#fs-transfert").textContent = "⇄ Transférer le stock principal (" + reste.length + " produit" + (reste.length > 1 ? "s" : "") + ")";
+    $("#fs-raz").classList.toggle("hidden", !(admin && une && db.fgCourses.some((c) => c.boutique === bq)));
     const tp = une ? transfertProvisoire(bq) : null;
     $("#fs-transfert-info").innerHTML = tp ? '<div class="alert-line" style="margin:0 0 12px">⚠ <span><b>Stock provisoire</b> — transfert de l’ancien stock principal du ' + fmtDate(tp.date) +
       " à confirmer avec la boutique. " + (admin ? "Corrigez le Stock actuel des produits après le comptage (ces corrections modifient le transfert, sans perte pour la boutique), puis confirmez." : "Les quantités seront confirmées par l’administrateur.") + "</span>" +
       (admin ? '<button class="btn small success" data-fs-tr-ok="' + tp.id + '">✓ Confirmer le transfert</button>' : "") + "</div>" : "";
   }
-  $("#fs-transfert").addEventListener("click", (e) => {
+  // Remise à zéro du frigo d'une boutique (admin) : stock de chaque produit à 0 et stock restant au coût d'achat à 0,
+  // SANS compter de perte pour la boutique (on repart d'une nouvelle course)
+  const estRaz = (a) => /^RAZ/.test(a.note || "");
+  $("#fs-raz").addEventListener("click", (e) => {
+    const scope = frigoScope(); if (!isAdmin() || scope.length !== 1) return toast("Choisissez une boutique.");
+    const bq = scope[0].code, nomBq = boutiqueName(bq);
+    const codesFg = [...new Set([...(db.fgLignes || []).filter((l) => l.boutique === bq && l.code).map((l) => l.code), ...(db.fgAjust || []).filter((a) => a.boutique === bq && a.code && a.code !== "_RAZ").map((a) => a.code)])];
+    const rows = codesFg.map((code) => ({ code, q: r2_(stockFrigoOf(code, bq)) })).filter((x) => x.q !== 0)
+      .map((x) => ({ boutique: bq, code: x.code, qte: -x.q, cout_unit: dernierAchatFrigo(x.code, bq) }));
+    const restant = r2_(frigoInfo(bq, today().slice(0, 7)).restant);
+    let val = r2_(rows.reduce((a, r) => a + r.qte * r.cout_unit, 0));
+    const diff = r2_(-restant - val); // écart d'arrondi / frais : ligne d'argent seule pour arriver à 0 exactement
+    if (Math.abs(diff) > 0.004) rows.push({ boutique: bq, code: "_RAZ", qte: 1, cout_unit: diff });
+    if (!rows.length) return toast("Le frigo de " + nomBq + " est déjà à zéro.");
+    if (!confirm("Remettre le frigo de " + nomBq + " à ZÉRO ?\n\n• Stock de chaque produit → 0 (" + rows.filter((r) => r.code !== "_RAZ").length + " produit(s))\n• Stock restant au coût d'achat → 0 (au lieu de " + money2(restant) + ")\n\nCe n'est PAS une perte pour la boutique (rien à reverser en plus). L'historique des ventes et des versements est gardé. Vous repartez ensuite d'une nouvelle course.")) return;
+    const nom = me.nom || me.email || "";
+    act(async () => chk(await sb.from("frigo_ajustements").insert(rows.map((r) => Object.assign(r, { date: today(), note: "RAZ — Remise à zéro du frigo", saisi_par: nom })))),
+      "Frigo de " + nomBq + " remis à zéro : faites maintenant la nouvelle course.", e.target);
+  });
+  $("#fs-transfert") && $("#fs-transfert").addEventListener("click", (e) => {
     const scope = frigoScope(); if (!isAdmin() || scope.length !== 1) return toast("Choisissez une boutique.");
     const bq = scope[0].code, reste = stockPrincipalRestant(bq);
     if (!reste.length) return toast("Plus rien dans le stock principal de " + boutiqueName(bq) + ".");
