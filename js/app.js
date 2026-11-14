@@ -886,13 +886,14 @@
     return h + civiliteNom(cc) + ", le contrôle du crédit restant (YAS et MOOV) de " + boutiqueName(bq) + " n'est pas encore déclaré aujourd'hui (" + fmtDate(today()) + ")" +
       (hierManquant(bq) ? ", ni celui d'hier" : "") + ". Merci de lire le crédit restant sur les puces et de le déclarer sur l'application BGTEAM.";
   }
-  let relanceOuverte = false, relanceEnvoyees = new Set(), relanceJour = "";
-  function messageCommission(cc, bq, reste) {
+  // Relances WhatsApp : « controle » (contrôle du soir) ou « commission » (commission des mois passés, le 1er et le 2)
+  let relanceMode = null, relanceEnvoyees = { controle: new Set(), commission: new Set() }, relanceJour = "";
+  function messageCommission(cc, bq, reste, moisPassesSeulement) {
     const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)) || {};
     const civ = f.sexe === "M" ? "Monsieur " : f.sexe === "F" ? "Madame " : "";
     const nom = currentAgent(ccByCode(cc)) || ccName(cc);
     if (!(reste > 0)) return "Bonjour " + civ + nom + ",";
-    return "Bonjour " + civ + nom + ", merci de verser la commission du crédit télécom de " + boutiqueName(bq) + libelleMois(moisCommissionDus(bq)) + " : " + money0(reste) + ". Sur l'application BGTEAM";
+    return "Bonjour " + civ + nom + ", merci de verser la commission du crédit télécom de " + boutiqueName(bq) + libelleMois(moisCommissionDus(bq).filter((m) => !moisPassesSeulement || m < today().slice(0, 7))) + " : " + money0(reste) + ". Sur l'application BGTEAM";
   }
   // Petit logo WhatsApp (SVG) pour le bouton rond
   const ICONE_WA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm5.8 14.1c-.24.68-1.42 1.3-1.95 1.34-.5.05-.97.23-3.27-.68-2.77-1.09-4.52-3.92-4.66-4.1-.13-.18-1.11-1.48-1.11-2.82 0-1.34.7-2 .95-2.27.25-.27.54-.34.72-.34h.52c.17 0 .39-.06.6.46.23.54.77 1.88.84 2.02.07.13.11.29.02.47-.09.18-.13.29-.27.45-.13.16-.28.35-.4.47-.13.13-.27.28-.12.55.16.27.7 1.15 1.5 1.86 1.03.92 1.9 1.2 2.17 1.34.27.13.43.11.59-.07.16-.18.68-.79.86-1.06.18-.27.36-.23.61-.14.25.09 1.58.75 1.85.88.27.14.45.2.52.32.07.11.07.66-.17 1.33Z"/></svg>';
@@ -948,20 +949,38 @@
           : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
-    // 📲 Relance WhatsApp : CC « Contrôle Crédit » dont la boutique n'a pas déclaré le contrôle d'aujourd'hui
-    if (relanceJour !== today()) { relanceJour = today(); relanceEnvoyees = new Set(); }
-    const nonFait = contacts.filter((x) => x.boutique && boutiquesCredit().some((b) => b.code === x.boutique) && !venteFaite(x.boutique, today()));
-    $("#dc-relance-btn").innerHTML = '<button class="btn small ' + (nonFait.length ? "primary" : "") + '" id="dc-relance-ouvrir"' + (nonFait.length ? "" : " disabled") + ">📲 Relancer le contrôle du soir" + (nonFait.length ? " (" + nonFait.length + ")" : " : tout est fait ✓") + "</button>";
+    // 📲 Relances WhatsApp des CC « Contrôle Crédit »
+    if (relanceJour !== today()) { relanceJour = today(); relanceEnvoyees = { controle: new Set(), commission: new Set() }; }
+    const enCredit = (x) => x.boutique && boutiquesCredit().some((b) => b.code === x.boutique);
+    const listes = {
+      // contrôle du crédit restant (lu sur la puce) pas encore déclaré aujourd'hui
+      controle: contacts.filter((x) => enCredit(x) && !venteFaite(x.boutique, today())),
+      // commission des mois passés pas encore versée (relance du 1er et du 2 du mois)
+      commission: contacts.filter((x) => enCredit(x) && commissionInfo(x.boutique).duAncien > 0),
+    };
+    const ouvertCom = jourDemande();
+    $("#dc-relance-btn").innerHTML =
+      '<button class="btn small ' + (listes.controle.length ? "primary" : "") + '" data-relance-ouvrir="controle"' + (listes.controle.length ? "" : " disabled") + ">📲 Relancer le contrôle du soir" + (listes.controle.length ? " (" + listes.controle.length + ")" : " : tout est fait ✓") + "</button> " +
+      '<button class="btn small ' + (ouvertCom && listes.commission.length ? "primary" : "") + '" data-relance-ouvrir="commission"' + (ouvertCom && listes.commission.length ? "" : " disabled") +
+        (ouvertCom ? "" : ' title="La relance de la commission se fait le 1er et le 2 de chaque mois"') + ">💸 Relancer la commission du mois passé" +
+        (!ouvertCom ? " (le 1er et le 2)" : listes.commission.length ? " (" + listes.commission.length + ")" : " : tout est versé ✓") + "</button>";
+    if (relanceMode === "commission" && !ouvertCom) relanceMode = null;
+    const liste = relanceMode ? listes[relanceMode] : [], envoyees = relanceMode ? relanceEnvoyees[relanceMode] : new Set();
     const zone = $("#dc-relance");
-    zone.classList.toggle("hidden", !relanceOuverte || !nonFait.length);
-    if (relanceOuverte && nonFait.length) {
-      const restants = nonFait.filter((x) => !relanceEnvoyees.has(x.cc));
-      zone.innerHTML = '<div class="dc-relance-tete"><p><b>' + nonFait.length + " CC</b> n'ont pas encore déclaré le crédit restant lu sur la puce aujourd'hui. Appuyez sur le bouton vert de chaque CC : WhatsApp s'ouvre avec le message déjà écrit, il suffit d'appuyer sur Envoyer.</p>" +
+    zone.classList.toggle("hidden", !relanceMode || !liste.length);
+    if (relanceMode && liste.length) {
+      const restants = liste.filter((x) => !envoyees.has(x.cc));
+      const intro = relanceMode === "controle"
+        ? "<b>" + liste.length + " CC</b> n'ont pas encore déclaré le crédit restant lu sur la puce aujourd'hui."
+        : "<b>" + liste.length + " CC</b> n'ont pas encore versé la commission des mois passés.";
+      zone.innerHTML = '<div class="dc-relance-tete"><p>' + intro + " Appuyez sur le bouton vert de chaque CC : WhatsApp s'ouvre avec le message déjà écrit, il suffit d'appuyer sur Envoyer.</p>" +
         (restants.length ? '<button class="btn small success" id="dc-relance-suivant">💬 Ouvrir le suivant (' + restants.length + " restant" + (restants.length > 1 ? "s" : "") + ")</button>" : '<span class="badge ok">✓ Tous relancés</span>') + "</div>" +
-        nonFait.map((x) => {
-          const tel = String(x.tel || "").trim(), env = relanceEnvoyees.has(x.cc);
-          return '<div class="dc-relance-ligne' + (env ? " envoye" : "") + '"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · " + (hierManquant(x.boutique) ? "⚠ hier aussi manquant" : "contrôle : pas encore") + "</small></div>" +
-            (tel ? '<a class="btn small btn-wa" target="_blank" rel="noopener" data-relance-cc="' + esc(x.cc) + '" href="' + esc(lienWhatsApp(tel, messageControle(x.cc, x.boutique))) + '" title="Relancer sur WhatsApp">' + ICONE_WA + "</a>"
+        liste.map((x) => {
+          const tel = String(x.tel || "").trim(), env = envoyees.has(x.cc);
+          const detail = relanceMode === "controle" ? (hierManquant(x.boutique) ? "⚠ hier aussi manquant" : "contrôle : pas encore") : "commission due : " + money0(commissionInfo(x.boutique).duAncien);
+          const msg = relanceMode === "controle" ? messageControle(x.cc, x.boutique) : messageCommission(x.cc, x.boutique, commissionInfo(x.boutique).duAncien, true);
+          return '<div class="dc-relance-ligne' + (env ? " envoye" : "") + '"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · " + detail + "</small></div>" +
+            (tel ? '<a class="btn small btn-wa" target="_blank" rel="noopener" data-relance-cc="' + esc(x.cc) + '" href="' + esc(lienWhatsApp(tel, msg)) + '" title="Relancer sur WhatsApp">' + ICONE_WA + "</a>"
               : '<span class="muted">pas de numéro (fiche RH)</span>') + (env ? '<span class="badge ok">✓ envoyé</span>' : "") + "</div>";
         }).join("");
     }
@@ -981,12 +1000,13 @@
   $("#dc-boutique").addEventListener("change", () => renderDashCom());
   // Relance WhatsApp : ouvrir / fermer la liste, marquer « envoyé », ouvrir le CC suivant
   $("#dash-com").addEventListener("click", (e) => {
-    if (e.target.closest("#dc-relance-ouvrir")) { relanceOuverte = !relanceOuverte; return renderDashCom(); }
+    const ouv = e.target.closest("[data-relance-ouvrir]");
+    if (ouv) { relanceMode = relanceMode === ouv.dataset.relanceOuvrir ? null : ouv.dataset.relanceOuvrir; return renderDashCom(); }
     const wa = e.target.closest("[data-relance-cc]");
-    if (wa) { relanceEnvoyees.add(wa.dataset.relanceCc); setTimeout(renderDashCom, 300); return; }
-    if (e.target.closest("#dc-relance-suivant")) {
-      const lien = [...document.querySelectorAll("#dc-relance [data-relance-cc]")].find((a) => !relanceEnvoyees.has(a.dataset.relanceCc));
-      if (lien) { relanceEnvoyees.add(lien.dataset.relanceCc); window.open(lien.href, "_blank", "noopener"); renderDashCom(); }
+    if (wa && relanceMode) { relanceEnvoyees[relanceMode].add(wa.dataset.relanceCc); setTimeout(renderDashCom, 300); return; }
+    if (e.target.closest("#dc-relance-suivant") && relanceMode) {
+      const lien = [...document.querySelectorAll("#dc-relance [data-relance-cc]")].find((a) => !relanceEnvoyees[relanceMode].has(a.dataset.relanceCc));
+      if (lien) { relanceEnvoyees[relanceMode].add(lien.dataset.relanceCc); window.open(lien.href, "_blank", "noopener"); renderDashCom(); }
     }
   });
   $("#dash-com").addEventListener("click", (e) => {
