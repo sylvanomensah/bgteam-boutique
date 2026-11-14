@@ -1069,3 +1069,7 @@ tr.cliquable:hover td { background: #fff4e5 !important; }
 .dc-relance-ligne > div { flex: 1; display: flex; flex-direction: column; }
 .dc-relance-ligne small { color: var(--muted); font-size: .78rem; }
 .dc-relance-ligne.envoye { opacity: .6; }
+
+/* Ligne mise en évidence (ex. produit à valider ouvert depuis la notification) */
+tr.ligne-flash > td { animation: ligneflash 2.4s ease-out; }
+@keyframes ligneflash { 0%, 40% { background: #fff1c2; } 100% { background: transparent; } }

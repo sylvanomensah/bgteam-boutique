@@ -1208,7 +1208,19 @@
   document.addEventListener("click", (e) => {
     const l = e.target.closest("[data-view-link]");
     if (l) show(l.dataset.viewLink);
-    if (e.target.closest("[data-fg-stock-go]")) { fgTab = "stock"; try { localStorage.setItem("onglet-frigo", fgTab); } catch (er) {} show("frigo"); window.scrollTo({ top: 0 }); }
+    const go = e.target.closest("[data-fg-stock-go]");
+    if (go) {
+      // Ouvre Frigo → Stock frigo sur tous les produits, puis amène à la ligne du produit à valider
+      fgTab = "stock"; fsVue = "tous"; $("#fs-search").value = "";
+      try { localStorage.setItem("onglet-frigo", fgTab); } catch (er) {}
+      show("frigo");
+      const btn = document.querySelector('#fs-rows [data-fs-valid="' + CSS.escape(go.dataset.fgStockGo) + '"]') || document.querySelector("#fs-rows [data-fs-valid]");
+      const tr = btn && btn.closest("tr");
+      if (tr) setTimeout(() => {
+        tr.scrollIntoView({ behavior: "smooth", block: "center" });
+        tr.classList.remove("ligne-flash"); void tr.offsetWidth; tr.classList.add("ligne-flash");
+      }, 80);
+    }
   });
   // Charges
   $("#ch-new").addEventListener("click", () => {
@@ -2968,7 +2980,7 @@
       const av = db.products.filter((p) => !p.valide);
       if (av.length) h += '<div class="alert-line">📝 <span><b>' + av.length + " produit" + (av.length > 1 ? "s" : "") + " à valider</b> — " +
         av.slice(0, 8).map((p) => esc(p.nom) + (p.creePar ? " (créé par " + esc(p.creePar) + ")" : "")).join(", ") + (av.length > 8 ? "…" : "") +
-        ". Vérifiez le nom et le prix, puis cliquez sur ✓ Valider.</span>" + '<button class="btn small success" data-fg-stock-go>Voir et valider</button></div>';
+        ". Vérifiez le nom et le prix, puis cliquez sur ✓ Valider.</span>" + '<button class="btn small success" data-fg-stock-go="' + esc(av[0].code) + '">Voir et valider</button></div>';
     }
     if (r.total) {
       h += '<div class="alert-line">⚠ <span><b>Fonds à remonter : ' + money0(r.total) + "</b> — " +
