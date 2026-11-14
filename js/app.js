@@ -2645,6 +2645,15 @@
   // Frigo : depuis le 12/11/2026, la remontée du lundi = ventes de la semaine (prix d'achat + bénéfice).
   // Avant, elle ne contenait que le bénéfice.
   const REM_TOTAL_DEPUIS = "2026-11-12T17:00";
+  // Reste à remonter d'une semaine (ventes déclarées − déjà remonté)
+  function resteRemSemaine(bq, w) { return Math.round((ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w))) * 100) / 100; }
+  // Semaine proposée : la plus ancienne qui doit encore de l'argent, sinon la semaine en cours
+  let rmSemBq = null;
+  function semaineARemonter(bq, weeks) {
+    if (!bq) return weeks[0];
+    for (let i = weeks.length - 1; i >= 0; i--) if (resteRemSemaine(bq, weeks[i]) > 0.5) return weeks[i];
+    return weeks[0];
+  }
   function fgSemaine(bq, w) {
     const ls = db.fgSorties.filter((x) => x.boutique === bq && x.date >= w && x.date <= weekEnd(w));
     const achat = Math.round(sumBy(ls, (x) => x.consomme) * 100) / 100, ca = Math.round(sumBy(ls, (x) => x.montant) * 100) / 100;
@@ -2702,7 +2711,8 @@
     const lundi = mondayOf(t), weeks = [];
     for (let i = 0; i < 9; i++) weeks.push(addDays(lundi, -7 * i));
     $("#rm-semaine").innerHTML = weeks.map((w, i) => '<option value="' + w + '">' + (i === 0 ? "Semaine en cours — " : "") + "du " + fmtDate(w) + " au " + fmtDate(weekEnd(w)) + "</option>").join("");
-    $("#rm-semaine").value = weeks.includes(scur) ? scur : weeks[1];
+    $("#rm-semaine").value = weeks.includes(scur) && rmSemBq === remBq ? scur : semaineARemonter(remBq, weeks);
+    rmSemBq = remBq;
     if (canEntrees()) {
       const w = $("#rm-semaine").value;
       if (!remBq) {
@@ -2758,6 +2768,7 @@
           ? '<span class="badge ok">✓ Vérifiée et validée</span><span class="sub">par ' + esc(r.recuPar) + (r.recuLe ? " le " + new Date(r.recuLe).toLocaleDateString("fr-FR") : "") + "</span>"
           : '<span class="badge warn">⏳ En attente de vérification</span>') + "</td><td>" +
         (canValiderRem(r.boutique) ? '<button class="btn small' + (r.statut === "Reçue" ? "" : " success") + '" data-rm-recu="' + r.id + '" data-v="' + (r.statut === "Reçue" ? "0" : "1") + '">' + (r.statut === "Reçue" ? "Annuler la validation" : "✓ Argent reçu : valider") + "</button> " : "") +
+        (admin ? '<button class="btn small" data-rm-sem="' + r.id + '" title="Changer la semaine de cette remontée">📅 Semaine</button> ' : "") +
         (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="empty">Aucune remontée sur ce mois.</td></tr>';
 
@@ -3172,8 +3183,16 @@
     }
     const w = $("#rm-semaine").value;
     // Contrôle : ventes de la semaine (pour le frigo : montant de l'achat + bénéfice) − déjà remonté
-    const du = Math.round((ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w))) * 100) / 100;
+    const du = resteRemSemaine(bq, w);
     const manque = Math.round((du - montant) * 100) / 100;
+    // Rien (ou moins que le montant) à remonter pour cette semaine : mauvaise semaine choisie ?
+    if (montant - Math.max(0, du) > 0.5) {
+      const lundiC = mondayOf(today()), autres = [];
+      for (let i = 0; i < 9; i++) { const x = addDays(lundiC, -7 * i); if (x !== w && resteRemSemaine(bq, x) > 0.5) autres.push(x); }
+      const conseil = autres.length ? "\n\nSemaine(s) qui doivent encore de l'argent : " + autres.map((x) => "du " + fmtDate(x) + " (" + money2(resteRemSemaine(bq, x)) + ")").join(", ") + "." : "";
+      if (du <= 0.5 && !admin) return alert("⛔ Rien à remonter pour la semaine du " + fmtDate(w) + " au " + fmtDate(weekEnd(w)) + ".\nVentes de cette semaine : " + money2(ventesDeclarees(bq, w, weekEnd(w))) + " · déjà remonté : " + money2(sumMontant(remonteesOf(bq, w))) + "." + conseil + "\n\nChoisissez la bonne semaine dans la liste « Semaine ».");
+      if (!confirm("⚠ Montant supérieur à ce qui reste à remonter pour la semaine du " + fmtDate(w) + "\n\nReste à remonter : " + money2(Math.max(0, du)) + "\nMontant saisi : " + money2(montant) + "\nExcédent : " + money2(montant - Math.max(0, du)) + conseil + "\n\nEst-ce bien la bonne semaine ? Confirmer quand même ?")) return;
+    }
     if (manque > 0 && !confirm("⚠ Montant inférieur aux ventes déclarées\n\nVentes de la semaine du " + fmtDate(w) + " (reste dû) : " + money2(du) +
       "\nMontant que vous remontez : " + money2(montant) + "\nReste à remonter : " + money2(manque) + "\n\nLe reste devra être remonté. Confirmer quand même ?")) return;
     const row = { boutique: bq, cc: admin ? null : me.cc, semaine: w, montant, mode: $("#rm-mode").value, note: "", saisi_par: me.nom || me.email || "" };
@@ -3198,6 +3217,20 @@
   $("#fd-rem").addEventListener("click", (e) => {
     const ph = e.target.closest("[data-rm-photo]");
     if (ph) return signedPhotoUrl(ph.dataset.rmPhoto).then((u) => showPhoto(u, "Reçu du dépôt"), () => toast("Photo indisponible."));
+    // Admin : rattacher la remontée à une autre semaine (ex. le CC a choisi la mauvaise semaine)
+    const sm = e.target.closest("[data-rm-sem]");
+    if (sm && isAdmin()) {
+      const rm = db.remontees.find((x) => x.id === sm.dataset.rmSem); if (!rm) return;
+      const lundiC = mondayOf(today()), ws = [];
+      for (let i = 0; i < 9; i++) ws.push(addDays(lundiC, -7 * i));
+      const txt = prompt("Remontée de " + money2(rm.montant) + " (" + boutiqueName(rm.boutique) + "), actuellement rattachée à la semaine du " + fmtDate(rm.semaine) + ".\n\nTapez le numéro de la bonne semaine :\n" +
+        ws.map((x, i) => (i + 1) + ". du " + fmtDate(x) + " au " + fmtDate(weekEnd(x)) + " — ventes " + money2(ventesDeclarees(rm.boutique, x, weekEnd(x))) + ", reste à remonter " + money2(Math.max(0, resteRemSemaine(rm.boutique, x)))).join("\n"), "1");
+      if (txt === null) return;
+      const nw = ws[Number(txt) - 1];
+      if (!nw) return toast("Numéro de semaine invalide.");
+      if (nw === rm.semaine) return;
+      return act(async () => chk(await sb.from("remontees").update({ semaine: nw }).eq("id", rm.id)), "Remontée rattachée à la semaine du " + fmtDate(nw) + ".", sm);
+    }
     const r = e.target.closest("[data-rm-recu]");
     // Avant de valider : l'admin confirme avoir vérifié que l'argent est bien arrivé sur son compte
     if (r && r.dataset.v === "1") {
