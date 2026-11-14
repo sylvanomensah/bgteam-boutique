@@ -625,7 +625,10 @@
     blocsAppliques[c.id] = sig;
     if (!ordre.length) return;
     const blocs = blocsDe(c), rang = (b) => { const i = ordre.indexOf(b.dataset.bloc); return i < 0 ? 1000 + blocs.indexOf(b) : i; };
-    blocs.slice().sort((a, b) => rang(a) - rang(b)).forEach((b) => c.appendChild(b));
+    // Réordonne les cadres À LEUR PLACE (les éléments non déplaçables, ex. « Nouvelle recharge / Commission », restent où ils sont)
+    const reperes = blocs.map((b) => { const m = document.createComment(""); c.insertBefore(m, b); return m; });
+    blocs.slice().sort((a, b) => rang(a) - rang(b)).forEach((b, i) => c.insertBefore(b, reperes[i]));
+    reperes.forEach((m) => m.remove());
   }
   function poignéesBlocs() {
     BLOC_CONTENEURS.forEach((sel) => {
