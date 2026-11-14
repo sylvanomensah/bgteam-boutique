@@ -1093,3 +1093,5 @@ tr.fr-course { cursor: pointer; }
 tr.fr-course:hover > td, tr.fr-course.ouverte > td { background: var(--primary-soft, #eef2ff); }
 tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 .fr-contenu { font-size: .9rem; }
+
+.fr-q { max-width: 300px; }

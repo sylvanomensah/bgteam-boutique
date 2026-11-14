@@ -818,14 +818,14 @@
         </div>
         <div class="kpis" id="fr-kpis"></div>
         <div class="card" id="fr-bq-card">
-          <h2>Par boutique</h2>
+          <div class="toolbar"><h2 style="margin-right:auto">Par boutique</h2><input id="fr-bq-q" type="search" class="fr-q" placeholder="Rechercher une boutique…"></div>
           <div class="table-wrap"><table class="table">
             <thead id="fr-bq-head"></thead>
             <tbody id="fr-bq"></tbody>
           </table></div>
         </div>
         <div class="card">
-          <h2>Ventes du frigo en caisse</h2>
+          <div class="toolbar"><h2 style="margin-right:auto">Ventes du frigo en caisse</h2><input id="fr-ventes-q" type="search" class="fr-q" placeholder="Rechercher un jour, une boutique…" list="fr-ventes-dates"></div><datalist id="fr-ventes-dates"></datalist>
           <div class="table-wrap"><table class="table">
             <thead id="fr-ventes-head"></thead>
             <tbody id="fr-ventes"></tbody>
@@ -840,7 +840,7 @@
           </table></div>
         </div>
         <div class="card admin-only">
-          <h2>Retraits</h2>
+          <div class="toolbar"><h2 style="margin-right:auto">Retraits</h2><input id="fr-retraits-q" type="search" class="fr-q" placeholder="Rechercher un retrait…"></div>
           <div class="table-wrap"><table class="table">
             <thead><tr><th>Date</th><th>Boutique</th><th class="num">Montant</th><th>Note</th><th>Saisi par</th></tr></thead>
             <tbody id="fr-retraits"></tbody>

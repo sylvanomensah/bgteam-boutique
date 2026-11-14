@@ -4755,6 +4755,20 @@
   });
   // Récap mensuel du frigo
   let frCourseOuverte = null;
+  // Tableaux du Récap : 3 lignes affichées ; les autres se trouvent avec la recherche (le contenu d'une course suit sa ligne)
+  function limiter3(tbodySel, q) {
+    const tb = $(tbodySel); if (!tb) return;
+    const groupes = [];
+    [...tb.children].forEach((tr) => { if (tr.classList.contains("fr-course-detail") && groupes.length) groupes[groupes.length - 1].push(tr); else groupes.push([tr]); });
+    const vrais = groupes.filter((g) => !g[0].querySelector("td.empty"));
+    const qq = (q || "").trim().toLowerCase();
+    const garde = qq ? vrais.filter((g) => g[0].textContent.toLowerCase().includes(qq)) : vrais.slice(0, 3);
+    vrais.forEach((g) => g.forEach((tr) => tr.classList.toggle("hidden", !garde.includes(g))));
+    const reste = vrais.length - garde.length, cols = (tb.closest("table").querySelector("thead tr") || { children: [1] }).children.length;
+    if (!qq && reste > 0) tb.insertAdjacentHTML("beforeend", '<tr class="fr-plus"><td colspan="' + cols + '" class="muted">… ' + reste + " autre" + (reste > 1 ? "s" : "") + " ligne" + (reste > 1 ? "s" : "") + " : utilisez la recherche ci-dessus.</td></tr>");
+    if (qq && !garde.length && vrais.length) tb.insertAdjacentHTML("beforeend", '<tr class="fr-plus"><td colspan="' + cols + '" class="muted">Aucune ligne ne correspond à « ' + esc(q.trim()) + " ».</td></tr>");
+  }
+  ["#fr-bq-q", "#fr-ventes-q", "#fr-retraits-q"].forEach((id) => $(id).addEventListener("input", () => renderRecapFrigo(frigoScope())));
   // Contenu d'une course : produits, quantités, prix (achat pour l'admin), frais et totaux
   function contenuCourse(c, admin) {
     const lignes = c.detail ? c.detail.lignes : (db.fgLignes || []).filter((l) => l.courseId === c.id).map((l) => ({ code: l.code, nom: l.nom, qte: l.qte, transfert: l.transfert }));
@@ -4812,9 +4826,12 @@
         return "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money2(f.venduMois) + '</td><td class="num">' + money2(f.estimationMois) + '</td><td class="num">' + money2(Math.max(0, f.restant)) + "</td>" +
           (admin ? '<td class="num pos">' + money2(f.benefMois) + '</td><td class="num">' + money2(sumBy(retraits.filter((r) => r.boutique === b.code), (r) => r.montant)) + "</td>" : "") + "</tr>";
       }).join("") || '<tr><td colspan="6" class="empty">Aucun frigo approvisionné.</td></tr>';
+      limiter3("#fr-bq", $("#fr-bq-q").value);
     }
     $("#fr-ventes-head").innerHTML = fgJoursHead(admin);
     $("#fr-ventes").innerHTML = fgJoursRows(codes, mois, admin);
+    $("#fr-ventes-dates").innerHTML = [...new Set([...$("#fr-ventes").querySelectorAll("tr > td:first-child")].map((td) => td.textContent.trim()).filter((t) => t && !/aucune/i.test(t)))].map((v) => '<option value="' + esc(v) + '">').join("");
+    limiter3("#fr-ventes", $("#fr-ventes-q").value);
     $("#fr-courses-head").innerHTML = "<tr><th>Date</th><th>Boutique</th><th class=\"num\">Total de la course (crédit vente)</th><th class=\"num\">Estimation des ventes</th>" + (admin ? '<th class="num">Bénéfice estimé</th>' : "") + "<th>Saisi par</th></tr>";
     // Recherche (date au format JJ/MM/AAAA ou AAAA-MM-JJ, boutique, saisi par) ; clic sur une course = son contenu
     const qc = ($("#fr-courses-q").value || "").trim().toLowerCase();
@@ -4825,8 +4842,10 @@
       (admin ? '<td class="num pos">' + money2(c.valeur - c.cout) + "</td>" : "") + "<td>" + esc(c.saisiPar || "—") + "</td></tr>" +
       (frCourseOuverte === c.id ? '<tr class="fr-course-detail"><td colspan="6">' + contenuCourse(c, admin) + "</td></tr>" : "")).join("")
       : '<tr><td colspan="6" class="empty">' + (qc ? "Aucune course ne correspond à la recherche." : "Aucune course en " + esc(nomMois) + ".") + "</td></tr>";
+    if (!qc) limiter3("#fr-courses", "");
     if (admin) $("#fr-retraits").innerHTML = retraits.length ? retraits.slice().sort((a, b) => b.date.localeCompare(a.date)).map((r) => "<tr><td>" + fmtDate(r.date) + "</td><td>" + esc(boutiqueName(r.boutique)) +
       '</td><td class="num"><b>' + money2(r.montant) + "</b></td><td>" + esc(r.note || "—") + "</td><td>" + esc(r.saisiPar || "—") + "</td></tr>").join("") : '<tr><td colspan="5" class="empty">Aucun retrait en ' + esc(nomMois) + ".</td></tr>";
+    if (admin) limiter3("#fr-retraits", $("#fr-retraits-q").value);
   }
 
   // ---------- Paramètres ----------
