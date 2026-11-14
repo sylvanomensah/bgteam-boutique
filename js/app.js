@@ -1497,7 +1497,9 @@
   function stockFrigoOf(code, bq) {
     return sumBy((db.fgLignes || []).filter((l) => l.boutique === bq && l.code === code), (l) => l.qte) - sumBy((db.fgSorties || []).filter((x) => x.boutique === bq && x.code === code), (x) => x.qte) + ajustFrigoOf(code, bq);
   }
-  function stockCaisse(p, bq) { return estFrigo(p.code, bq) ? stockFrigoOf(p.code, bq) : stockActuel(p, bq); }
+  // Le menu Stock est retiré : en Caisse, une boutique ne vend que ce qui est dans son STOCK FRIGO (courses − ventes ± corrections).
+  // Sans course du frigo pour ce produit, le stock est 0 → vente bloquée (rupture).
+  function stockCaisse(p, bq) { return bq ? stockFrigoOf(p.code, bq) : stockActuel(p, bq); }
   function statutCaisse(p, bq) { const s = stockCaisse(p, bq); return s <= 0 ? "RUPTURE" : s <= Number(p.stockMin) ? "STOCK FAIBLE" : "OK"; }
   function updateProductInfo(resetPrice) {
     const p = productByCode($("#c-product").value);
@@ -1505,7 +1507,7 @@
     if (resetPrice !== false) $("#c-pu").value = p.pv;
     const inCart = cart.filter((l) => l.code === p.code).reduce((a, l) => a + l.qte, 0);
     const bq = caisseBoutique();
-    const dispo = stockCaisse(p, bq) - inCart, frigo = estFrigo(p.code, bq);
+    const dispo = stockCaisse(p, bq) - inCart, frigo = !!bq;
     const bloqueValid = !p.valide && !isAdmin(); // produit créé par un CC : vendable seulement après validation de l'admin
     $("#c-add").disabled = dispo <= 0 || bloqueValid; // rupture ou produit non validé : bouton « Ajouter au panier » bloqué
     $("#c-stock-info").innerHTML = (bloqueValid ? '<b class="neg">⛔ Produit pas encore validé par l\'administrateur : vente impossible pour l\'instant.</b><br>' : "") +
