@@ -4543,7 +4543,57 @@
   }
   $("#fr-semaine").addEventListener("change", () => renderFrigo());
 
+  // Transfert de l'ancien stock principal vers le frigo (admin) : course marquée « à confirmer » tant que la boutique n'a pas recompté
+  const TAG_PROVISOIRE = "(transfert du stock — à confirmer)";
+  const transfertProvisoire = (bq) => db.fgCourses.find((c) => c.boutique === bq && c.saisiPar.includes(TAG_PROVISOIRE)) || null;
+  const stockPrincipalRestant = (bq) => db.products.map((p) => ({ p, q: r2_(stockActuel(p, bq)) })).filter((x) => x.q > 0);
+  function renderTransfertInfo(scope) {
+    const admin = isAdmin(), une = scope.length === 1, bq = une ? scope[0].code : "";
+    const reste = admin && une ? stockPrincipalRestant(bq) : [];
+    $("#fs-transfert").classList.toggle("hidden", !reste.length);
+    if (reste.length) $("#fs-transfert").textContent = "⇄ Transférer le stock principal (" + reste.length + " produit" + (reste.length > 1 ? "s" : "") + ")";
+    const tp = une ? transfertProvisoire(bq) : null;
+    $("#fs-transfert-info").innerHTML = tp ? '<div class="alert-line" style="margin:0 0 12px">⚠ <span><b>Stock provisoire</b> — transfert de l’ancien stock principal du ' + fmtDate(tp.date) +
+      " à confirmer avec la boutique. " + (admin ? "Corrigez le Stock actuel des produits après le comptage (ces corrections modifient le transfert, sans perte pour la boutique), puis confirmez." : "Les quantités seront confirmées par l’administrateur.") + "</span>" +
+      (admin ? '<button class="btn small success" data-fs-tr-ok="' + tp.id + '">✓ Confirmer le transfert</button>' : "") + "</div>" : "";
+  }
+  $("#fs-transfert").addEventListener("click", (e) => {
+    const scope = frigoScope(); if (!isAdmin() || scope.length !== 1) return toast("Choisissez une boutique.");
+    const bq = scope[0].code, reste = stockPrincipalRestant(bq);
+    if (!reste.length) return toast("Plus rien dans le stock principal de " + boutiqueName(bq) + ".");
+    const lignes = reste.map((x) => ({ code: x.p.code, nom: x.p.nom, qte: x.q, achat: r2_(Number(x.p.cmp) || 0), vente: Number(x.p.pv) || 0, transfert: true }));
+    const achats = r2_(lignes.reduce((a, l) => a + l.qte * l.achat, 0)), vente = r2_(lignes.reduce((a, l) => a + l.qte * l.vente, 0));
+    if (!confirm("Transférer l'ancien stock principal de " + boutiqueName(bq) + " vers son frigo ?\n\n" +
+      lignes.slice(0, 25).map((l) => "• " + l.nom + " : " + num(l.qte)).join("\n") + (lignes.length > 25 ? "\n… (" + lignes.length + " produits)" : "") +
+      "\n\nValeur d'achat : " + money2(achats) + " · valeur de vente : " + money2(vente) +
+      "\n\nCes quantités sont PROVISOIRES : corrigez-les après le comptage avec la boutique, puis confirmez le transfert.")) return;
+    act(async () => {
+      const c = chk(await sb.from("frigo_courses").insert({ boutique: bq, date: today(), valeur_vente: vente, montant_course: achats, saisi_par: (me.nom || me.email || "Admin") + " " + TAG_PROVISOIRE }).select("id").single());
+      const r = await sb.from("frigo_courses_details").insert({ course_id: c.id, lignes, total_achats: achats, frais_deplacement: 0, frais_sachet: 0, frais_autres: 0, frais_autres_lib: "", total_course: achats });
+      if (r.error) { await sb.from("frigo_courses").delete().eq("id", c.id); chk(r); }
+    }, "Stock principal transféré dans le frigo de " + boutiqueName(bq) + " (provisoire, à confirmer).", e.target);
+  });
+  $("#fs-transfert-info").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-fs-tr-ok]"); if (!b || !isAdmin()) return;
+    const tp = db.fgCourses.find((c) => c.id === b.dataset.fsTrOk); if (!tp) return;
+    if (!confirm("Confirmer le transfert du " + fmtDate(tp.date) + " (" + boutiqueName(tp.boutique) + ") ?\n\nLes quantités ont été recomptées avec la boutique. Après confirmation, toute correction de stock comptera comme une perte ou un surplus.")) return;
+    act(async () => chk(await sb.from("frigo_courses").update({ saisi_par: tp.saisiPar.replace(TAG_PROVISOIRE, "(transfert du stock)").trim() }).eq("id", tp.id)), "Transfert confirmé.", b);
+  });
+  // Correction d'un produit d'un transfert provisoire : on modifie la quantité transférée (et les totaux), pas de perte
+  async function corrigerTransfert(tp, code, ecart) {
+    const d = chk(await sb.from("frigo_courses_details").select("*").eq("course_id", tp.id).single());
+    const lignes = (d.lignes || []).map((l) => Object.assign({}, l));
+    const l = lignes.find((x) => x.code === code);
+    if (!l) throw new Error("Produit absent du transfert");
+    const nq = r2_(Number(l.qte) + ecart);
+    if (nq < 0) throw new Error("Quantité transférée négative");
+    l.qte = nq;
+    const achats = r2_(lignes.reduce((a, x) => a + Number(x.qte) * Number(x.achat || 0), 0)), vente = r2_(lignes.reduce((a, x) => a + Number(x.qte) * Number(x.vente || 0), 0));
+    chk(await sb.from("frigo_courses_details").update({ lignes, total_achats: achats, total_course: achats }).eq("course_id", tp.id));
+    chk(await sb.from("frigo_courses").update({ montant_course: achats, valeur_vente: vente }).eq("id", tp.id));
+  }
   function renderStockFrigo(scope) {
+    renderTransfertInfo(scope);
     const admin = isAdmin(), codes = scope.map((b) => b.code), q = $("#fs-search").value.trim().toLowerCase();
     $("#fs-title").textContent = "Stock frigo — " + (scope.length === 1 ? scope[0].nom : scope.length ? "toutes les boutiques" : "aucune boutique");
     const lignes = db.fgLignes.filter((l) => codes.includes(l.boutique) && l.code);
@@ -4633,6 +4683,11 @@
     if (!(inp.value !== "" && v >= 0)) { inp.value = actuel; return toast("Indiquez un stock valide (0 ou plus)."); }
     const ecart = r2_(v - actuel);
     if (!ecart) return;
+    const tp = transfertProvisoire(bq), dansTp = tp && tp.detail && tp.detail.lignes.some((l) => l.code === code);
+    if (dansTp) {
+      if (!confirm("Transfert provisoire : la quantité transférée de « " + nom + " » sera corrigée de " + (ecart > 0 ? "+" : "") + num(ecart) + " (stock " + num(actuel) + " → " + num(v) + ").\n\nCe n'est pas une perte pour la boutique. Confirmer ?")) { inp.value = actuel; return; }
+      return act(() => corrigerTransfert(tp, code, ecart), "Transfert corrigé : " + nom + " → " + num(v) + ".", inp);
+    }
     if (!confirm("Corriger le stock frigo de « " + nom + " » à " + boutiqueName(bq) + " : " + num(actuel) + " → " + num(v) + " (" + (ecart > 0 ? "+" : "") + num(ecart) + ").\n\nValeur au coût d'achat : " + (ecart > 0 ? "+" : "−") + money2(Math.abs(ecart) * dernierAchatFrigo(code, bq)) + " (" + money2(dernierAchatFrigo(code, bq)) + " l'unité)." + (ecart < 0 ? " Une perte est comptée dans le coût d'achat à reverser de la semaine." : "") + "\n\nLe nouveau stock s'applique partout (Caisse, valeur du stock, tableau de bord, reversement). Confirmer ?")) { inp.value = actuel; return; }
     act(async () => chk(await sb.from("frigo_ajustements").insert({ boutique: bq, code, qte: ecart, cout_unit: dernierAchatFrigo(code, bq), date: today(), note: "Stock corrigé de " + actuel + " à " + v, saisi_par: me.nom || me.email || "" })),
       "Stock frigo de " + nom + " corrigé : " + num(v) + ".", inp);
