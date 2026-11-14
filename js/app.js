@@ -4576,6 +4576,10 @@
     if (Math.abs(diff) > 0.004) rows.push({ boutique: bq, code: "_RAZ", qte: 1, cout_unit: diff });
     if (!rows.length) return toast("Le frigo de " + nomBq + " est déjà à zéro.");
     if (!confirm("Remettre le frigo de " + nomBq + " à ZÉRO ?\n\n• Stock de chaque produit → 0 (" + rows.filter((r) => r.code !== "_RAZ").length + " produit(s))\n• Stock restant au coût d'achat → 0 (au lieu de " + money2(restant) + ")\n\nCe n'est PAS une perte pour la boutique (rien à reverser en plus). L'historique des ventes et des versements est gardé. Vous repartez ensuite d'une nouvelle course.")) return;
+    // 2e confirmation : taper le nom de la boutique (évite une remise à zéro par erreur)
+    const tape = prompt("Confirmation : pour remettre à zéro le frigo de cette boutique, tapez son nom :\n\n" + nomBq);
+    if (tape === null) return;
+    if (tape.trim().toUpperCase() !== nomBq.trim().toUpperCase()) return toast("Nom différent de « " + nomBq + " » : remise à zéro annulée.");
     const nom = me.nom || me.email || "";
     act(async () => chk(await sb.from("frigo_ajustements").insert(rows.map((r) => Object.assign(r, { date: today(), note: "RAZ — Remise à zéro du frigo", saisi_par: nom })))),
       "Frigo de " + nomBq + " remis à zéro : faites maintenant la nouvelle course.", e.target);
