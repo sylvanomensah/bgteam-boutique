@@ -4196,6 +4196,67 @@
     return l.length ? l.map((j) => "<tr><td>" + esc(jourLong(j.date)) + "</td><td>" + esc(boutiqueName(j.bq)) + '</td><td class="num">' + num(j.qte) + '</td><td class="num"><b>' + money2(j.montant) + "</b></td>" +
       (admin ? '<td class="num">−' + money2(j.consomme) + "</td>" : "") + "</tr>").join("") : '<tr><td colspan="5" class="empty">Aucune vente de produit du frigo en ' + esc(fmtMonth(mois + "-01")) + ".</td></tr>";
   }
+  // Ajuster une course (admin) : quantités, prix d'achat et de vente, produits, frais. Le crédit vente, le stock frigo,
+  // le coût d'achat des ventes déjà faites et les reversements sont recalculés à partir de la course corrigée.
+  let fcaLignes = [];
+  function fcaRecap() {
+    const achats = r2_(sumBy(fcaLignes, (l) => (Number(l.qte) || 0) * (Number(l.achat) || 0))), vente = r2_(sumBy(fcaLignes, (l) => (Number(l.qte) || 0) * (Number(l.vente) || 0)));
+    const sachet = Number($("#fca-sachet").value) || 0, depl = Number($("#fca-depl").value) || 0, autres = Number($("#fca-autres").value) || 0;
+    $("#fca-recap").innerHTML = fcSummary({ achats, deplacement: depl, sachet, autres, autresLib: "Autres frais", vente });
+    return { achats, vente, sachet, depl, autres, total: r2_(achats + sachet + depl + autres) };
+  }
+  function fcaRender() {
+    $("#fca-lignes").innerHTML = fcaLignes.map((l, i) => '<tr data-i="' + i + '"><td>' + esc(l.nom) + (l.transfert ? ' <span class="badge mute">transfert</span>' : "") + "</td>" +
+      '<td class="num"><input type="number" min="0" step="any" class="inline-input" data-fca="qte" value="' + esc(l.qte) + '"></td>' +
+      '<td class="num"><input type="number" min="0" step="any" class="inline-input" data-fca="achat" value="' + esc(r2_(Number(l.achat) || 0)) + '"></td>' +
+      '<td class="num"><input type="number" min="0" step="any" class="inline-input" data-fca="vente" value="' + esc(l.vente) + '"></td>' +
+      '<td class="num" data-fca-tot>' + money2((Number(l.qte) || 0) * (Number(l.achat) || 0)) + "</td>" +
+      '<td><button type="button" class="btn small danger" data-fca-rm="' + i + '" title="Retirer ce produit de la course">✕</button></td></tr>').join("");
+    const dans = new Set(fcaLignes.map((l) => l.code));
+    $("#fca-ajout").innerHTML = '<option value="">— Choisir un produit à ajouter —</option>' + db.products.filter((p) => !dans.has(p.code)).sort((a, b) => a.nom.localeCompare(b.nom))
+      .map((p) => '<option value="' + esc(p.code) + '">' + esc(p.nom) + "</option>").join("");
+    fcaRecap();
+  }
+  $("#fca-lignes").addEventListener("input", (e) => {
+    const inp = e.target.closest("[data-fca]"); if (!inp) return;
+    const tr = inp.closest("tr"), l = fcaLignes[Number(tr.dataset.i)]; l[inp.dataset.fca] = inp.value;
+    tr.querySelector("[data-fca-tot]").textContent = money2((Number(l.qte) || 0) * (Number(l.achat) || 0));
+    fcaRecap();
+  });
+  $("#fca-lignes").addEventListener("click", (e) => { const b = e.target.closest("[data-fca-rm]"); if (!b) return; fcaLignes.splice(Number(b.dataset.fcaRm), 1); fcaRender(); });
+  $("#fca-ajout").addEventListener("change", (e) => {
+    const p = productByCode(e.target.value); if (!p) return;
+    fcaLignes.push({ code: p.code, nom: p.nom, qte: 1, achat: 0, vente: Number(p.pv) || 0 }); fcaRender();
+  });
+  ["#fca-sachet", "#fca-depl", "#fca-autres"].forEach((id) => $(id).addEventListener("input", fcaRecap));
+  async function ajusterCourse(c) {
+    if (!c || !isAdmin() || !c.detail) return toast("Détail de la course indisponible.");
+    const d = c.detail;
+    fcaLignes = d.lignes.map((l) => Object.assign({}, l));
+    $("#fca-titre").textContent = "Ajuster la course du " + fmtDate(c.date) + " — " + boutiqueName(c.boutique);
+    $("#fca-sachet").value = d.sachet || 0; $("#fca-depl").value = d.deplacement || 0; $("#fca-autres").value = d.autres || 0;
+    fcaRender();
+    const dlg = $("#fca-dialog"); dlg.returnValue = "";
+    const ok = await new Promise((resolve) => { dlg.onclose = () => resolve(dlg.returnValue === "oui"); dlg.showModal(); });
+    if (!ok) return;
+    const lignes = fcaLignes.filter((l) => Number(l.qte) > 0).map((l) => Object.assign({}, l, { qte: Number(l.qte), achat: Number(l.achat) || 0, vente: Number(l.vente) || 0 }));
+    if (!lignes.length) return toast("La course doit garder au moins un produit (sinon supprimez-la avec ✕).");
+    const t = fcaRecap();
+    // Contrôle : le stock frigo ne doit pas devenir négatif (produits déjà vendus)
+    const retires = d.lignes.filter((o) => !lignes.some((l) => l.code === o.code)).map((o) => Object.assign({}, o, { qte: 0 }));
+    const neg = lignes.concat(retires).map((l) => {
+      const ancien = sumBy(d.lignes.filter((o) => o.code === l.code), (o) => Number(o.qte));
+      return { nom: l.nom, st: r2_(stockFrigoOf(l.code, c.boutique) + l.qte - ancien) };
+    }).filter((x) => x.st < 0);
+    if (!confirm("Enregistrer l'ajustement de la course du " + fmtDate(c.date) + " (" + boutiqueName(c.boutique) + ") ?\n\nTotal de la course : " + money2(c.cout) + " → " + money2(t.total) +
+      "\nEstimation des ventes : " + money2(c.valeur) + " → " + money2(t.vente) +
+      (neg.length ? "\n\n⚠ Stock frigo négatif après ajustement : " + neg.map((x) => x.nom + " (" + num(x.st) + ")").join(", ") : "") +
+      "\n\nLe stock frigo, le crédit vente, le coût d'achat des ventes déjà faites et les reversements seront recalculés.")) return;
+    act(async () => {
+      chk(await sb.from("frigo_courses_details").update({ lignes, total_achats: t.achats, frais_deplacement: t.depl, frais_sachet: t.sachet, frais_autres: t.autres, total_course: t.total }).eq("course_id", c.id));
+      chk(await sb.from("frigo_courses").update({ montant_course: t.total, valeur_vente: t.vente }).eq("id", c.id));
+    }, "Course du " + fmtDate(c.date) + " ajustée : " + money2(t.total) + ".");
+  }
   // Une course (historique) : l'admin voit le détail (prix d'achat, frais, bénéfice)
   function courseFrigoHtml(c, admin) {
     const d = c.detail;
@@ -4205,7 +4266,7 @@
     // Bénéfice par produit = total vente − total achat − part des frais (répartis au prorata du total achat) : la somme = bénéfice estimé
     const frais = (d.deplacement || 0) + (d.sachet || 0) + (d.autres || 0), achats = sumBy(d.lignes, (l) => l.qte * l.achat);
     const lg = d.lignes.map((l) => { const ta = l.qte * l.achat, tv = l.qte * l.vente, pf = achats > 0 ? frais * ta / achats : 0; return { l, ta, tv, pf, bene: tv - ta - pf }; });
-    return '<details class="fh-course"><summary>' + tete + ' <button class="btn small danger" data-fc-del="' + c.id + '">✕</button></summary>' +
+    return '<details class="fh-course"><summary>' + tete + ' <button class="btn small" data-fc-adj="' + c.id + '" title="Ajuster cette course (quantités, prix, frais)">✏️ Ajuster</button> <button class="btn small danger" data-fc-del="' + c.id + '">✕</button></summary>' +
       '<div class="table-wrap" style="margin-top:8px"><table class="table"><thead><tr><th>Produit</th><th class="num">Qté</th><th class="num">Prix d\'achat</th><th class="num">Prix de vente</th><th class="num">Total achat</th><th class="num">Total vente</th>' +
       '<th class="num" title="Frais de la course répartis au prorata du total achat">Part des frais</th><th class="num" title="Total vente − total achat − part des frais">Bénéfice</th></tr></thead><tbody>' +
       lg.map((x) => "<tr><td>" + esc(x.l.nom) + '</td><td class="num">' + num(x.l.qte) + '</td><td class="num">' + money2(x.l.achat) + '</td><td class="num">' + money2(x.l.vente) +
@@ -4443,6 +4504,8 @@
   $("#view-frigo").addEventListener("click", (e) => {
     const v = e.target.closest("[data-fv-del]"), c = e.target.closest("[data-fc-del]"), r = e.target.closest("[data-fx-del]");
     if (v && confirm("Supprimer cette vente déclarée ? Le CC pourra la refaire.")) act(async () => chk(await sb.from("frigo_ventes").delete().eq("id", v.dataset.fvDel)), "Vente supprimée.", v);
+    const adj = e.target.closest("[data-fc-adj]");
+    if (adj) { e.preventDefault(); return ajusterCourse(db.fgCourses.find((x) => x.id === adj.dataset.fcAdj)); }
     if (c) { e.preventDefault(); if (confirm("Supprimer cette course ? Son crédit vente sera retiré du frigo.")) act(async () => chk(await sb.from("frigo_courses").delete().eq("id", c.dataset.fcDel)), "Course supprimée.", c); }
     if (r && confirm("Supprimer ce retrait ?")) act(async () => chk(await sb.from("frigo_retraits").delete().eq("id", r.dataset.fxDel)), "Retrait supprimé.", r);
   });

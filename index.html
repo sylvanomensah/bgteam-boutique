@@ -1372,6 +1372,28 @@
   </dialog>
 
   <!-- Confirmation d'une recharge de crédit -->
+  <!-- Ajuster une course du frigo (admin) -->
+  <dialog id="fca-dialog" class="wide">
+    <form method="dialog">
+      <h2 id="fca-titre">Ajuster la course</h2>
+      <div class="table-wrap"><table class="table">
+        <thead><tr><th>Produit</th><th class="num">Quantité</th><th class="num">Prix d'achat unitaire</th><th class="num">Prix de vente</th><th class="num">Total achat</th><th></th></tr></thead>
+        <tbody id="fca-lignes"></tbody>
+      </table></div>
+      <div class="form form-inline" style="margin-top:8px">
+        <label>Ajouter un produit<select id="fca-ajout"></select></label>
+        <label>Frais de retrait<input type="number" min="0" step="any" id="fca-sachet"></label>
+        <label>Transport<input type="number" min="0" step="any" id="fca-depl"></label>
+        <label>Autres frais<input type="number" min="0" step="any" id="fca-autres"></label>
+      </div>
+      <div id="fca-recap" class="course-summary" style="margin-top:8px"></div>
+      <div class="actions">
+        <button class="btn" value="non">Annuler</button>
+        <button class="btn success" value="oui" id="fca-oui">Enregistrer l'ajustement</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Remise à zéro du frigo : confirmation (récapitulatif + nom de la boutique à taper) -->
   <dialog id="raz-dialog">
     <form method="dialog">

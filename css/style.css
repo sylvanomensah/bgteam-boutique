@@ -1095,3 +1095,7 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 .fr-contenu { font-size: .9rem; }
 
 .fr-q { max-width: 300px; }
+
+/* Ajuster une course du frigo */
+#fca-dialog { max-width: 900px; width: 96vw; }
+#fca-dialog .inline-input { width: 90px; }
