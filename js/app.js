@@ -4574,24 +4574,31 @@
     let val = r2_(rows.reduce((a, r) => a + r.qte * r.cout_unit, 0));
     const diff = r2_(-restant - val); // écart d'arrondi / frais : ligne d'argent seule pour arriver à 0 exactement
     if (Math.abs(diff) > 0.004) rows.push({ boutique: bq, code: "_RAZ", qte: 1, cout_unit: diff });
-    if (!rows.length) return toast("Le frigo de " + nomBq + " est déjà à zéro.");
-    // Confirmation dans une fenêtre de l'application : récapitulatif, puis nom de la boutique à taper
+    // Confirmation dans une fenêtre de l'application : récapitulatif + mot de passe de l'admin
     const nbProd = rows.filter((r) => r.code !== "_RAZ").length;
-    $("#raz-recap").innerHTML = "<p>Boutique : <b>" + esc(nomBq) + "</b></p><ul>" +
-      "<li>Stock de chaque produit → <b>0</b> (" + nbProd + " produit" + (nbProd > 1 ? "s" : "") + ")</li>" +
-      "<li>Stock restant au coût d'achat → <b>0</b> (au lieu de " + money2(restant) + ")</li>" +
-      "<li>Ce n'est <b>pas une perte</b> pour la boutique : rien à reverser en plus</li>" +
-      "<li>L'historique des ventes et des versements est gardé</li></ul><p class=\"hint\">Vous repartez ensuite d'une nouvelle course.</p>";
-    $("#raz-nom").textContent = nomBq;
-    const dlg = $("#raz-dialog"), champ = $("#raz-saisie"), oui = $("#raz-oui");
-    champ.value = ""; oui.disabled = true;
-    champ.oninput = () => { oui.disabled = champ.value.trim().toUpperCase() !== nomBq.trim().toUpperCase(); };
+    const nVentes = db.sales.filter((x) => saleBoutique(x) === bq).length, nRem = db.remontees.filter((x) => x.boutique === bq).length, nCourses = db.fgCourses.filter((c) => c.boutique === bq).length;
+    $("#raz-recap").innerHTML = "<p>Boutique : <b>" + esc(nomBq) + "</b> — tout repart de zéro :</p><ul>" +
+      "<li>Stock de chaque produit → <b>0</b> (" + nbProd + " produit" + (nbProd > 1 ? "s" : "") + ") et stock restant au coût d'achat → <b>0</b> (au lieu de " + money2(restant) + ")</li>" +
+      "<li><b>Historique des ventes SUPPRIMÉ</b> (" + nVentes + " ligne" + (nVentes > 1 ? "s" : "") + ")</li>" +
+      "<li><b>Historique des versements (remontées) SUPPRIMÉ</b> (" + nRem + ")</li>" +
+      "<li><b>Courses, dotations, retraits et corrections du frigo SUPPRIMÉS</b> (" + nCourses + " course" + (nCourses > 1 ? "s" : "") + ")</li>" +
+      "<li>Le crédit télécom, les bobines et la RH ne sont pas touchés</li></ul>" +
+      '<p class="hint neg"><b>Action définitive, sans retour possible.</b> Si besoin, téléchargez d’abord une sauvegarde (Paramètres). Vous repartez ensuite d’une nouvelle course.</p>';
+    const dlg = $("#raz-dialog"), mdp = $("#raz-mdp"), oui = $("#raz-oui");
+    mdp.value = ""; oui.disabled = true;
+    mdp.oninput = () => { oui.disabled = !mdp.value; };
+    mdp.onkeydown = (ev) => { if (ev.key === "Enter") { ev.preventDefault(); if (mdp.value) dlg.close("oui"); } };
     dlg.returnValue = "";
-    const ok = await new Promise((resolve) => { dlg.onclose = () => resolve(dlg.returnValue === "oui"); dlg.showModal(); setTimeout(() => champ.focus(), 50); });
-    if (!ok || champ.value.trim().toUpperCase() !== nomBq.trim().toUpperCase()) return toast("Remise à zéro annulée.");
-    const nom = me.nom || me.email || "";
-    act(async () => chk(await sb.from("frigo_ajustements").insert(rows.map((r) => Object.assign(r, { date: today(), note: "RAZ — Remise à zéro du frigo", saisi_par: nom })))),
-      "Frigo de " + nomBq + " remis à zéro : faites maintenant la nouvelle course.", e.target);
+    const ok = await new Promise((resolve) => { dlg.onclose = () => resolve(dlg.returnValue === "oui"); dlg.showModal(); setTimeout(() => mdp.focus(), 50); });
+    const motDePasse = mdp.value; mdp.value = "";
+    if (!ok || !motDePasse) return toast("Remise à zéro annulée.");
+    // Vérification du mot de passe de l'administrateur connecté
+    const { data: ses } = await sb.auth.getSession();
+    const email = ses && ses.session && ses.session.user ? ses.session.user.email : me.email;
+    const verif = await sb.auth.signInWithPassword({ email, password: motDePasse });
+    if (verif.error) return toast("⛔ Mot de passe incorrect : remise à zéro annulée.");
+    act(async () => { const r = chk(await sb.rpc("frigo_reinitialiser", { p_boutique: bq })) || {};
+      toast(nomBq + " remise à zéro : " + (r.ventes || 0) + " vente(s), " + (r.remontees || 0) + " remontée(s), " + (r.courses || 0) + " course(s) supprimées. Faites maintenant la nouvelle course."); }, "", e.target);
   });
   $("#fs-transfert") && $("#fs-transfert").addEventListener("click", (e) => {
     const scope = frigoScope(); if (!isAdmin() || scope.length !== 1) return toast("Choisissez une boutique.");

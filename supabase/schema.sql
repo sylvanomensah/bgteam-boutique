@@ -1746,6 +1746,30 @@ drop policy if exists frigo_ajust_admin on public.frigo_ajustements;
 create policy frigo_ajust_admin on public.frigo_ajustements for all to authenticated using (public.is_admin()) with check (public.is_admin());
 grant select, insert, update, delete on public.frigo_ajustements to authenticated;
 
+-- Remise à zéro complète d'une boutique (admin) : ventes, remontées et tout le frigo (courses, dotations, ventes, retraits, corrections)
+-- sont SUPPRIMÉS pour repartir d'une nouvelle course. Le crédit télécom, les bobines et la RH ne sont pas touchés.
+create or replace function public.frigo_reinitialiser(p_boutique text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare n_ventes int; n_rem int; n_courses int;
+begin
+  if not public.is_admin() then raise exception 'Seul l''administrateur peut remettre une boutique à zéro'; end if;
+  if not exists (select 1 from public.boutiques where code = p_boutique) then raise exception 'Boutique introuvable'; end if;
+  delete from public.sales s where s.boutique = p_boutique
+    or (s.boutique is null and exists (select 1 from public.ccs c where c.code = s.cc and c.boutique = p_boutique));
+  get diagnostics n_ventes = row_count;
+  delete from public.remontees where boutique = p_boutique;
+  get diagnostics n_rem = row_count;
+  delete from public.frigo_ajustements where boutique = p_boutique;
+  delete from public.frigo_ventes where boutique = p_boutique;
+  delete from public.frigo_retraits where boutique = p_boutique;
+  delete from public.frigo_dotations where boutique = p_boutique;
+  delete from public.frigo_courses where boutique = p_boutique; -- le détail des courses part avec (on delete cascade)
+  get diagnostics n_courses = row_count;
+  return jsonb_build_object('ventes', n_ventes, 'remontees', n_rem, 'courses', n_courses);
+end $$;
+revoke all on function public.frigo_reinitialiser(text) from public, anon;
+grant execute on function public.frigo_reinitialiser(text) to authenticated;
+
 -- Temps réel : diffuse les nouvelles ventes, entrées et courses aux écrans ouverts
 -- (les règles de sécurité ci-dessus s'appliquent aussi à cette diffusion).
 do $$

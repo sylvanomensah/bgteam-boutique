@@ -788,7 +788,7 @@
         <div class="card">
           <div class="toolbar">
             <h2 id="fs-title">Stock frigo</h2>
-            <button class="btn small danger admin-only hidden" id="fs-raz" title="Mettre le stock et le stock restant au coût d'achat de ce frigo à zéro (pas une perte pour la boutique), pour repartir d'une nouvelle course">⟲ Remettre le frigo à zéro</button>
+            <button class="btn small danger admin-only hidden" id="fs-raz" title="Tout remettre à zéro pour cette boutique (stock, ventes, versements, courses du frigo) pour repartir d'une nouvelle course">⟲ Remettre le frigo à zéro</button>
             <input id="fs-search" placeholder="Rechercher un produit">
           </div>
           <div id="fs-transfert-info"></div>
@@ -1372,9 +1372,9 @@
   <!-- Remise à zéro du frigo : confirmation (récapitulatif + nom de la boutique à taper) -->
   <dialog id="raz-dialog">
     <form method="dialog">
-      <h2>⚠ Remettre le frigo à zéro ?</h2>
+      <h2>⚠ Remettre la boutique à zéro ?</h2>
       <div id="raz-recap" class="raz-recap"></div>
-      <label>Pour confirmer, tapez le nom de la boutique : <b id="raz-nom"></b><input id="raz-saisie" autocomplete="off" placeholder="Nom de la boutique"></label>
+      <label>Votre mot de passe (pour confirmer)<input type="password" id="raz-mdp" autocomplete="current-password" placeholder="Mot de passe"></label>
       <div class="actions">
         <button class="btn" value="non">Annuler</button>
         <button class="btn danger" value="oui" id="raz-oui" disabled>Oui, remettre à zéro</button>
