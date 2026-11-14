@@ -2654,6 +2654,9 @@
   // Avant, elle ne contenait que le bénéfice.
   const REM_TOTAL_DEPUIS = "2026-11-12T17:00";
   // Reste à remonter d'une semaine (ventes déclarées − déjà remonté)
+  // Versement des fonds : uniquement le lundi pour les CC (l'admin peut enregistrer à tout moment)
+  function remonteeVerrouillee() { return !isAdmin() && new Date().getDay() !== 1; }
+  function prochainLundi() { return addDays(mondayOf(today()), 7); }
   function resteRemSemaine(bq, w) { return Math.round((ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w))) * 100) / 100; }
   // Semaine proposée : la plus ancienne qui doit encore de l'argent, sinon la semaine en cours
   let rmSemBq = null;
@@ -2717,8 +2720,9 @@
     $("#fd-remonter").classList.toggle("hidden", !canEntrees());
     const scur = $("#rm-semaine").value;
     const lundi = mondayOf(t), weeks = [];
-    for (let i = 0; i < 9; i++) weeks.push(addDays(lundi, -7 * i));
-    $("#rm-semaine").innerHTML = weeks.map((w, i) => '<option value="' + w + '">' + (i === 0 ? "Semaine en cours — " : "") + "du " + fmtDate(w) + " au " + fmtDate(weekEnd(w)) + "</option>").join("");
+    // CC : on ne remonte que des semaines terminées (pas la semaine en cours) ; l'admin peut tout enregistrer
+    for (let i = admin ? 0 : 1; i < 9; i++) weeks.push(addDays(lundi, -7 * i));
+    $("#rm-semaine").innerHTML = weeks.map((w, i) => '<option value="' + w + '">' + (w === lundi ? "Semaine en cours — " : "") + "du " + fmtDate(w) + " au " + fmtDate(weekEnd(w)) + "</option>").join("");
     $("#rm-semaine").value = weeks.includes(scur) && rmSemBq === remBq ? scur : semaineARemonter(remBq, weeks);
     rmSemBq = remBq;
     if (canEntrees()) {
@@ -2728,7 +2732,9 @@
       } else {
         majRmInfo(true);
       }
-      $("#rm-save").disabled = !remBq;
+      $("#rm-save").disabled = !remBq || remonteeVerrouillee();
+      if (remBq && remonteeVerrouillee()) $("#rm-info").innerHTML += '<p class="hint neg" style="margin:8px 0 0">🔒 <b>Les remontées se font uniquement le lundi.</b> Prochain versement : <b>lundi ' + fmtDate(prochainLundi()) +
+        "</b> (ventes de la semaine du " + fmtDate(mondayOf(t)) + " au " + fmtDate(weekEnd(mondayOf(t))) + ", en complément de ce qui est déjà versé).</p>";
       syncRmNote(); // liste des CC qui peuvent recevoir les espèces
     }
 
@@ -3172,6 +3178,8 @@
     const montant = Number($("#rm-montant").value);
     if (!bq || bq === "ALL") return toast("Choisissez une boutique.");
     if (!(montant > 0)) return toast("Indiquez le montant remis.");
+    if (remonteeVerrouillee()) return toast("🔒 Les remontées se font uniquement le lundi (prochain : lundi " + fmtDate(prochainLundi()) + ").");
+    if (!admin && $("#rm-semaine").value >= mondayOf(today())) return toast("La semaine en cours se remonte le lundi suivant.");
     // Mobile money / virement : la photo du reçu de dépôt est obligatoire (vérification par l'admin)
     const avecRecu = $("#rm-mode").value !== "Espèces";
     const receveur = ""; // service « Reçoit les espèces » supprimé

@@ -1085,6 +1085,15 @@ declare v_num text; v_dest text; v_mt numeric; v_tel text; v_exp text;
 begin
   new.tx_id := nullif(regexp_replace(coalesce(new.tx_id, ''), '\D', '', 'g'), '');
   new.reception_confirmee_le := null; new.reception_confirmee_par := '';
+  -- Versement des fonds par les CC : uniquement le lundi (heure de Lomé), pour des semaines terminées
+  if not public.is_admin() then
+    if extract(isodow from (now() at time zone 'Africa/Lome')) <> 1 then
+      raise exception 'Les remontées se font uniquement le lundi';
+    end if;
+    if new.semaine >= date_trunc('week', now() at time zone 'Africa/Lome')::date then
+      raise exception 'La semaine en cours se remonte le lundi suivant';
+    end if;
+  end if;
   if new.mode = 'Espèces' then
     -- Service « Reçoit les espèces » supprimé (13/11/2026) : remise directe, validée par l'admin
     new.cc_receveur := null;
