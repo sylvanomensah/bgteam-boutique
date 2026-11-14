@@ -2787,6 +2787,7 @@
     $("#fd-match").innerHTML = rows.length ? rows.map((x) => "<tr><td>Du " + fmtDate(x.w) + " au " + fmtDate(weekEnd(x.w)) + "</td><td>" + esc(x.b.nom) +
       '</td><td class="num">' + money0(x.v) + '</td><td class="num">' + money0(x.r) + '</td><td class="num">' + (weekEnd(x.w) >= t && !x.r ? "—" : ecartHtml(x.r - x.v)) + "</td><td>" + x.st + "</td></tr>").join("")
       : '<tr><td colspan="6" class="empty">Aucune vente ni remontée sur ce mois.</td></tr>';
+    limiter3("#fd-match", $("#fd-match-q").value);
     // Total du mois, semaine en cours comprise : un montant remonté sur une autre semaine est quand même compensé
     const totV = rows.reduce((a, x) => a + x.v, 0), totR = rows.reduce((a, x) => a + x.r, 0), totE = totR - totV;
     $("#fd-match-foot").innerHTML = rows.length ? "<tr><td colspan=2>TOTAL DU MOIS</td><td class=\"num\">" + money0(totV) + '</td><td class="num">' + money0(totR) +
@@ -2814,6 +2815,7 @@
         (admin ? '<button class="btn small" data-rm-sem="' + r.id + '" title="Changer la semaine de cette remontée">📅 Semaine</button> ' : "") +
         (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="empty">Aucune remontée sur ce mois.</td></tr>';
+    limiter3("#fd-rem", $("#fd-rem-q").value);
 
     // KPI
     const vMois = scope.reduce((a, b) => a + ventesDeclarees(b.code, du, au), 0);
@@ -4769,6 +4771,7 @@
     if (qq && !garde.length && vrais.length) tb.insertAdjacentHTML("beforeend", '<tr class="fr-plus"><td colspan="' + cols + '" class="muted">Aucune ligne ne correspond à « ' + esc(q.trim()) + " ».</td></tr>");
   }
   ["#fr-bq-q", "#fr-ventes-q", "#fr-retraits-q"].forEach((id) => $(id).addEventListener("input", () => renderRecapFrigo(frigoScope())));
+  ["#fd-match-q", "#fd-rem-q"].forEach((id) => $(id).addEventListener("input", () => renderFonds()));
   // Contenu d'une course : produits, quantités, prix (achat pour l'admin), frais et totaux
   function contenuCourse(c, admin) {
     const lignes = c.detail ? c.detail.lignes : (db.fgLignes || []).filter((l) => l.courseId === c.id).map((l) => ({ code: l.code, nom: l.nom, qte: l.qte, transfert: l.transfert }));
