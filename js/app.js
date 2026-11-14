@@ -4007,7 +4007,10 @@
   let fsVue = "tous", fgTab = (() => { try { return localStorage.getItem("onglet-frigo") || "ops"; } catch (e) { return "ops"; } })(), fcLignes = [{ code: "", qte: "", total: "" }];
   const FRIGO_DEBUT = "2026-11-10";
   // Montants du frigo au centime près (prix unitaires = total ÷ quantité)
-  const money2 = (n) => money(Math.round(Number(n || 0) * 100) / 100);
+  // Montants affichés sans décimales (arrondis au franc) ; les calculs gardent les centimes
+  const money2 = (n) => money(Math.round(Number(n || 0)));
+  // Prix UNITAIRES (ex. eau pure à 8,33) : on garde 2 décimales
+  const moneyU = (n) => money(Math.round(Number(n || 0) * 100) / 100);
   const sumBy = (l, f) => l.reduce((a, x) => a + (Number(f(x)) || 0), 0);
   function canFrigoDotation() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.frigoDotation); }
   function canFrigoCourse() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && myBoutiqueCode()); }
@@ -4683,11 +4686,11 @@
       (admin && db.products.some((p) => p.code === r.code) ? ' <button class="btn-bic" data-fs-nom="' + esc(r.code) + '" title="Modifier le nom du produit">✏️</button>' : "") +
       (admin && (productByCode(r.code) || {}).valide === false ? ' <button class="btn small success" data-fs-valid="' + esc(r.code) + '" title="Produit créé par un CC : à valider">✓ Valider</button>' : "") +
       "</td><td>" + esc(r.categorie) +
-      '</td><td class="num admin-only">' + (r.achat != null ? money2(r.achat) : '<span class="muted">—</span>') + '</td><td class="num">' +
+      '</td><td class="num admin-only">' + (r.achat != null ? moneyU(r.achat) : '<span class="muted">—</span>') + '</td><td class="num">' +
       (admin && db.products.some((p) => p.code === r.code)
         ? '<input type="number" min="0" step="any" class="inline-input si-input" data-fs-pv="' + esc(r.code) + '" value="' + r.pv + '" title="Prix de vente de ' + esc(r.nom) + ' (Entrée pour valider)">'
         : num(r.pv)) +
-      '</td><td class="num admin-only">' + (r.achat != null ? '<b class="delta ' + (r.pv - r.achat < 0 ? "down" : "up") + '">' + (r.pv - r.achat > 0 ? "+" : "") + money2(r.pv - r.achat) + "</b>" : '<span class="muted">—</span>') +
+      '</td><td class="num admin-only">' + (r.achat != null ? '<b class="delta ' + (r.pv - r.achat < 0 ? "down" : "up") + '">' + (r.pv - r.achat > 0 ? "+" : "") + moneyU(r.pv - r.achat) + "</b>" : '<span class="muted">—</span>') +
       '</td><td class="num">' + num(r.entrees) + '</td><td class="num">' + num(r.sorties) + '</td><td class="num">' +
       (admin && scope.length === 1
         ? '<input type="number" min="0" step="any" class="inline-input si-input" data-fs-stock="' + esc(r.code) + '" value="' + r2_(r.stock) + '" title="Corriger le stock actuel de ' + esc(r.nom) + ' à ' + esc(scope[0].nom) + ' (Entrée pour valider)">'
