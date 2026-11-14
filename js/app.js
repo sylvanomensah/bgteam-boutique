@@ -2787,6 +2787,7 @@
     $("#fd-match").innerHTML = rows.length ? rows.map((x) => "<tr><td>Du " + fmtDate(x.w) + " au " + fmtDate(weekEnd(x.w)) + "</td><td>" + esc(x.b.nom) +
       '</td><td class="num">' + money0(x.v) + '</td><td class="num">' + money0(x.r) + '</td><td class="num">' + (weekEnd(x.w) >= t && !x.r ? "—" : ecartHtml(x.r - x.v)) + "</td><td>" + x.st + "</td></tr>").join("")
       : '<tr><td colspan="6" class="empty">Aucune vente ni remontée sur ce mois.</td></tr>';
+    listeSemaines("#fd-match", "#fd-match-sem");
     limiter3("#fd-match", $("#fd-match-q").value);
     // Total du mois, semaine en cours comprise : un montant remonté sur une autre semaine est quand même compensé
     const totV = rows.reduce((a, x) => a + x.v, 0), totR = rows.reduce((a, x) => a + x.r, 0), totE = totR - totV;
@@ -2815,6 +2816,7 @@
         (admin ? '<button class="btn small" data-rm-sem="' + r.id + '" title="Changer la semaine de cette remontée">📅 Semaine</button> ' : "") +
         (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="empty">Aucune remontée sur ce mois.</td></tr>';
+    listeSemaines("#fd-rem", "#fd-rem-sem");
     limiter3("#fd-rem", $("#fd-rem-q").value);
 
     // KPI
@@ -4758,6 +4760,13 @@
   // Récap mensuel du frigo
   let frCourseOuverte = null;
   // Tableaux du Récap : 3 lignes affichées ; les autres se trouvent avec la recherche (le contenu d'une course suit sa ligne)
+  // Liste déroulante de la recherche : les semaines (1re colonne) et les boutiques (2e colonne) du tableau
+  function listeSemaines(tbodySel, listSel) {
+    const tb = $(tbodySel), dl = $(listSel); if (!tb || !dl) return;
+    const col = (i) => [...tb.querySelectorAll("tr > td:nth-child(" + i + ")")].map((td) => td.textContent.trim()).filter((t) => t && !td_vide(t));
+    const td_vide = (t) => /^aucun/i.test(t);
+    dl.innerHTML = [...new Set(col(1).concat(col(2)))].map((v) => '<option value="' + esc(v) + '">').join("");
+  }
   function limiter3(tbodySel, q) {
     const tb = $(tbodySel); if (!tb) return;
     const groupes = [];
