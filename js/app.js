@@ -38,8 +38,9 @@
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
-  function num(n) { return Number(n || 0).toLocaleString("fr-FR"); }
-  function money(n) { return num(n) + " " + (db.settings.devise || "FCFA"); }
+  // Séparateur des milliers bien visible (14 875) : l’espace fine du français est remplacée par une espace normale insécable
+  function num(n) { return Number(n || 0).toLocaleString("fr-FR").replace(/[\u202f\u00a0]/g, "\u00a0"); }
+  function money(n) { return num(n) + "\u00a0" + (db.settings.devise || "FCFA"); }
   function iso(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
   function parse(s) { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d, 12); }
   function today() { return iso(new Date()); }
