@@ -1714,12 +1714,33 @@ update public.entries e set boutique = co.boutique from public.courses co where 
 update public.entries e set boutique = c.boutique from public.ccs c where e.course_id is null and e.cc = c.code and e.boutique is null and c.boutique is not null;
 update public.entries set boutique = 'B1' where boutique is null and exists (select 1 from public.boutiques where code = 'B1');
 
+
+-- Frigo : corrections du stock actuel par l'admin (écart d'inventaire). Stock frigo = courses − ventes en caisse + corrections
+create table if not exists public.frigo_ajustements (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  code text not null,
+  qte numeric not null check (qte <> 0),
+  date date not null default current_date,
+  note text not null default '',
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+alter table public.frigo_ajustements enable row level security;
+drop policy if exists frigo_ajust_select on public.frigo_ajustements;
+create policy frigo_ajust_select on public.frigo_ajustements for select to authenticated
+  using (public.is_member() and (public.is_global() or public.can_frigo_dotation() or boutique = public.my_boutique()));
+drop policy if exists frigo_ajust_admin on public.frigo_ajustements;
+create policy frigo_ajust_admin on public.frigo_ajustements for all to authenticated using (public.is_admin()) with check (public.is_admin());
+grant select, insert, update, delete on public.frigo_ajustements to authenticated;
+
 -- Temps réel : diffuse les nouvelles ventes, entrées et courses aux écrans ouverts
 -- (les règles de sécurité ci-dessus s'appliquent aussi à cette diffusion).
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'credit_ajustements', 'credit_demandes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'credit_ajustements', 'credit_demandes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations', 'frigo_ajustements'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

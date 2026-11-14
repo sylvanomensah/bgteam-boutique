@@ -30,7 +30,7 @@
   let dashComPage = false; // admin : page « Commissions du crédit télécom » du tableau de bord
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], crContacts: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], crContacts: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [], fgAjust: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -146,6 +146,9 @@
     let fgSorties = [];
     try { fgSorties = chk(await sb.rpc("frigo_sorties")) || []; } catch (e) { fgSorties = []; }
     // Stock frigo : lignes des courses (quantités ; prix d'achat pour l'admin)
+    // Corrections du stock frigo faites par l'admin (écart d'inventaire)
+    let fgAjust = [];
+    try { fgAjust = await fetchAll("frigo_ajustements", "created_at"); } catch (e) { fgAjust = []; }
     let fgLignes = [];
     try { fgLignes = chk(await sb.rpc("frigo_stock_lignes")) || []; } catch (e) { fgLignes = []; }
     const st = chk(settingsRes) || {};
@@ -215,6 +218,7 @@
       fgLignes: fgLignes.map((x) => ({ courseId: x.course_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, code: x.code || "", nom: x.nom || x.code || "",
         qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat), transfert: !!x.transfert })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
+      fgAjust: (fgAjust || []).map((x) => ({ id: x.id, boutique: x.boutique, code: x.code, qte: Number(x.qte) || 0, date: x.date, note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       crContacts: (crContacts || []).map((x) => ({ cc: String(x.cc), boutique: x.boutique || "", tel: x.telephone || "" })),
       crDemandes: (crDemandes || []).map((x) => ({ id: x.id, createdAt: x.created_at, demandeur: x.demandeur || "" })),
@@ -386,6 +390,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_ventes" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_retraits" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_dotations" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "frigo_ajustements" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -1458,9 +1463,11 @@
   }
   // Caisse : pour un produit du frigo de la boutique (présent dans une de ses courses), on compte le STOCK FRIGO
   // (achats des courses − ventes en caisse) ; sinon le stock du menu Stock.
-  function estFrigo(code, bq) { return !!bq && (db.fgLignes || []).some((l) => l.boutique === bq && l.code === code); }
+  function estFrigo(code, bq) { return !!bq && ((db.fgLignes || []).some((l) => l.boutique === bq && l.code === code) || (db.fgAjust || []).some((a) => a.boutique === bq && a.code === code)); }
+  // Correction du stock frigo par l'admin (somme des écarts saisis)
+  function ajustFrigoOf(code, bq) { return sumBy((db.fgAjust || []).filter((a) => a.boutique === bq && a.code === code), (a) => a.qte); }
   function stockFrigoOf(code, bq) {
-    return sumBy((db.fgLignes || []).filter((l) => l.boutique === bq && l.code === code), (l) => l.qte) - sumBy((db.fgSorties || []).filter((x) => x.boutique === bq && x.code === code), (x) => x.qte);
+    return sumBy((db.fgLignes || []).filter((l) => l.boutique === bq && l.code === code), (l) => l.qte) - sumBy((db.fgSorties || []).filter((x) => x.boutique === bq && x.code === code), (x) => x.qte) + ajustFrigoOf(code, bq);
   }
   function stockCaisse(p, bq) { return estFrigo(p.code, bq) ? stockFrigoOf(p.code, bq) : stockActuel(p, bq); }
   function statutCaisse(p, bq) { const s = stockCaisse(p, bq); return s <= 0 ? "RUPTURE" : s <= Number(p.stockMin) ? "STOCK FAIBLE" : "OK"; }
@@ -4477,7 +4484,8 @@
     db.products.forEach((p) => { if (!parCode.has(p.code)) parCode.set(p.code, { code: p.code, nom: p.nom, entrees: 0, sorties: 0, achat: null, achatAt: "" }); });
     const rows = Array.from(parCode.values()).map((r) => {
       const p = db.products.find((y) => y.code === r.code);
-      const stock = r.entrees - r.sorties, pv = p ? Number(p.pv) : 0, s = Math.max(0, stock);
+      r.ajust = sumBy((db.fgAjust || []).filter((a) => codes.includes(a.boutique) && a.code === r.code), (a) => a.qte);
+      const stock = r.entrees - r.sorties + r.ajust, pv = p ? Number(p.pv) : 0, s = Math.max(0, stock);
       const statut = stock <= 0 ? "RUPTURE" : p && Number(p.stockMin) > 0 && stock <= Number(p.stockMin) ? "STOCK FAIBLE" : "OK";
       return Object.assign(r, { nom: p ? p.nom : r.nom, categorie: p ? p.categorie : "", pv, stock, statut,
         valAchat: r.achat != null ? s * r.achat : 0, valVente: s * pv });
@@ -4506,8 +4514,12 @@
         ? '<input type="number" min="0" step="any" class="inline-input si-input" data-fs-pv="' + esc(r.code) + '" value="' + r.pv + '" title="Prix de vente de ' + esc(r.nom) + ' (Entrée pour valider)">'
         : num(r.pv)) +
       '</td><td class="num admin-only">' + (r.achat != null ? '<b class="delta ' + (r.pv - r.achat < 0 ? "down" : "up") + '">' + (r.pv - r.achat > 0 ? "+" : "") + money2(r.pv - r.achat) + "</b>" : '<span class="muted">—</span>') +
-      '</td><td class="num">' + num(r.entrees) + '</td><td class="num">' + num(r.sorties) + '</td><td class="num"><b>' + num(r.stock) +
-      '</b></td><td class="num admin-only">' + money2(r.valAchat) + '</td><td class="num admin-only">' + (r.achat != null ? beneStockHtml(r.valVente - r.valAchat) : '<span class="muted">—</span>') +
+      '</td><td class="num">' + num(r.entrees) + '</td><td class="num">' + num(r.sorties) + '</td><td class="num">' +
+      (admin && scope.length === 1
+        ? '<input type="number" min="0" step="any" class="inline-input si-input" data-fs-stock="' + esc(r.code) + '" value="' + r2_(r.stock) + '" title="Corriger le stock actuel de ' + esc(r.nom) + ' à ' + esc(scope[0].nom) + ' (Entrée pour valider)">'
+        : "<b>" + num(r.stock) + "</b>") +
+      (r.ajust ? '<span class="sub" title="Corrections de stock faites par l’administrateur">corrigé ' + (r.ajust > 0 ? "+" : "") + num(r.ajust) + "</span>" : "") +
+      '</td><td class="num admin-only">' + money2(r.valAchat) + '</td><td class="num admin-only">' + (r.achat != null ? beneStockHtml(r.valVente - r.valAchat) : '<span class="muted">—</span>') +
       '</td><td class="num">' + money2(r.valVente) + "</td><td>" + statutBadge(r.statut) + "</td></tr>").join("")
       : '<tr><td colspan="13" class="empty">' + (q ? "Aucun produit ne correspond à la recherche." : "Aucun produit dans cette vue (" + vueLib[fsVue] + ").") + "</td></tr>";
     $("#fs-foot").innerHTML = list.length ? '<tr class="total-row"><td colspan="3"><b>TOTAL' + (q ? " (recherche)" : "") + '</b></td><td class="admin-only"></td><td></td><td class="admin-only"></td><td class="num"><b>' + num(tot(list, (r) => r.entrees)) +
@@ -4534,6 +4546,20 @@
     const deja = db.products.find((x) => x.code !== p.code && String(x.nom).trim().toUpperCase() === nom);
     if (deja) return toast("Ce nom est déjà utilisé par " + deja.code + ".");
     act(async () => chk(await sb.from("products").update({ nom }).eq("code", p.code)), "Produit " + p.code + " renommé : " + nom + ".", b);
+  });
+  // Corriger le stock actuel d'un produit du frigo (admin, une boutique choisie) : enregistre l'écart, pris en compte partout
+  // (Caisse : stock disponible et rupture, valeur et bénéfice du stock, estimation du stock disponible du tableau de bord)
+  $("#fs-rows").addEventListener("change", (e) => {
+    const inp = e.target.closest("[data-fs-stock]"); if (!inp || !isAdmin()) return;
+    const scope = frigoScope(); if (scope.length !== 1) return toast("Choisissez d'abord une boutique.");
+    const bq = scope[0].code, code = inp.dataset.fsStock, p = productByCode(code), nom = p ? p.nom : code;
+    const actuel = r2_(stockFrigoOf(code, bq)), v = Number(inp.value);
+    if (!(inp.value !== "" && v >= 0)) { inp.value = actuel; return toast("Indiquez un stock valide (0 ou plus)."); }
+    const ecart = r2_(v - actuel);
+    if (!ecart) return;
+    if (!confirm("Corriger le stock frigo de « " + nom + " » à " + boutiqueName(bq) + " : " + num(actuel) + " → " + num(v) + " (" + (ecart > 0 ? "+" : "") + num(ecart) + ").\n\nLe nouveau stock s'applique partout (Caisse, valeur du stock, tableau de bord). Confirmer ?")) { inp.value = actuel; return; }
+    act(async () => chk(await sb.from("frigo_ajustements").insert({ boutique: bq, code, qte: ecart, date: today(), note: "Stock corrigé de " + actuel + " à " + v, saisi_par: me.nom || me.email || "" })),
+      "Stock frigo de " + nom + " corrigé : " + num(v) + ".", inp);
   });
   // Modifier le prix de vente d'un produit du frigo (admin) : c'est le prix du catalogue, utilisé aussi par la Caisse
   $("#fs-rows").addEventListener("change", (e) => {
@@ -5436,7 +5462,7 @@
       boutiques: db.boutiques, charges: db.charges, remontees: db.remontees, bobines: db.bobines, conges: db.conges, fiches: db.fiches,
       creditAchats: db.crAchats, creditVersements: db.crVers, creditSoldes: db.crSoldes, creditVentes: db.crVentes, creditAjustements: db.crAjust, creditDemandes: db.crDemandes,
       retraits: db.retraits, stocksInitiaux: db.stocksInit,
-      frigoCourses: db.fgCourses, frigoLignes: db.fgLignes, frigoSorties: db.fgSorties, frigoDotations: db.fgDotations, frigoRetraits: db.fgRetraits, frigoVentes: db.fgVentes,
+      frigoCourses: db.fgCourses, frigoLignes: db.fgLignes, frigoSorties: db.fgSorties, frigoDotations: db.fgDotations, frigoRetraits: db.fgRetraits, frigoAjustements: db.fgAjust, frigoVentes: db.fgVentes,
       utilisateurs: db.users.map((u) => ({ nom: u.nom, email: u.email, role: u.role, cc: u.cc, actif: u.actif }))
     };
     download("sauvegarde-" + (db.settings.nom || "boutique") + "-" + today() + ".json", JSON.stringify(data, null, 2), "application/json");
