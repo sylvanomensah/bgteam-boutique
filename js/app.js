@@ -494,11 +494,17 @@
     return db.entries.filter((e) => e.code === code && e.statut === "Validée" && inBq(bq, e.boutique)).reduce((a, e) => a + Number(e.qte), 0);
   }
   // Les ventes en caisse des produits du frigo sortent du STOCK FRIGO, pas du stock principal.
-  let fgIdsSrc = null, fgIds = new Set();
-  function venteFrigo(s) {
-    if (fgIdsSrc !== db.fgSorties) { fgIdsSrc = db.fgSorties; fgIds = new Set((db.fgSorties || []).map((x) => x.id)); }
-    return fgIds.has(s.id);
+  let fgIdsSrc = null, fgIds = new Set(), fgCouts = new Map();
+  function majFg() {
+    if (fgIdsSrc === db.fgSorties) return;
+    fgIdsSrc = db.fgSorties;
+    fgIds = new Set((db.fgSorties || []).map((x) => x.id));
+    // coût d'achat UNITAIRE d'une vente du frigo = prix d'achat de la ligne de course (consommé ÷ quantité)
+    fgCouts = new Map((db.fgSorties || []).filter((x) => x.qte > 0 && x.consomme != null).map((x) => [x.id, x.consomme / x.qte]));
   }
+  function venteFrigo(s) { majFg(); return fgIds.has(s.id); }
+  /** Prix d'achat unitaire d'une vente de produit du frigo (course du frigo), ou null si ce n'est pas une vente du frigo */
+  function coutFrigo(s) { majFg(); return fgCouts.has(s.id) ? fgCouts.get(s.id) : null; }
   function totalVentes(code, bq) {
     return db.sales.filter((s) => s.code === code && isCountedSale(s) && inBq(bq, saleBoutique(s)) && !venteFrigo(s)).reduce((a, s) => a + Number(s.qte), 0);
   }
@@ -766,7 +772,8 @@
     if (p === "mois") return periodRange(p, addMonths(ref, -1));
     return periodRange(p, (Number(ref.slice(0, 4)) - 1) + "-01-01");
   }
-  function costOf(s) { if (s.cout != null) return s.cout; const p = productByCode(s.code); return p ? p.cmp : 0; }
+  // Coût d'achat unitaire d'une vente : produit du frigo → prix d'achat de la course du frigo ; sinon coût du stock principal
+  function costOf(s) { const f = coutFrigo(s); if (f != null) return f; if (s.cout != null) return s.cout; const p = productByCode(s.code); return p ? p.cmp : 0; }
   function salesIn(du, au, bq) { return db.sales.filter((s) => isCountedSale(s) && s.date >= du && s.date <= au && (bq === "ALL" || saleBoutique(s) === bq)); }
   function chargesIn(du, au, bq) { return db.charges.filter((c) => c.date >= du && c.date <= au && (bq === "ALL" || c.boutique === bq)); }
   function metrics(du, au, bq) {
@@ -1667,7 +1674,9 @@
     const badge = (s) => (s.valide === "OUI" ? '<span class="badge ok">OUI</span>' : '<span class="badge mute">NON</span>');
     // Bénéfice d'une ligne = (prix de vente − prix d'achat) × quantité ; inconnu si aucun prix d'achat
     const beneOf = (s) => {
-      const c = s.cout != null ? s.cout : admin ? (Number((productByCode(s.code) || {}).cmp) || null) : null;
+      // produit du frigo : prix d'achat de la course du frigo (admin et gestionnaires du frigo) ; sinon coût du stock principal
+      const cf = admin || fgGlobal() ? coutFrigo(s) : null;
+      const c = cf != null ? cf : s.cout != null ? s.cout : admin ? (Number((productByCode(s.code) || {}).cmp) || null) : null;
       return c == null || c <= 0 ? null : Math.round(lineTotal(s) - Number(s.qte) * c);
     };
     const beneHtml = (v) => (v == null ? '<span class="muted" title="Prix d\'achat inconnu">—</span>' : '<b class="delta ' + (v < 0 ? "down" : "up") + '">' + (v > 0 ? "+" : "") + money(v) + "</b>");
@@ -2720,6 +2729,7 @@
   }
   // Coût d'achat d'une ligne de vente : coût moyen enregistré sur la vente, sinon coût moyen actuel du produit
   function coutVente(s) {
+    const f = coutFrigo(s); if (f != null) return f;
     if (s.cout != null) return s.cout;
     const p = productByCode(s.code);
     return p ? Number(p.cmp) || 0 : 0;
