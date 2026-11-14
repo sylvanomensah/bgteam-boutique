@@ -4754,6 +4754,32 @@
     act(async () => chk(await sb.from("products").update({ pv }).eq("code", p.code)), "Prix de vente de " + p.nom + " : " + money(pv) + ".", inp);
   });
   // Récap mensuel du frigo
+  let frCourseOuverte = null;
+  // Contenu d'une course : produits, quantités, prix (achat pour l'admin), frais et totaux
+  function contenuCourse(c, admin) {
+    const lignes = c.detail ? c.detail.lignes : (db.fgLignes || []).filter((l) => l.courseId === c.id).map((l) => ({ code: l.code, nom: l.nom, qte: l.qte, transfert: l.transfert }));
+    if (!lignes.length) return '<p class="muted" style="margin:0">Contenu indisponible.</p>';
+    const pv = (l) => l.vente != null ? Number(l.vente) : Number((productByCode(l.code) || {}).pv || 0);
+    let h = '<table class="table fr-contenu"><thead><tr><th>Produit</th><th class="num">Quantité</th>' + (admin ? '<th class="num">Prix d’achat unitaire</th><th class="num">Total achat</th>' : "") +
+      '<th class="num">Prix de vente</th><th class="num">Total vente</th></tr></thead><tbody>' +
+      lignes.map((l) => "<tr><td>" + esc(l.nom || l.code) + (l.transfert ? ' <span class="badge mute">transfert</span>' : "") + '</td><td class="num">' + num(l.qte) + "</td>" +
+        (admin ? '<td class="num">' + moneyU(l.achat) + '</td><td class="num">' + money2(Number(l.qte) * Number(l.achat || 0)) + "</td>" : "") +
+        '<td class="num">' + money2(pv(l)) + '</td><td class="num">' + money2(Number(l.qte) * pv(l)) + "</td></tr>").join("") + "</tbody>";
+    const d = c.detail;
+    if (admin && d) {
+      const frais = d.deplacement + d.sachet + d.autres;
+      h += '<tfoot><tr class="total-row"><td><b>Total</b></td><td class="num"><b>' + num(sumBy(lignes, (l) => Number(l.qte))) + '</b></td><td></td><td class="num"><b>' + money2(d.achats) + '</b></td><td></td><td class="num"><b>' + money2(c.valeur) + "</b></td></tr>" +
+        (frais > 0 ? '<tr><td colspan="6" class="muted">Frais : ' + [d.deplacement ? "déplacement " + money2(d.deplacement) : "", d.sachet ? "sachet " + money2(d.sachet) : "", d.autres ? (d.autresLib || "autres") + " " + money2(d.autres) : ""].filter(Boolean).join(" · ") +
+          " — total de la course " + money2(c.cout) + "</td></tr>" : "") + "</tfoot>";
+    }
+    return h + "</table>";
+  }
+  $("#fr-courses").addEventListener("click", (e) => {
+    const tr = e.target.closest("[data-fr-course]"); if (!tr) return;
+    frCourseOuverte = frCourseOuverte === tr.dataset.frCourse ? null : tr.dataset.frCourse;
+    renderRecapFrigo(frigoScope());
+  });
+  $("#fr-courses-q").addEventListener("input", () => renderRecapFrigo(frigoScope()));
   function renderRecapFrigo(scope) {
     const admin = isAdmin(), mois = $("#fg-mois").value || today().slice(0, 7), nomMois = fmtMonth(mois + "-01"), codes = scope.map((b) => b.code);
     $("#fr-titre").textContent = "Récap du frigo — " + nomMois;
@@ -4790,9 +4816,15 @@
     $("#fr-ventes-head").innerHTML = fgJoursHead(admin);
     $("#fr-ventes").innerHTML = fgJoursRows(codes, mois, admin);
     $("#fr-courses-head").innerHTML = "<tr><th>Date</th><th>Boutique</th><th class=\"num\">Total de la course (crédit vente)</th><th class=\"num\">Estimation des ventes</th>" + (admin ? '<th class="num">Bénéfice estimé</th>' : "") + "<th>Saisi par</th></tr>";
-    $("#fr-courses").innerHTML = courses.length ? courses.slice().sort((a, b) => b.date.localeCompare(a.date)).map((c) => "<tr><td>" + fmtDate(c.date) + "</td><td>" + esc(boutiqueName(c.boutique)) + '</td><td class="num"><b>' + money2(c.cout) + '</b></td><td class="num">' + money2(c.valeur) + "</td>" +
-      (admin ? '<td class="num pos">' + money2(c.valeur - c.cout) + "</td>" : "") + "<td>" + esc(c.saisiPar || "—") + "</td></tr>").join("")
-      : '<tr><td colspan="6" class="empty">Aucune course en ' + esc(nomMois) + ".</td></tr>";
+    // Recherche (date au format JJ/MM/AAAA ou AAAA-MM-JJ, boutique, saisi par) ; clic sur une course = son contenu
+    const qc = ($("#fr-courses-q").value || "").trim().toLowerCase();
+    // Suggestions : les dates des courses (et les boutiques)
+    $("#fr-courses-dates").innerHTML = [...new Set(courses.map((c) => fmtDate(c.date)).concat(courses.map((c) => boutiqueName(c.boutique))))].map((v) => '<option value="' + esc(v) + '">').join("");
+    const coursesV = qc ? courses.filter((c) => (fmtDate(c.date) + " " + c.date + " " + boutiqueName(c.boutique) + " " + (c.saisiPar || "")).toLowerCase().includes(qc)) : courses;
+    $("#fr-courses").innerHTML = coursesV.length ? coursesV.slice().sort((a, b) => b.date.localeCompare(a.date) || String(b.createdAt).localeCompare(String(a.createdAt))).map((c) => '<tr class="fr-course' + (frCourseOuverte === c.id ? " ouverte" : "") + '" data-fr-course="' + c.id + '" title="Voir le contenu de la course"><td>' + (frCourseOuverte === c.id ? "▾ " : "▸ ") + fmtDate(c.date) + "</td><td>" + esc(boutiqueName(c.boutique)) + '</td><td class="num"><b>' + money2(c.cout) + '</b></td><td class="num">' + money2(c.valeur) + "</td>" +
+      (admin ? '<td class="num pos">' + money2(c.valeur - c.cout) + "</td>" : "") + "<td>" + esc(c.saisiPar || "—") + "</td></tr>" +
+      (frCourseOuverte === c.id ? '<tr class="fr-course-detail"><td colspan="6">' + contenuCourse(c, admin) + "</td></tr>" : "")).join("")
+      : '<tr><td colspan="6" class="empty">' + (qc ? "Aucune course ne correspond à la recherche." : "Aucune course en " + esc(nomMois) + ".") + "</td></tr>";
     if (admin) $("#fr-retraits").innerHTML = retraits.length ? retraits.slice().sort((a, b) => b.date.localeCompare(a.date)).map((r) => "<tr><td>" + fmtDate(r.date) + "</td><td>" + esc(boutiqueName(r.boutique)) +
       '</td><td class="num"><b>' + money2(r.montant) + "</b></td><td>" + esc(r.note || "—") + "</td><td>" + esc(r.saisiPar || "—") + "</td></tr>").join("") : '<tr><td colspan="5" class="empty">Aucun retrait en ' + esc(nomMois) + ".</td></tr>";
   }

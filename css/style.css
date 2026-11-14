@@ -1085,3 +1085,11 @@ tr.ligne-flash > td { animation: ligneflash 2.4s ease-out; }
 .raz-recap ul { margin: 6px 0 10px 18px; padding: 0; }
 .raz-recap li { margin: 4px 0; }
 #raz-dialog label { display: grid; gap: 6px; margin: 8px 0 12px; }
+
+/* Récap du frigo : courses (recherche, taille réduite, contenu au clic) */
+.fr-courses-wrap { max-height: 360px; overflow-y: auto; }
+#fr-courses-q { max-width: 340px; }
+tr.fr-course { cursor: pointer; }
+tr.fr-course:hover > td, tr.fr-course.ouverte > td { background: var(--primary-soft, #eef2ff); }
+tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
+.fr-contenu { font-size: .9rem; }
