@@ -1369,6 +1369,19 @@
   </dialog>
 
   <!-- Confirmation d'une recharge de crédit -->
+  <!-- Remise à zéro du frigo : confirmation (récapitulatif + nom de la boutique à taper) -->
+  <dialog id="raz-dialog">
+    <form method="dialog">
+      <h2>⚠ Remettre le frigo à zéro ?</h2>
+      <div id="raz-recap" class="raz-recap"></div>
+      <label>Pour confirmer, tapez le nom de la boutique : <b id="raz-nom"></b><input id="raz-saisie" autocomplete="off" placeholder="Nom de la boutique"></label>
+      <div class="actions">
+        <button class="btn" value="non">Annuler</button>
+        <button class="btn danger" value="oui" id="raz-oui" disabled>Oui, remettre à zéro</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="crconf-dialog">
     <form method="dialog">
       <h2 id="crconf-titre">Confirmer la recharge</h2>

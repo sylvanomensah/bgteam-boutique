@@ -4564,7 +4564,7 @@
   // Remise à zéro du frigo d'une boutique (admin) : stock de chaque produit à 0 et stock restant au coût d'achat à 0,
   // SANS compter de perte pour la boutique (on repart d'une nouvelle course)
   const estRaz = (a) => /^RAZ/.test(a.note || "");
-  $("#fs-raz").addEventListener("click", (e) => {
+  $("#fs-raz").addEventListener("click", async (e) => {
     const scope = frigoScope(); if (!isAdmin() || scope.length !== 1) return toast("Choisissez une boutique.");
     const bq = scope[0].code, nomBq = boutiqueName(bq);
     const codesFg = [...new Set([...(db.fgLignes || []).filter((l) => l.boutique === bq && l.code).map((l) => l.code), ...(db.fgAjust || []).filter((a) => a.boutique === bq && a.code && a.code !== "_RAZ").map((a) => a.code)])];
@@ -4575,11 +4575,20 @@
     const diff = r2_(-restant - val); // écart d'arrondi / frais : ligne d'argent seule pour arriver à 0 exactement
     if (Math.abs(diff) > 0.004) rows.push({ boutique: bq, code: "_RAZ", qte: 1, cout_unit: diff });
     if (!rows.length) return toast("Le frigo de " + nomBq + " est déjà à zéro.");
-    if (!confirm("Remettre le frigo de " + nomBq + " à ZÉRO ?\n\n• Stock de chaque produit → 0 (" + rows.filter((r) => r.code !== "_RAZ").length + " produit(s))\n• Stock restant au coût d'achat → 0 (au lieu de " + money2(restant) + ")\n\nCe n'est PAS une perte pour la boutique (rien à reverser en plus). L'historique des ventes et des versements est gardé. Vous repartez ensuite d'une nouvelle course.")) return;
-    // 2e confirmation : taper le nom de la boutique (évite une remise à zéro par erreur)
-    const tape = prompt("Confirmation : pour remettre à zéro le frigo de cette boutique, tapez son nom :\n\n" + nomBq);
-    if (tape === null) return;
-    if (tape.trim().toUpperCase() !== nomBq.trim().toUpperCase()) return toast("Nom différent de « " + nomBq + " » : remise à zéro annulée.");
+    // Confirmation dans une fenêtre de l'application : récapitulatif, puis nom de la boutique à taper
+    const nbProd = rows.filter((r) => r.code !== "_RAZ").length;
+    $("#raz-recap").innerHTML = "<p>Boutique : <b>" + esc(nomBq) + "</b></p><ul>" +
+      "<li>Stock de chaque produit → <b>0</b> (" + nbProd + " produit" + (nbProd > 1 ? "s" : "") + ")</li>" +
+      "<li>Stock restant au coût d'achat → <b>0</b> (au lieu de " + money2(restant) + ")</li>" +
+      "<li>Ce n'est <b>pas une perte</b> pour la boutique : rien à reverser en plus</li>" +
+      "<li>L'historique des ventes et des versements est gardé</li></ul><p class=\"hint\">Vous repartez ensuite d'une nouvelle course.</p>";
+    $("#raz-nom").textContent = nomBq;
+    const dlg = $("#raz-dialog"), champ = $("#raz-saisie"), oui = $("#raz-oui");
+    champ.value = ""; oui.disabled = true;
+    champ.oninput = () => { oui.disabled = champ.value.trim().toUpperCase() !== nomBq.trim().toUpperCase(); };
+    dlg.returnValue = "";
+    const ok = await new Promise((resolve) => { dlg.onclose = () => resolve(dlg.returnValue === "oui"); dlg.showModal(); setTimeout(() => champ.focus(), 50); });
+    if (!ok || champ.value.trim().toUpperCase() !== nomBq.trim().toUpperCase()) return toast("Remise à zéro annulée.");
     const nom = me.nom || me.email || "";
     act(async () => chk(await sb.from("frigo_ajustements").insert(rows.map((r) => Object.assign(r, { date: today(), note: "RAZ — Remise à zéro du frigo", saisi_par: nom })))),
       "Frigo de " + nomBq + " remis à zéro : faites maintenant la nouvelle course.", e.target);
