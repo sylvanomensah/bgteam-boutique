@@ -1128,3 +1128,5 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 .fg-rang { display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 10px; border-radius: 999px; background: #f3f4f6; font-size: .85rem; }
 .fg-rang.top { background: #fff7e0; border: 1px solid #f5d27a; }
 .fg-rang small { color: var(--muted, #6b7280); }
+/* Filtre Boutique toujours à droite dans les pages Frigo et Crédit télécom du tableau de bord */
+#dash-fg > .toolbar .cc-filter, #dash-com > .toolbar .cc-filter { margin-left: auto; }
