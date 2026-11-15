@@ -971,6 +971,7 @@
           : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
+    try { renderDashFrigo(sel.value); } catch (er) { /* jamais bloquant */ }
     // 📲 Relances WhatsApp des CC « Contrôle Crédit »
     if (relanceJour !== today()) { relanceJour = today(); relanceEnvoyees = { controle: new Set(), commission: new Set() }; }
     const enCredit = (x) => x.boutique && boutiquesCredit().some((b) => b.code === x.boutique);
@@ -1020,6 +1021,58 @@
       : '<tr><td colspan="6" class="empty">Aucun versement déclaré.</td></tr>';
   }
   $("#dc-boutique").addEventListener("change", () => renderDashCom());
+  // 🧊 CC qui gèrent les reversements du frigo (CC « remontée des fonds » des boutiques avec frigo) : téléphone, WhatsApp, montant à remonter
+  let fgRelanceOuvert = false, fgRelanceEnvoyees = new Set(), fgRelanceJour = "";
+  function fgDuTermine(bq) { const lc = mondayOf(today()); return r2_(sumBy(resteARemonter(bq).semaines.filter((x) => x.w < lc), (x) => x.manque)); }
+  function fgSemainesDues(bq) { const lc = mondayOf(today()); return resteARemonter(bq).semaines.filter((x) => x.w < lc); }
+  function messageFrigo(cc, bq) {
+    const sem = fgSemainesDues(bq), du = fgDuTermine(bq);
+    return "Bonjour " + civiliteNom(cc) + ", merci de remonter les fonds du frigo de " + boutiqueName(bq) +
+      (sem.length ? " (semaine" + (sem.length > 1 ? "s" : "") + " du " + sem.map((x) => fmtDate(x.w)).join(", du ") + ")" : "") + " : " + money0(du) + ". Sur l'application BGTEAM";
+  }
+  function renderDashFrigo(selVal) {
+    const telDe = (cc) => { const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)); return f ? f.telephone || "" : ""; };
+    const avecFrigo = new Set(boutiquesFrigo().map((b) => b.code));
+    const contacts = db.settings.ccList.filter((c) => c.actif && c.entrees && c.boutique && avecFrigo.has(c.boutique) && (selVal === "ALL" || c.boutique === selVal))
+      .map((c) => ({ cc: c.code, boutique: c.boutique, tel: telDe(c.code) }))
+      .sort((a, b) => boutiqueName(a.boutique).localeCompare(boutiqueName(b.boutique)) || ccName(a.cc).localeCompare(ccName(b.cc)));
+    $("#dc-fg-contacts").innerHTML = contacts.length ? contacts.map((x) => {
+      const du = fgDuTermine(x.boutique), w = mondayOf(today()), enCours = Math.max(0, r2_(ventesDeclarees(x.boutique, w, weekEnd(w)) - sumMontant(remonteesOf(x.boutique, w)))), tel = String(x.tel || "").trim();
+      return "<tr><td>" + esc(boutiqueName(x.boutique)) + "</td><td><b>" + esc(ccName(x.cc)) + "</b></td><td>" +
+        (tel ? '<span class="tel-actions"><a class="btn small" href="tel:' + esc(tel.replace(/[^d+]/g, "")) + '">📞 ' + esc(tel) + "</a>" +
+          ' <a class="btn small btn-wa" target="_blank" rel="noopener" href="' + esc(lienWhatsApp(tel, messageFrigo(x.cc, x.boutique))) + '" title="Écrire sur WhatsApp" aria-label="Écrire sur WhatsApp">' + ICONE_WA + "</a></span>"
+          : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
+        '</td><td class="num">' + (du > 0 ? '<b class="neg">' + money0(du) + "</b>" : '<span class="pos">0</span>') + '</td><td class="num">' + money0(enCours) + "</td></tr>";
+    }).join("") : '<tr><td colspan="5" class="empty">Aucun CC « remontée des fonds » dans une boutique avec frigo' + (selVal === "ALL" ? "" : " (cette boutique)") + ".</td></tr>";
+    // Relance WhatsApp du lundi : CC dont la boutique doit encore de l'argent pour des semaines terminées
+    if (fgRelanceJour !== today()) { fgRelanceJour = today(); fgRelanceEnvoyees = new Set(); }
+    const lundi = new Date().getDay() === 1, liste = contacts.filter((x) => fgDuTermine(x.boutique) > 0.5);
+    $("#dc-fg-btn").innerHTML = '<button class="btn small ' + (lundi && liste.length ? "primary" : "") + '" data-fg-relance' + (lundi && liste.length ? "" : " disabled") +
+      (lundi ? "" : ' title="Les remontées du frigo se font le lundi"') + ">📲 Relancer le versement du frigo" + (!lundi ? " (le lundi)" : liste.length ? " (" + liste.length + ")" : " : tout est remonté ✓") + "</button>";
+    if (!lundi) fgRelanceOuvert = false;
+    const zone = $("#dc-fg-relance");
+    zone.classList.toggle("hidden", !fgRelanceOuvert || !liste.length);
+    if (fgRelanceOuvert && liste.length) {
+      const restants = liste.filter((x) => !fgRelanceEnvoyees.has(x.cc));
+      zone.innerHTML = '<div class="dc-relance-tete"><p><b>' + liste.length + " CC</b> n'ont pas encore remonté les fonds du frigo des semaines terminées. Appuyez sur le bouton vert : WhatsApp s'ouvre avec le message déjà écrit.</p>" +
+        (restants.length ? '<button class="btn small success" id="dc-fg-suivant">💬 Ouvrir le suivant (' + restants.length + " restant" + (restants.length > 1 ? "s" : "") + ")</button>" : '<span class="badge ok">✓ Tous relancés</span>') + "</div>" +
+        liste.map((x) => {
+          const tel = String(x.tel || "").trim(), env = fgRelanceEnvoyees.has(x.cc);
+          return '<div class="dc-relance-ligne' + (env ? " envoye" : "") + '"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · à remonter : " + money0(fgDuTermine(x.boutique)) + "</small></div>" +
+            (tel ? '<a class="btn small btn-wa" target="_blank" rel="noopener" data-fg-relance-cc="' + esc(x.cc) + '" href="' + esc(lienWhatsApp(tel, messageFrigo(x.cc, x.boutique))) + '" title="Relancer sur WhatsApp">' + ICONE_WA + "</a>"
+              : '<span class="muted">pas de numéro (fiche RH)</span>') + (env ? '<span class="badge ok">✓ envoyé</span>' : "") + "</div>";
+        }).join("");
+    }
+  }
+  $("#dash-com").addEventListener("click", (e) => {
+    if (e.target.closest("[data-fg-relance]")) { fgRelanceOuvert = !fgRelanceOuvert; return renderDashCom(); }
+    const wa = e.target.closest("[data-fg-relance-cc]");
+    if (wa) { fgRelanceEnvoyees.add(wa.dataset.fgRelanceCc); setTimeout(renderDashCom, 300); return; }
+    if (e.target.closest("#dc-fg-suivant")) {
+      const lien = [...document.querySelectorAll("#dc-fg-relance [data-fg-relance-cc]")].find((a) => !fgRelanceEnvoyees.has(a.dataset.fgRelanceCc));
+      if (lien) lien.click();
+    }
+  });
   // Relance WhatsApp : ouvrir / fermer la liste, marquer « envoyé », ouvrir le CC suivant
   $("#dash-com").addEventListener("click", (e) => {
     const ouv = e.target.closest("[data-relance-ouvrir]");
