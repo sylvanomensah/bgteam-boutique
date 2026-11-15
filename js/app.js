@@ -2705,10 +2705,14 @@
   function resteRemSemaine(bq, w) { return Math.round((ventesDeclarees(bq, w, weekEnd(w)) - sumMontant(remonteesOf(bq, w))) * 100) / 100; }
   // Semaine proposée : la plus ancienne qui doit encore de l'argent, sinon la semaine en cours
   let rmSemBq = null;
+  // Semaine proposée : le lundi, la plus ancienne semaine terminée qui doit encore de l'argent ; les autres jours, la semaine en cours
   function semaineARemonter(bq, weeks) {
+    const enCours = mondayOf(today());
     if (!bq) return weeks[0];
-    for (let i = weeks.length - 1; i >= 0; i--) if (resteRemSemaine(bq, weeks[i]) > 0.5) return weeks[i];
-    return weeks[0];
+    if (new Date().getDay() === 1 || isAdmin()) {
+      for (let i = weeks.length - 1; i >= 0; i--) if (weeks[i] < enCours && resteRemSemaine(bq, weeks[i]) > 0.5) return weeks[i];
+    }
+    return weeks.includes(enCours) ? enCours : weeks[0];
   }
   function fgSemaine(bq, w) {
     const ls = db.fgSorties.filter((x) => x.boutique === bq && x.date >= w && x.date <= weekEnd(w));
@@ -2766,7 +2770,8 @@
     const scur = $("#rm-semaine").value;
     const lundi = mondayOf(t), weeks = [];
     // CC : on ne remonte que des semaines terminées (pas la semaine en cours) ; l'admin peut tout enregistrer
-    for (let i = admin ? 0 : 1; i < 9; i++) weeks.push(addDays(lundi, -7 * i));
+    // Semaine en cours + semaines précédentes (historique) ; la semaine en cours se remonte le lundi suivant
+    for (let i = 0; i < 9; i++) weeks.push(addDays(lundi, -7 * i));
     $("#rm-semaine").innerHTML = weeks.map((w, i) => '<option value="' + w + '">' + (w === lundi ? "Semaine en cours — " : "") + "du " + fmtDate(w) + " au " + fmtDate(weekEnd(w)) + "</option>").join("");
     $("#rm-semaine").value = weeks.includes(scur) && rmSemBq === remBq ? scur : semaineARemonter(remBq, weeks);
     rmSemBq = remBq;
@@ -2921,7 +2926,12 @@
           '<div class="info-row"><span>&nbsp;&nbsp;dont bénéfice réalisé</span><span>' + money2(Math.max(0, fs.ventes - fs.achat)) + "</span></div>"
         : "") +
       '<div class="info-row"><span>Déjà remonté pour cette semaine</span><span>' + money2(r) + "</span></div>" +
-      '<div class="info-row"><span>Reste à remonter</span><span><b' + (reste > 0 ? ' class="neg"' : ' class="pos"') + ">" + money2(reste) + "</b></span></div>";
+      '<div class="info-row"><span>Reste à remonter</span><span><b' + (reste > 0 ? ' class="neg"' : ' class="pos"') + ">" + money2(reste) + "</b></span></div>" +
+      // Historique : les remontées déjà faites pour cette semaine
+      (remonteesOf(remBq, w).length ? '<div class="rm-histo"><b>Fonds remontés pour cette semaine :</b>' + remonteesOf(remBq, w).slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).map((x) =>
+        '<div class="info-row"><span>' + new Date(x.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + " · " + esc(x.mode || "") + (x.cc ? " · " + esc(ccName(x.cc)) : "") +
+        "</span><span><b>" + money2(x.montant) + "</b> " + (x.statut === "Reçue" ? '<span class="badge ok">✓ Validée</span>' : '<span class="badge warn">⏳ En attente</span>') + "</span></div>").join("") + "</div>" : "") +
+      (w === mondayOf(today()) ? '<div class="info-row"><span>📅 Semaine en cours</span><span>à remonter le <b>lundi ' + fmtDate(addDays(w, 7)) + "</b></span></div>" : "");
   }
   function journalOf(codes) {
     const out = [];

@@ -1111,3 +1111,6 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 .rep-mini .rep-l1 input { width: auto; padding: 4px 8px; font-size: .9rem; margin-left: auto; }
 .rep-mini .rep-l2 { margin-top: 6px; color: var(--muted, #555); }
 .rep-mini .rep-l2 strong { color: var(--primary, #4338ca); font-size: 1.05rem; }
+
+/* Remonter les fonds : historique de la semaine choisie */
+.rm-histo { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border, #ddd); }
