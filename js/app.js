@@ -27,6 +27,7 @@
   let currentView = null;
   let lastReload = 0;
   const dash = { periode: "jour", ref: today(), cc: "ALL", boutique: "ALL" };
+  let dashFgPage = false; // page « Frigo » du tableau de bord (admin et gestionnaire des commissions)
   let dashComPage = false; // admin : page « Commissions du crédit télécom » du tableau de bord
 
   function emptyDb() {
@@ -712,7 +713,7 @@
   }
   function show(view) {
     if (!canView(view)) view = isAdmin() ? "dashboard" : "caisse";
-    dashComPage = false; // le menu ramène au tableau de bord principal
+    dashComPage = false; dashFgPage = false; // le menu ramène au tableau de bord principal
     currentView = view;
     // Mémorise le menu ouvert (adresse + navigateur) pour le retrouver après une actualisation
     try { if (location.hash !== "#" + view) history.replaceState(null, "", "#" + view); } catch (e) {}
@@ -757,7 +758,9 @@
     document.body.classList.toggle("no-frigo-course", !canFrigoCourse());
     document.body.classList.toggle("rh-limite", isRhCc());
     document.body.classList.toggle("no-dash", !canView("dashboard"));
-    $("#view-dashboard").classList.toggle("com-only", !isAdmin() || dashComPage);
+    $("#view-dashboard").classList.toggle("fg-only", dashFgPage);
+    $("#view-dashboard").classList.toggle("com-only", !dashFgPage && (!isAdmin() || dashComPage));
+    document.body.classList.toggle("is-admin", isAdmin());
     if (!canView(view)) return show(view); // droit retiré en direct : on quitte la page
     try { renderAppAlert(); } catch (e) { /* jamais bloquant */ }
     $("#brand-name").textContent = db.settings.nom;
@@ -875,6 +878,10 @@
   function setDashComPage(on) { dashComPage = on; render("dashboard"); window.scrollTo(0, 0); }
   $("#tb-com-ouvrir").addEventListener("click", () => setDashComPage(true));
   $("#tb-com-retour").addEventListener("click", () => setDashComPage(false));
+  function setDashFgPage(on) { dashFgPage = on; render("dashboard"); window.scrollTo(0, 0); }
+  $("#tb-fg-ouvrir").addEventListener("click", () => { dashComPage = false; setDashFgPage(true); });
+  $("#tb-fg-ouvrir2").addEventListener("click", () => setDashFgPage(true));
+  $("#tb-fg-retour").addEventListener("click", () => setDashFgPage(false));
   // Mois dont la commission n'est pas encore versée (les versements soldent d'abord les mois les plus anciens)
   function moisCommissionDus(bq) {
     const parMois = {};
@@ -923,13 +930,6 @@
   function jourDemande() { return Number(today().slice(8, 10)) <= 2; }
   // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)
   function renderDashCom() {
-    // Liste des boutiques (avec frigo) qui n'ont fait aucune vente du frigo hier
-    try {
-      const hier = addDays(today(), -1);
-      const sans = boutiquesFrigo().filter((bq) => bq.actif !== false && !db.fgSorties.some((x) => x.boutique === bq.code && x.date === hier));
-      $("#dc-sansvente").innerHTML = '<h3 class="sub-title" style="margin:0 0 6px">🧊 Boutiques sans vente du frigo hier (' + fmtDate(hier) + ")</h3>" +
-        (sans.length ? "<ul>" + sans.map((bq) => "<li><b>" + esc(bq.nom) + "</b></li>").join("") + "</ul>" : '<p class="muted" style="margin:0">Toutes les boutiques ont vendu.</p>');
-    } catch (e) { $("#dc-sansvente").innerHTML = ""; }
     const card = $("#dash-com");
     card.classList.toggle("hidden", !canGererCom());
     if (!canGererCom()) return;
@@ -971,7 +971,6 @@
           : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
-    try { renderDashFrigo(sel.value); } catch (er) { /* jamais bloquant */ }
     // 📲 Relances WhatsApp des CC « Contrôle Crédit »
     if (relanceJour !== today()) { relanceJour = today(); relanceEnvoyees = { controle: new Set(), commission: new Set() }; }
     const enCredit = (x) => x.boutique && boutiquesCredit().some((b) => b.code === x.boutique);
@@ -1030,6 +1029,22 @@
     return "Bonjour " + civiliteNom(cc) + ", merci de remonter les fonds du frigo de " + boutiqueName(bq) +
       (sem.length ? " (semaine" + (sem.length > 1 ? "s" : "") + " du " + sem.map((x) => fmtDate(x.w)).join(", du ") + ")" : "") + " : " + money0(du) + ". Sur l'application BGTEAM";
   }
+  // Page « 🧊 Frigo » du tableau de bord
+  function renderDashFg() {
+    if (!canGererCom()) return;
+    const bqs = boutiquesFrigo(), sel = $("#dfg-boutique"), cur = sel.value || "ALL";
+    sel.innerHTML = '<option value="ALL">Toutes les boutiques</option>' + bqs.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    sel.value = cur === "ALL" || bqs.some((b) => b.code === cur) ? cur : "ALL";
+    // Liste des boutiques (avec frigo) qui n'ont fait aucune vente du frigo hier
+    try {
+      const hier = addDays(today(), -1);
+      const sans = boutiquesFrigo().filter((bq) => (sel.value === "ALL" || bq.code === sel.value) && bq.actif !== false && !db.fgSorties.some((x) => x.boutique === bq.code && x.date === hier));
+      $("#dc-sansvente").innerHTML = '<h3 class="sub-title" style="margin:0 0 6px">🧊 Boutiques sans vente du frigo hier (' + fmtDate(hier) + ")</h3>" +
+        (sans.length ? "<ul>" + sans.map((bq) => "<li><b>" + esc(bq.nom) + "</b></li>").join("") + "</ul>" : '<p class="muted" style="margin:0">Toutes les boutiques ont vendu.</p>');
+    } catch (e) { $("#dc-sansvente").innerHTML = ""; }
+    try { renderDashFrigo(sel.value); } catch (er) { /* jamais bloquant */ }
+  }
+  $("#dfg-boutique").addEventListener("change", () => renderDashFg());
   function renderDashFrigo(selVal) {
     const telDe = (cc) => { const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)); return f ? f.telephone || "" : ""; };
     const avecFrigo = new Set(boutiquesFrigo().map((b) => b.code));
@@ -1064,10 +1079,10 @@
         }).join("");
     }
   }
-  $("#dash-com").addEventListener("click", (e) => {
-    if (e.target.closest("[data-fg-relance]")) { fgRelanceOuvert = !fgRelanceOuvert; return renderDashCom(); }
+  $("#dash-fg").addEventListener("click", (e) => {
+    if (e.target.closest("[data-fg-relance]")) { fgRelanceOuvert = !fgRelanceOuvert; return renderDashFg(); }
     const wa = e.target.closest("[data-fg-relance-cc]");
-    if (wa) { fgRelanceEnvoyees.add(wa.dataset.fgRelanceCc); setTimeout(renderDashCom, 300); return; }
+    if (wa) { fgRelanceEnvoyees.add(wa.dataset.fgRelanceCc); setTimeout(renderDashFg, 300); return; }
     if (e.target.closest("#dc-fg-suivant")) {
       const lien = [...document.querySelectorAll("#dc-fg-relance [data-fg-relance-cc]")].find((a) => !fgRelanceEnvoyees.has(a.dataset.fgRelanceCc));
       if (lien) lien.click();
@@ -1101,6 +1116,7 @@
 
   function renderDashboard() {
     renderDashCom();
+    if (dashFgPage) { renderDashFg(); return; }
     if (!isAdmin()) return; // gestionnaire des commissions : seulement le cadre des commissions
     if (!dash.boutique) dash.boutique = "ALL";
     const bsel = $("#d-boutique");

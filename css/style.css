@@ -251,7 +251,10 @@ input[type=checkbox], input[type=radio] { min-height: 0; width: 18px; height: 18
 body.role-vendeur .admin-only { display: none !important; }
 body.no-entrees .only-entrees { display: none !important; }
 /* Tableau de bord : le gestionnaire des commissions ne voit que le cadre des commissions */
-body.no-dash .need-dash, #view-dashboard.com-only > :not(#dash-com) { display: none !important; }
+body.no-dash .need-dash, #view-dashboard.com-only > :not(#dash-com), #view-dashboard.fg-only > :not(#dash-fg) { display: none !important; }
+#view-dashboard:not(.fg-only) #dash-fg { display: none !important; }
+body:not(.is-admin) #tb-fg-ouvrir2 { display: inline-flex; }
+body.is-admin #tb-fg-ouvrir2 { display: none !important; }
 .tb-liens { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
 .tel-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .btn.btn-wa { background: #25d366; border-color: #25d366; color: #fff; }

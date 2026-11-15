@@ -135,6 +135,7 @@
         <div class="tb-liens">
           <button class="btn small" data-view-link="stats">Statistiques détaillées par CC</button>
           <button class="btn small" id="tb-com-ouvrir">📱 Commissions du crédit télécom</button>
+          <button class="btn small" id="tb-fg-ouvrir">🧊 Frigo</button>
         </div>
       </div>
       <div class="card filterbar" style="margin-top:12px">
@@ -207,13 +208,27 @@
       </div>
 
       <!-- Commissions du crédit télécom : gestionnaire des commissions (ex. EDWIGE) et admin -->
+      <div class="card" id="dash-fg">
+        <div class="toolbar" style="margin:0 0 10px">
+          <button class="btn small" id="tb-fg-retour">← Retour</button>
+          <h2 style="margin:0;margin-right:auto">🧊 Frigo</h2>
+          <label class="cc-filter">Boutique<select id="dfg-boutique"></select></label>
+        </div>
+        <div class="dc-sansvente" id="dc-sansvente"></div>
+        <div class="dc-relance-bar"><h3 class="sub-title" style="margin:0">🧊 CC qui gèrent les reversements du frigo</h3><span id="dc-fg-btn"></span></div>
+        <div class="dc-relance hidden" id="dc-fg-relance"></div>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Boutique</th><th>CC</th><th>Téléphone</th><th class="num">À remonter (semaines terminées)</th><th class="num">Semaine en cours</th></tr></thead>
+          <tbody id="dc-fg-contacts"></tbody>
+        </table></div>
+      </div>
       <div class="card" id="dash-com">
         <div class="toolbar" style="margin:0 0 10px">
           <button class="btn small admin-only" id="tb-com-retour">← Tableau de bord</button>
           <h2 style="margin:0;margin-right:auto">📱 Commissions du crédit télécom</h2>
+          <button class="btn small not-admin" id="tb-fg-ouvrir2">🧊 Frigo</button>
           <label class="cc-filter">Boutique<select id="dc-boutique"></select></label>
         </div>
-        <div class="dc-sansvente" id="dc-sansvente"></div>
         <div class="kpis" id="dc-kpis"></div>
         <div class="dc-demande" id="dc-demande"></div>
         <div class="dc-relance-bar"><h3 class="sub-title" style="margin:0">📞 CC qui gèrent le crédit télécom</h3><span id="dc-relance-btn"></span></div>
@@ -221,12 +236,6 @@
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Boutique</th><th>CC</th><th>Téléphone</th><th class="num">Reste à verser (boutique)</th></tr></thead>
           <tbody id="dc-contacts"></tbody>
-        </table></div>
-        <div class="dc-relance-bar"><h3 class="sub-title" style="margin:0">🧊 CC qui gèrent les reversements du frigo</h3><span id="dc-fg-btn"></span></div>
-        <div class="dc-relance hidden" id="dc-fg-relance"></div>
-        <div class="table-wrap"><table class="table">
-          <thead><tr><th>Boutique</th><th>CC</th><th>Téléphone</th><th class="num">À remonter (semaines terminées)</th><th class="num">Semaine en cours</th></tr></thead>
-          <tbody id="dc-fg-contacts"></tbody>
         </table></div>
         <h3 class="sub-title">Par boutique</h3>
         <div class="table-wrap"><table class="table">
