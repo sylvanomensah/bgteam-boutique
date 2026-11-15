@@ -1099,3 +1099,8 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 /* Ajuster une course du frigo */
 #fca-dialog { max-width: 900px; width: 96vw; }
 #fca-dialog .inline-input { width: 90px; }
+
+/* Tableau de bord d'Edwige : boutiques sans vente du frigo hier */
+.dc-sansvente { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: #fff7ed; border: 1px solid #fed7aa; }
+.dc-sansvente ul { margin: 0; padding-left: 20px; columns: 2; }
+.dc-sansvente li { margin: 2px 0; }

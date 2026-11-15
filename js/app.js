@@ -923,6 +923,13 @@
   function jourDemande() { return Number(today().slice(8, 10)) <= 2; }
   // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)
   function renderDashCom() {
+    // Liste des boutiques (avec frigo) qui n'ont fait aucune vente du frigo hier
+    try {
+      const hier = addDays(today(), -1);
+      const sans = boutiquesFrigo().filter((bq) => bq.actif !== false && !db.fgSorties.some((x) => x.boutique === bq.code && x.date === hier));
+      $("#dc-sansvente").innerHTML = '<h3 class="sub-title" style="margin:0 0 6px">🧊 Boutiques sans vente du frigo hier (' + fmtDate(hier) + ")</h3>" +
+        (sans.length ? "<ul>" + sans.map((bq) => "<li><b>" + esc(bq.nom) + "</b></li>").join("") + "</ul>" : '<p class="muted" style="margin:0">Toutes les boutiques ont vendu.</p>');
+    } catch (e) { $("#dc-sansvente").innerHTML = ""; }
     const card = $("#dash-com");
     card.classList.toggle("hidden", !canGererCom());
     if (!canGererCom()) return;
