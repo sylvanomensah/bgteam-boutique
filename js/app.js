@@ -5520,7 +5520,7 @@
       '<input type="checkbox" class="switch" data-cc-credit="' + esc(c.code) + '"' + (c.credit ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🧊 Dotation du frigo</b><small>Fixe la dotation de crédit du frigo des boutiques (la course du CC devra être égale à cette dotation)</small></span>' +
       '<input type="checkbox" class="switch" data-cc-frigodot="' + esc(c.code) + '"' + (c.frigoDotation ? " checked" : "") + "></label>" +
-      '<label class="perm"><span><b>💼 Commissions + Dashboard</b><small>Tableau de bord des commissions du crédit télécom : demande le versement et confirme la réception</small></span>' +
+      '<label class="perm"><span><b>💼 Dashboard</b><small>Tableau de bord des commissions du crédit télécom : demande le versement et confirme la réception</small></span>' +
       '<input type="checkbox" class="switch" data-cc-gerecom="' + esc(c.code) + '"' + (c.gereCom ? " checked" : "") + "></label>" +
       '<label class="perm"><span><b>🗂 Gère les fiches RH</b><small>Voit l\'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC</small></span>' +
       '<input type="checkbox" class="switch" data-cc-rh="' + esc(c.code) + '"' + (c.gereRh ? " checked" : "") + "></label>" +
