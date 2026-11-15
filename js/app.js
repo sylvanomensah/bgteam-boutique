@@ -2799,7 +2799,7 @@
       if (weekEnd(w) >= t) st = '<span class="badge mute">Semaine en cours</span>';
       else if (!rl.length) st = '<span class="badge danger">⏳ Non remontée</span>';
       else if (Math.abs(r - v) < 1) st = '<span class="badge ok">✅ Conforme</span>';
-      else if (r < v) st = '<span class="badge danger">⚠ Manque ' + money0(v - r) + "</span>";
+      else if (r < v) st = '<span class="badge warn">⏳ Reste à remonter ' + money0(v - r) + "</span>";
       else st = '<span class="badge warn">Excédent ' + money0(r - v) + "</span>";
       if (rl.length && rl.every((x) => x.statut === "Reçue")) st += ' <span class="badge ok">✓ Vérifiée</span>';
       else if (rl.some((x) => x.statut !== "Reçue")) st += ' <span class="badge warn">⏳ À vérifier par l\'admin</span>';
@@ -2814,7 +2814,7 @@
     const totV = rows.reduce((a, x) => a + x.v, 0), totR = rows.reduce((a, x) => a + x.r, 0), totE = totR - totV;
     $("#fd-match-foot").innerHTML = rows.length ? "<tr><td colspan=2>TOTAL DU MOIS</td><td class=\"num\">" + money0(totV) + '</td><td class="num">' + money0(totR) +
       '</td><td class="num">' + ecartHtml(totE) + "</td><td>" +
-      (totE < -0.5 ? '<span class="badge danger">⚠ Manque ' + money0(-totE) + "</span>" : totE > 0.5 ? '<span class="badge warn">Excédent ' + money0(totE) + "</span>" : '<span class="badge ok">✅ Conforme</span>') + "</td></tr>" : "";
+      (totE < -0.5 ? '<span class="badge warn">⏳ Reste à remonter ' + money0(-totE) + "</span>" : totE > 0.5 ? '<span class="badge warn">Excédent ' + money0(totE) + "</span>" : '<span class="badge ok">✅ Conforme</span>') + "</td></tr>" : "";
 
     // Remontées du mois
     const rems = db.remontees.filter((r) => codes.includes(r.boutique) && r.semaine >= du && r.semaine <= au) // une semaine appartient au mois de son lundi (comme le rapprochement)
