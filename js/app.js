@@ -1704,8 +1704,18 @@
   function vAlert(html, kind) {
     $("#v-alert").innerHTML = html ? '<div class="v-alert ' + (kind || "info") + '">' + html + "</div>" : "";
   }
+  // Historique des ventes : chaque CC ne voit que les ventes de SA boutique ; l'admin et Edwige (gestionnaire des commissions) voient tout
+  const ventesToutes = () => isAdmin() || canGererCom();
   function fillVentesFilters() {
     const bcur = $("#v-boutique").value || "ALL";
+    if (!ventesToutes()) {
+      const mb = myBoutiqueCode(), b = db.boutiques.find((x) => x.code === mb);
+      $("#v-boutique").innerHTML = b ? '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>" : '<option value="__aucune">Aucune boutique</option>';
+      $("#v-boutique").value = b ? b.code : "__aucune"; $("#v-boutique").disabled = true;
+      fillVentesCc();
+      return;
+    }
+    $("#v-boutique").disabled = false;
     $("#v-boutique").innerHTML = '<option value="ALL">Toutes les boutiques</option>' +
       db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + (b.actif ? "" : " (inactive)") + "</option>").join("");
     $("#v-boutique").value = db.boutiques.some((b) => b.code === bcur) ? bcur : "ALL";
@@ -1852,7 +1862,7 @@
   $("#v-export").addEventListener("click", () => {
     if (!isAdmin()) return toast("Export réservé à l'administrateur.");
     const head = ["Date", "Heure", "Ticket", "Boutique", "Client", "Produit", "Code_Produit", "Quantite", "PU_Vente", "Total_Vente", "Code_CC", "Vendeur", "Validation", "N_Client", "Adresse_Client"];
-    const lines = db.sales.map((s) => [s.date, heureOf(s), s.ticket, boutiqueName(saleBoutique(s)), s.client, s.nom, s.code, s.qte, s.pu, lineTotal(s), s.cc, vendeurOf(s), s.valide, s.numClient || "", s.adresseClient || ""]);
+    const lines = db.sales.filter((s) => ventesToutes() || saleBoutique(s) === myBoutiqueCode()).map((s) => [s.date, heureOf(s), s.ticket, boutiqueName(saleBoutique(s)), s.client, s.nom, s.code, s.qte, s.pu, lineTotal(s), s.cc, vendeurOf(s), s.valide, s.numClient || "", s.adresseClient || ""]);
     download("ventes-" + today() + ".csv", "﻿" + toCsv([head].concat(lines)), "text/csv;charset=utf-8");
   });
 
