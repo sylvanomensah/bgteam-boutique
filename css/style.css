@@ -1114,3 +1114,7 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 
 /* Remonter les fonds : historique de la semaine choisie */
 .rm-histo { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border, #ddd); }
+
+/* « Vérifiée et validée » avec le nom juste en dessous du badge */
+.valide-par { display: inline-flex; flex-direction: column; align-items: center; vertical-align: top; gap: 2px; }
+.valide-par small { color: var(--muted, #6b7280); font-size: .78rem; }

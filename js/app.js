@@ -2801,7 +2801,7 @@
       else if (Math.abs(r - v) < 1) st = '<span class="badge ok">✅ Conforme</span>';
       else if (r < v) st = '<span class="badge warn">⏳ Reste à remonter ' + money0(v - r) + "</span>";
       else st = '<span class="badge warn">Excédent ' + money0(r - v) + "</span>";
-      if (rl.length && rl.every((x) => x.statut === "Reçue")) st += ' <span class="badge ok">✓ Vérifiée et validée</span><span class="sub">par ' + esc([...new Set(rl.map((x) => x.recuPar).filter(Boolean))].join(", ") || "l’admin") + "</span>";
+      if (rl.length && rl.every((x) => x.statut === "Reçue")) st += ' <span class="valide-par"><span class="badge ok">✓ Vérifiée et validée</span><small>par ' + esc([...new Set(rl.map((x) => x.recuPar).filter(Boolean))].join(", ") || "l’admin") + "</small></span>";
       else if (rl.some((x) => x.statut !== "Reçue")) st += ' <span class="badge warn">⏳ À vérifier par l\'admin</span>';
       rows.push({ w, b, v, r, st });
     }));
