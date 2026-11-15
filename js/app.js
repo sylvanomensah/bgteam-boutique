@@ -1044,6 +1044,15 @@
       $("#dc-sansvente").innerHTML = '<h3 class="sub-title" style="margin:0 0 6px">🧊 Boutiques sans vente du frigo hier (' + fmtDate(hier) + ")</h3>" +
         (sans.length ? "<ul>" + sans.map((bq) => "<li><b>" + esc(bq.nom) + "</b></li>").join("") + "</ul>" : '<p class="muted" style="margin:0">Toutes les boutiques ont vendu.</p>');
     } catch (e) { $("#dc-sansvente").innerHTML = ""; }
+    // 🏆 Performance des frigos : classement des boutiques par ventes du frigo du mois (toutes les boutiques)
+    try {
+      const moisP = today().slice(0, 7);
+      const cl = bqs.map((x) => ({ b: x, v: sumBy(db.fgSorties.filter((y) => y.boutique === x.code && y.date.slice(0, 7) === moisP), (y) => y.montant) }))
+        .sort((p, q) => q.v - p.v);
+      const med = ["🥇", "🥈", "🥉"];
+      $("#dfg-podium").innerHTML = cl.length ? '<span class="fg-podium-t">🏆 Performance du mois :</span>' + cl.map((x, i) =>
+        '<span class="fg-rang' + (i < 3 ? " top" : "") + '">' + (med[i] || (i + 1) + "e") + " <b>" + esc(x.b.nom) + "</b> <small>" + money0(x.v) + "</small></span>").join("") : "";
+    } catch (er) { $("#dfg-podium").innerHTML = ""; }
     // Cases (comme le Crédit télécom) : ventes du frigo, remontées validées / à valider, reste à remonter
     try {
       const scope = sel.value === "ALL" ? bqs : bqs.filter((x) => x.code === sel.value), codes = scope.map((x) => x.code), mois = today().slice(0, 7), lc = mondayOf(today());

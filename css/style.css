@@ -1121,3 +1121,10 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 /* « Vérifiée et validée » avec le nom juste en dessous du badge */
 .valide-par { display: inline-flex; flex-direction: column; align-items: center; vertical-align: top; gap: 2px; }
 .valide-par small { color: var(--muted, #6b7280); font-size: .78rem; }
+
+/* Tableau de bord Frigo : classement des frigos */
+.fg-podium { flex: 1 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-right: auto; }
+.fg-podium-t { font-weight: 700; font-size: .85rem; color: var(--muted, #6b7280); }
+.fg-rang { display: inline-flex; align-items: baseline; gap: 4px; padding: 4px 10px; border-radius: 999px; background: #f3f4f6; font-size: .85rem; }
+.fg-rang.top { background: #fff7e0; border: 1px solid #f5d27a; }
+.fg-rang small { color: var(--muted, #6b7280); }
