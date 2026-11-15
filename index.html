@@ -313,16 +313,13 @@
       <div id="v-alert"></div>
       <div class="perf-bar" id="v-perf"></div>
       <div class="report-grid hidden" id="v-cc-reports">
-        <div class="card">
-          <h2>Hebdomadaire <span class="muted" id="r-cc-name1"></span></h2>
-          <div class="form"><label class="full">Semaine contenant le<input type="date" id="r-semaine"></label></div>
-          <p class="hint" id="r-semaine-label"></p>
-          <div class="report" id="r-semaine-res"></div>
+        <div class="card rep-mini">
+          <div class="rep-l1"><b>Hebdomadaire</b> <span class="muted" id="r-cc-name1"></span><input type="date" id="r-semaine" title="Semaine contenant ce jour"><span class="muted" id="r-semaine-label"></span></div>
+          <div class="rep-l2" id="r-semaine-res"></div>
         </div>
-        <div class="card">
-          <h2>Mensuel <span class="muted" id="r-cc-name2"></span></h2>
-          <div class="form"><label class="full">Mois<input type="month" id="r-mois"></label></div>
-          <div class="report" id="r-mois-res"></div>
+        <div class="card rep-mini">
+          <div class="rep-l1"><b>Mensuel</b> <span class="muted" id="r-cc-name2"></span><input type="month" id="r-mois" title="Mois"></div>
+          <div class="rep-l2" id="r-mois-res"></div>
         </div>
       </div>
       <div class="card">

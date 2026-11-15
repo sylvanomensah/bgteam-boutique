@@ -1104,3 +1104,10 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 .dc-sansvente { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: #fff7ed; border: 1px solid #fed7aa; }
 .dc-sansvente ul { margin: 0; padding-left: 20px; columns: 2; }
 .dc-sansvente li { margin: 2px 0; }
+
+/* Historique des ventes : rapports hebdo / mensuel du CC en 2 lignes */
+.rep-mini { padding: 10px 14px !important; }
+.rep-mini .rep-l1 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.rep-mini .rep-l1 input { width: auto; padding: 4px 8px; font-size: .9rem; margin-left: auto; }
+.rep-mini .rep-l2 { margin-top: 6px; color: var(--muted, #555); }
+.rep-mini .rep-l2 strong { color: var(--primary, #4338ca); font-size: 1.05rem; }

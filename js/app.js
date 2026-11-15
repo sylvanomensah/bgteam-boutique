@@ -1702,8 +1702,7 @@
 
   function reportHtml(list) {
     const r = summarize(list);
-    return '<div><span>Vente totale</span><strong>' + money(r.ca) + "</strong></div>" +
-      '<div><span>Quantités</span><strong>' + num(r.qte) + "</strong></div>";
+    return "Vente totale <strong>" + money(r.ca) + "</strong> · Quantités <strong>" + num(r.qte) + "</strong>";
   }
   function heureOf(s) {
     return s.createdAt ? new Date(s.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—";
@@ -1775,7 +1774,7 @@
       const mine = db.sales.filter((s) => isCountedSale(s) && s.cc === cc);
       $("#r-cc-name1").textContent = "— " + ccName(cc);
       $("#r-cc-name2").textContent = "— " + ccName(cc);
-      $("#r-semaine-label").textContent = "Du lundi " + fmtDate(lundi) + " au dimanche " + fmtDate(dimanche);
+      $("#r-semaine-label").textContent = "du " + fmtDate(lundi).slice(0, 5) + " au " + fmtDate(dimanche).slice(0, 5);
       $("#r-semaine-res").innerHTML = reportHtml(mine.filter((s) => s.date >= lundi && s.date <= dimanche));
       $("#r-mois-res").innerHTML = reportHtml(mine.filter((s) => (s.date || "").slice(0, 7) === mois));
     }
