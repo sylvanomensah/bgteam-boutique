@@ -2832,6 +2832,8 @@
         (admin ? '<button class="btn small" data-rm-sem="' + r.id + '" title="Changer la semaine de cette remontée">📅 Semaine</button> ' : "") +
         (canDel ? '<button class="btn small danger" data-rm-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="empty">Aucune remontée sur ce mois.</td></tr>';
+    // Cadre masqué tant qu'il n'y a aucune remontée ce mois-ci (il réapparaît dès qu'une remontée est à voir ou à valider)
+    $("#fd-rem-card").classList.toggle("hidden", !rems.length);
     listeSemaines("#fd-rem", "#fd-rem-sem");
     limiter3("#fd-rem", $("#fd-rem-q").value);
 
