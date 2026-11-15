@@ -1051,13 +1051,15 @@
       const rems = db.remontees.filter((r) => codes.includes(r.boutique));
       const recuMois = sumBy(rems.filter((r) => r.statut === "Reçue" && r.semaine.slice(0, 7) === mois), (r) => r.montant);
       const attente = sumBy(rems.filter((r) => r.statut !== "Reçue"), (r) => r.montant);
-      const reste = sumBy(scope, (x) => fgDuTermine(x.code));
+      // Reste à remonter = semaines terminées non remontées + ce qui reste sur la semaine en cours
+      const enCoursDe = (bq) => Math.max(0, r2_(ventesDeclarees(bq, lc, weekEnd(lc)) - sumMontant(remonteesOf(bq, lc))));
+      const reste = r2_(sumBy(scope, (x) => fgDuTermine(x.code) + enCoursDe(x.code)));
       $("#dfg-kpis").innerHTML = kpiHtml([
         [sel.value === "ALL" ? "Ventes du frigo — toutes les boutiques" : "Ventes du frigo — " + esc(scope[0] ? scope[0].nom : ""), money0(sumBy(ventes.filter((x) => x.date.slice(0, 7) === mois), (x) => x.montant)), "", 'title="Ventes du frigo en caisse ce mois-ci"'],
         ["Ventes de la semaine", money0(sumBy(ventes.filter((x) => x.date >= lc), (x) => x.montant)), "", 'title="À remonter le lundi ' + fmtDate(addDays(lc, 7)) + '"'],
         ["Remonté (validé) ce mois", money0(recuMois), "hero-good"],
         ["Déclaré, à valider", money0(attente), attente > 0 ? "warn" : ""],
-        ["Reste à remonter", money0(reste), reste > 0 ? "danger" : "hero-good", 'title="Semaines terminées pas encore remontées"']
+        ["Reste à remonter", money0(reste), reste > 0 ? "danger" : "hero-good", 'title="Semaines terminées pas encore remontées + reste de la semaine en cours"']
       ]);
     } catch (er) { $("#dfg-kpis").innerHTML = ""; }
     try { renderDashFrigo(sel.value); } catch (er) { /* jamais bloquant */ }
