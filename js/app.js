@@ -2918,7 +2918,8 @@
     const base = Math.max(0, fs.ventes - r);
     const el = $("#rm-montant");
     if (proposer && document.activeElement !== el && !rmOcr) el.value = base > 0 ? Math.round(base * 100) / 100 : "";
-    const saisi = Number(el.value) || 0, reste = Math.max(0, Math.round((base - saisi) * 100) / 100);
+    // Reste à remonter = ventes de la semaine − déjà remonté (le montant en cours de saisie ne le diminue pas)
+    const reste = Math.max(0, Math.round(base * 100) / 100);
     $("#rm-info").innerHTML = '<div class="info-row"><span>Boutique</span><span><b>' + esc(boutiqueName(remBq)) + "</b></span></div>" +
       '<div class="info-row"><span>Ventes de la semaine du ' + fmtDate(w) + "</span><span><b>" + money2(fs.ventes) + "</b></span></div>" +
       (frigo
