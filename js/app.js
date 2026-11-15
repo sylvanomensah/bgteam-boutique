@@ -2801,7 +2801,7 @@
       else if (Math.abs(r - v) < 1) st = '<span class="badge ok">✅ Conforme</span>';
       else if (r < v) st = '<span class="badge warn">⏳ Reste à remonter ' + money0(v - r) + "</span>";
       else st = '<span class="badge warn">Excédent ' + money0(r - v) + "</span>";
-      if (rl.length && rl.every((x) => x.statut === "Reçue")) st += ' <span class="badge ok">✓ Vérifiée</span>';
+      if (rl.length && rl.every((x) => x.statut === "Reçue")) st += ' <span class="badge ok">✓ Vérifiée et validée</span><span class="sub">par ' + esc([...new Set(rl.map((x) => x.recuPar).filter(Boolean))].join(", ") || "l’admin") + "</span>";
       else if (rl.some((x) => x.statut !== "Reçue")) st += ' <span class="badge warn">⏳ À vérifier par l\'admin</span>';
       rows.push({ w, b, v, r, st });
     }));
@@ -2931,7 +2931,7 @@
       // Historique : les remontées déjà faites pour cette semaine
       (remonteesOf(remBq, w).length ? '<div class="rm-histo"><b>Fonds remontés pour cette semaine :</b>' + remonteesOf(remBq, w).slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).map((x) =>
         '<div class="info-row"><span>' + new Date(x.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + " · " + esc(x.mode || "") + (x.cc ? " · " + esc(ccName(x.cc)) : "") +
-        "</span><span><b>" + money2(x.montant) + "</b> " + (x.statut === "Reçue" ? '<span class="badge ok">✓ Validée</span>' : '<span class="badge warn">⏳ En attente</span>') + "</span></div>").join("") + "</div>" : "") +
+        "</span><span><b>" + money2(x.montant) + "</b> " + (x.statut === "Reçue" ? '<span class="badge ok">✓ Vérifiée et validée</span> <small class="muted">par ' + esc(x.recuPar || "l’admin") + "</small>" : '<span class="badge warn">⏳ En attente</span>') + "</span></div>").join("") + "</div>" : "") +
       (w === mondayOf(today()) ? '<div class="info-row"><span>📅 Semaine en cours</span><span>à remonter le <b>lundi ' + fmtDate(addDays(w, 7)) + "</b></span></div>" : "");
   }
   function journalOf(codes) {
