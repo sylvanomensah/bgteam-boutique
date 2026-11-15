@@ -1012,7 +1012,9 @@
       return '<tr class="cliquable" data-go-filtre="#dc-boutique" data-go-bq="' + esc(b.code) + '" title="Voir seulement ' + esc(b.nom) + '"><td><b>' + esc(b.nom) + '</b></td><td class="num">' + money0(m) + '</td><td class="num">' + money0(c.total) + '</td><td class="num">' + money0(c.recu) + '</td><td class="num">' + money0(c.attente) +
         '</td><td class="num">' + (c.aDeclarer > 0 ? '<b class="neg">' + money0(c.aDeclarer) + "</b>" : '<span class="pos">0</span>') + "</td><td>" + etat + "</td></tr>";
     }).join("") : '<tr><td colspan="7" class="empty">Aucune boutique.</td></tr>';
-    const vers = db.crVers.filter((v) => codes.includes(v.boutique)).sort((a, b) => (a.statut === "Reçue") - (b.statut === "Reçue") || String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 60);
+    // Seulement les versements qui attendent la confirmation de réception (le cadre est masqué sinon)
+    $("#dc-vers-bloc").classList.toggle("hidden", !db.crVers.some((v) => codes.includes(v.boutique) && v.statut !== "Reçue"));
+    const vers = db.crVers.filter((v) => codes.includes(v.boutique) && v.statut !== "Reçue").sort((a, b) => (a.statut === "Reçue") - (b.statut === "Reçue") || String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 60);
     $("#dc-vers").innerHTML = vers.length ? vers.map((v) => "<tr><td>" + (v.createdAt ? new Date(v.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—") + "</td><td>" + esc(boutiqueName(v.boutique)) +
       "</td><td>" + esc(v.cc ? ccName(v.cc) : "Admin") + '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode || "") + "</td><td>" +
       (v.statut === "Reçue" ? '<span class="badge ok">✓ Reçue</span> <small class="muted">' + esc(v.recuPar || "") + "</small>"

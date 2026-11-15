@@ -237,16 +237,18 @@
           <thead><tr><th>Boutique</th><th>CC</th><th>Téléphone</th><th class="num">Reste à verser (boutique)</th></tr></thead>
           <tbody id="dc-contacts"></tbody>
         </table></div>
-        <h3 class="sub-title">Par boutique</h3>
+        <!-- Par boutique : retiré à la demande (15/11/2026) -->
+        <div class="hidden"><h3 class="sub-title">Par boutique</h3>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Boutique</th><th class="num">Commission du mois</th><th class="num">Commission totale</th><th class="num">Reçue</th><th class="num">Déclarée, à confirmer</th><th class="num">Reste à verser</th><th>État</th></tr></thead>
           <tbody id="dc-rows"></tbody>
-        </table></div>
-        <h3 class="sub-title">Versements déclarés par les CC</h3>
+        </table></div></div>
+        <!-- Versements déclarés : affiché seulement quand un versement attend la confirmation de réception -->
+        <div id="dc-vers-bloc" class="hidden"><h3 class="sub-title">Versements à confirmer</h3>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Déclaré le</th><th>Boutique</th><th>CC</th><th class="num">Montant</th><th>Mode</th><th>Réception</th></tr></thead>
           <tbody id="dc-vers"></tbody>
-        </table></div>
+        </table></div></div>
       </div>
     </section>
     <!-- CAISSE -->
