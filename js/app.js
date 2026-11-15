@@ -1762,7 +1762,7 @@
 
   function renderVentes() {
     if (!$("#v-date").value) $("#v-date").value = today();
-    if (!$("#r-semaine").value) $("#r-semaine").value = today();
+    if (!$("#r-semaine").value) $("#r-semaine").value = mondayOf(today()); // par défaut : depuis le lundi de la semaine
     if (!$("#r-mois").value) $("#r-mois").value = today().slice(0, 7);
     fillVentesFilters();
 
@@ -1770,7 +1770,7 @@
     const cc = $("#r-cc").value;
     $("#v-cc-reports").classList.toggle("hidden", cc === "ALL");
     if (cc !== "ALL") {
-      const lundi = mondayOf($("#r-semaine").value), dimanche = addDays(lundi, 6), mois = $("#r-mois").value;
+      const lundi = $("#r-semaine").value, dimanche = addDays(mondayOf(lundi), 6), mois = $("#r-mois").value;
       const mine = db.sales.filter((s) => isCountedSale(s) && s.cc === cc);
       $("#r-cc-name1").textContent = "— " + ccName(cc);
       $("#r-cc-name2").textContent = "— " + ccName(cc);
