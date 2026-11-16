@@ -898,6 +898,8 @@
   }
   // Message WhatsApp au CC : « Bonjour Monsieur / Madame NOM, merci de verser la commission … du mois de … : X FCFA. »
   // « Monsieur NOM » / « Madame NOM » selon la fiche RH (sans civilité si le sexe n'est pas renseigné)
+  // Moyen de paiement indiqué dans les messages WhatsApp (commissions, reversements du frigo)
+  const PAIEMENT_MARCHAND = "Paiement Marchand au 1333322 (SHALOM AND FAVOR LIVING)";
   function civiliteNom(cc) {
     const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)) || {};
     return (f.sexe === "M" ? "Monsieur " : f.sexe === "F" ? "Madame " : "") + (currentAgent(ccByCode(cc)) || ccName(cc));
@@ -917,7 +919,7 @@
     const civ = f.sexe === "M" ? "Monsieur " : f.sexe === "F" ? "Madame " : "";
     const nom = currentAgent(ccByCode(cc)) || ccName(cc);
     if (!(reste > 0)) return "Bonjour " + civ + nom + ",";
-    return "Bonjour " + civ + nom + ", merci de verser la commission du crédit télécom de " + boutiqueName(bq) + libelleMois(moisCommissionDus(bq).filter((m) => !moisPassesSeulement || m < today().slice(0, 7))) + " : " + money0(reste) + ". Sur l'application BGTEAM";
+    return "Bonjour " + civ + nom + ", merci de verser la commission du crédit télécom de " + boutiqueName(bq) + libelleMois(moisCommissionDus(bq).filter((m) => !moisPassesSeulement || m < today().slice(0, 7))) + " : " + money0(reste) + ", par " + PAIEMENT_MARCHAND + ", puis à déclarer sur l'application BGTEAM.";
   }
   // Petit logo WhatsApp (SVG) pour le bouton rond
   const ICONE_WA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm5.8 14.1c-.24.68-1.42 1.3-1.95 1.34-.5.05-.97.23-3.27-.68-2.77-1.09-4.52-3.92-4.66-4.1-.13-.18-1.11-1.48-1.11-2.82 0-1.34.7-2 .95-2.27.25-.27.54-.34.72-.34h.52c.17 0 .39-.06.6.46.23.54.77 1.88.84 2.02.07.13.11.29.02.47-.09.18-.13.29-.27.45-.13.16-.28.35-.4.47-.13.13-.27.28-.12.55.16.27.7 1.15 1.5 1.86 1.03.92 1.9 1.2 2.17 1.34.27.13.43.11.59-.07.16-.18.68-.79.86-1.06.18-.27.36-.23.61-.14.25.09 1.58.75 1.85.88.27.14.45.2.52.32.07.11.07.66-.17 1.33Z"/></svg>';
@@ -941,7 +943,7 @@
   // Message du 15 : rappel (pas une demande) — le dépôt des commissions se fera le 1er et le 2 du mois prochain
   function messageRappelCom(cc, bq, reste) {
     return "Bonjour " + civiliteNom(cc) + ", petit rappel : la commission du crédit télécom de " + boutiqueName(bq) + (reste > 0 ? " (" + money0(reste) + " à ce jour)" : "") +
-      " sera à déposer le 1er ou le 2 " + moisProchainTxt() + " par Paiement Marchand au 1333322 (SHALOM AND FAVOR LIVING), puis à déclarer sur l'application BGTEAM. Merci de vous y préparer.";
+      " sera à déposer le 1er ou le 2 " + moisProchainTxt() + " par " + PAIEMENT_MARCHAND + ", puis à déclarer sur l'application BGTEAM. Merci de vous y préparer.";
   }
   function jourDemande() { return Number(today().slice(8, 10)) <= 2; }
   // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)
@@ -1085,7 +1087,7 @@
   function messageFrigo(cc, bq) {
     const sem = fgSemainesDues(bq), du = fgDuTermine(bq);
     return "Bonjour " + civiliteNom(cc) + ", merci de remonter les fonds du frigo de " + boutiqueName(bq) +
-      (sem.length ? " (semaine" + (sem.length > 1 ? "s" : "") + " du " + sem.map((x) => fmtDate(x.w)).join(", du ") + ")" : "") + " : " + money0(du) + ". Sur l'application BGTEAM";
+      (sem.length ? " (semaine" + (sem.length > 1 ? "s" : "") + " du " + sem.map((x) => fmtDate(x.w)).join(", du ") + ")" : "") + " : " + money0(du) + ", par " + PAIEMENT_MARCHAND + ", puis à déclarer sur l'application BGTEAM.";
   }
   // Page « 🧊 Frigo » du tableau de bord
   function renderDashFg() {
