@@ -1140,3 +1140,6 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 #dc-contacts-wrap.grise .table-wrap { filter: grayscale(1); opacity: .6; }
 #dc-contacts-wrap.grise .btn-wa { pointer-events: none; }
 .dc-contacts-info { margin: 6px 0 8px; }
+
+/* Frigo (tableau de bord) : grisé hors du lundi (consultation seulement) */
+.table-wrap.fg-grise { filter: grayscale(1); opacity: .6; }

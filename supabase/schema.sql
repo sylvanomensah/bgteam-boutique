@@ -994,6 +994,9 @@ end $$;
 --   le serveur refuse un reçu déjà utilisé, un montant différent ou un dépôt sur un autre numéro.
 -- =====================================================================
 alter table public.settings add column if not exists numero_depot text not null default '';
+-- Paiement Marchand indiqué dans les messages WhatsApp (commissions, reversements du frigo) : modifiable dans Paramètres
+alter table public.settings add column if not exists paiement_code text not null default '1333322';
+alter table public.settings add column if not exists paiement_nom text not null default 'SHALOM AND FAVOR LIVING';
 alter table public.remontees add column if not exists tx_id text;
 alter table public.remontees add column if not exists recu_infos jsonb not null default '{}'::jsonb;
 alter table public.remontees add column if not exists alerte text not null default '';
