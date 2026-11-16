@@ -3109,6 +3109,12 @@
     try { localStorage.setItem("anniv-ferme", today()); } catch (err) {}
     renderAppAlert();
   });
+  // Fermer l'information « contrôle déjà fait » pour la journée
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cs-vu]"); if (!b) return;
+    try { localStorage.setItem("cs-fait-vu", today() + "|" + b.dataset.csVu); } catch (err) {}
+    renderAppAlert();
+  });
   function renderAppAlert() {
     const el = $("#app-alert");
     const bq = !isAdmin() && canEntrees() ? myBoutiqueCode() : "";
@@ -3144,6 +3150,16 @@
       if (manqueHier || manqueSoir) h += '<div class="alert-line">🌙 <span><b>' + (manqueHier ? "Contrôle du crédit restant d'hier non fait" : "Contrôle du crédit restant de ce soir à faire") +
         "</b> — " + (manqueHier ? "les nouvelles recharges sont bloquées tant qu'il n'est pas déclaré." : "lisez le crédit restant YAS et MOOV sur les puces et notez-le.") + "</span>" +
         (boutonCs ? '<button class="btn small" data-cs-go>Faire le contrôle</button>' : "") + "</div>";
+      // ✅ Contrôle de ce soir déjà fait par un autre CC de la boutique : les autres CC en sont informés (à la place du rappel)
+      const faits = db.crSoldes.filter((x) => x.boutique === bqc && x.date === today()).sort((p, q) => String(q.at).localeCompare(String(p.at)));
+      let vu = ""; try { vu = localStorage.getItem("cs-fait-vu") || ""; } catch (e) {}
+      const moi = String(me.nom || me.email || "").trim().toLowerCase();
+      if (faits.length && !manqueHier && new Date().getHours() >= 15 && vu !== today() + "|" + bqc) {
+        const par = faits[0].saisiPar || "un CC", heure = faits[0].at ? new Date(faits[0].at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+        if (String(par).trim().toLowerCase() !== moi)
+          h += '<div class="alert-line ok">✅ <span><b>Contrôle du crédit de ce soir déjà fait</b> par <b>' + esc(par) + "</b>" + (heure ? " à " + heure : "") + " — vous n'avez rien à déclarer.</span>" +
+            '<button class="btn small" data-cs-vu="' + esc(bqc) + '">OK</button></div>';
+      }
     }
     // 🧊 Seuil de réapprovisionnement atteint : alerte au gestionnaire du frigo (l'admin l'a dans le tableau de bord)
     if (me && !isAdmin() && canFrigoDotation()) {
