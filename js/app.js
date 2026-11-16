@@ -349,7 +349,8 @@
     catch (e) { authMsg("Empreinte annulée ou non reconnue. Réessayez, ou utilisez le mot de passe."); }
   });
   $("#bio-autre").addEventListener("click", async () => {
-    await sb.auth.signOut({ scope: "local" }); // l'empreinte reste activée : après connexion par mot de passe du même compte, elle resservira
+    // On affiche seulement le formulaire du mot de passe : la session reste gardée, donc après une actualisation
+    // (sans connexion), l'empreinte est de nouveau proposée. Une connexion par mot de passe remplace la session.
     $("#bio-login").classList.add("hidden"); $("#login-form").classList.remove("hidden"); authMsg("");
   });
   $("#bio-activer").addEventListener("click", async () => {
