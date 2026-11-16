@@ -356,8 +356,12 @@
   $("#bio-desactiver").addEventListener("click", () => { bioSet(null); toast("Connexion par empreinte désactivée sur cet appareil."); renderBioCard(); });
   async function renderBioCard() {
     const dispo = await bioDispo(), b = bioInfo(), actif = !!(b && me && b.uid === me.id);
-    $("#bio-card").classList.toggle("hidden", !dispo);
-    if (!dispo) return;
+    $("#bio-card").classList.remove("hidden");
+    if (!dispo) {
+      $("#bio-etat").innerHTML = "⚠ Cet appareil n'a pas de capteur d'empreinte (ou de visage) disponible, ou il n'est pas configuré. Ouvrez l'application sur votre <b>téléphone</b> (ou activez Windows Hello sur l'ordinateur) puis revenez ici.";
+      $("#bio-activer").classList.add("hidden"); $("#bio-desactiver").classList.add("hidden");
+      return;
+    }
     $("#bio-etat").innerHTML = actif ? "✅ <b>Activée sur cet appareil.</b> À la prochaine ouverture (ou après « Déconnexion »), posez simplement votre doigt sur le capteur."
       : "Connectez-vous avec votre empreinte au lieu du mot de passe, sur ce téléphone ou cet ordinateur.";
     $("#bio-activer").classList.toggle("hidden", actif);
@@ -3251,7 +3255,18 @@
     try { localStorage.setItem("cs-fait-vu", today() + "|" + b.dataset.csVu); } catch (err) {}
     renderAppAlert();
   });
+  // Proposer l'empreinte après la connexion (une fois, si l'appareil a un capteur)
+  let bioOk = null;
+  document.addEventListener("click", async (e) => {
+    if (e.target.closest("[data-bio-oui]")) {
+      try { await bioActiver(); toast("👆 Connexion par empreinte activée sur cet appareil."); } catch (er) { toast("Activation impossible : " + (er && er.name === "NotAllowedError" ? "annulée." : (er.message || er))); }
+      try { localStorage.setItem("bio-proposee", "1"); } catch (er) {}
+      return renderAppAlert();
+    }
+    if (e.target.closest("[data-bio-non]")) { try { localStorage.setItem("bio-proposee", "1"); } catch (er) {} renderAppAlert(); }
+  });
   function renderAppAlert() {
+    if (bioOk === null && me) { bioOk = false; bioDispo().then((v) => { bioOk = v; if (v) renderAppAlert(); }); }
     const el = $("#app-alert");
     const bq = !isAdmin() && canEntrees() ? myBoutiqueCode() : "";
     const r = bq ? resteARemonter(bq) : { total: 0 };
@@ -3343,6 +3358,11 @@
         r.semaines.map((x) => "semaine du " + fmtDate(x.w) + " : " + money0(x.manque)).join(" · ") +
         '</span> <button class="btn small" data-view-link="fonds">Remonter les fonds</button></div>';
     }
+    // 👆 Proposition d'activer l'empreinte (appareil compatible, pas encore activée, pas refusée)
+    let propose = ""; try { propose = localStorage.getItem("bio-proposee") || ""; } catch (e) {}
+    const bioAct = bioInfo();
+    if (me && bioOk && !propose && !(bioAct && bioAct.uid === me.id))
+      h = '<div class="alert-line ok">👆 <span><b>Connectez-vous avec votre empreinte</b> — plus besoin de taper le mot de passe sur cet appareil.</span><button class="btn small success" data-bio-oui>Activer</button> <button class="btn small" data-bio-non>Plus tard</button></div>' + h;
     el.innerHTML = h;
     el.classList.toggle("hidden", !h);
   }
