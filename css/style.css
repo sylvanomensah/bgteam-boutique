@@ -1130,3 +1130,8 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 .fg-rang small { color: var(--muted, #6b7280); }
 /* Filtre Boutique toujours à droite dans les pages Frigo et Crédit télécom du tableau de bord */
 #dash-fg > .toolbar .cc-filter, #dash-com > .toolbar .cc-filter { margin-left: auto; }
+
+/* Relance de la commission : CC qui doivent en surbrillance ; liste grisée hors du 1er et du 2 */
+.dc-relance-ligne.surbrillance { background: #fff4d6; border-color: #f5c451; }
+.dc-relance.grise { filter: grayscale(1); opacity: .6; }
+.dc-relance.grise .dc-relance-ligne.surbrillance { background: #ececec; border-color: #c9c9c9; }

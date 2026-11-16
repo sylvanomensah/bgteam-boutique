@@ -992,24 +992,28 @@
       (() => { const nr = listes.controle.filter((x) => !relanceEnvoyees.controle.has(x.cc)).length;
         return '<button class="btn small ' + (nr ? "primary" : "") + '" data-relance-ouvrir="controle"' + (listes.controle.length ? "" : " disabled") + ">📲 Relancer le contrôle du soir" +
           (nr ? " (" + nr + ")" : listes.controle.length ? " : relance faite aujourd'hui ✓" : " : tout est fait ✓") + "</button> "; })() +
-      '<button class="btn small ' + (ouvertCom && listes.commission.length ? "primary" : "") + '" data-relance-ouvrir="commission"' + (ouvertCom && listes.commission.length ? "" : " disabled") +
-        (ouvertCom ? "" : ' title="La relance de la commission se fait le 1er et le 2 de chaque mois"') + ">💸 Relancer la commission du mois passé" +
+      '<button class="btn small ' + (ouvertCom && listes.commission.length ? "primary" : "") + '" data-relance-ouvrir="commission"' +
+        (ouvertCom ? "" : ' title="Consultation seulement : la relance de la commission se fait le 1er et le 2 de chaque mois"') + ">💸 Relancer la commission du mois passé" +
         (!ouvertCom ? " (le 1er et le 2)" : listes.commission.length ? " (" + listes.commission.length + ")" : " : tout est versé ✓") + "</button>";
-    if (relanceMode === "commission" && !ouvertCom) relanceMode = null;
     const liste = relanceMode ? listes[relanceMode] : [], envoyees = relanceMode ? relanceEnvoyees[relanceMode] : new Set();
     // Tableau des contacts avec le reste à verser : seulement pour la relance de la commission
     $("#dc-contacts-wrap").classList.toggle("hidden", relanceMode !== "commission");
     const zone = $("#dc-relance");
     // Contrôle du soir : on garde tous les CC dans la liste ; ceux dont la boutique a fait le contrôle affichent « ✅ Contrôle fait »
-    const affiche = relanceMode === "controle" ? contacts.filter((x) => enCredit(x)) : liste;
+    // Contrôle : tous les CC (fait / pas encore). Commission : tous les CC, ceux qui doivent la commission en surbrillance ;
+    // en dehors du 1er et du 2, la liste est grisée et sans action (consultation seulement)
+    const affiche = contacts.filter((x) => enCredit(x));
+    const lectureSeule = relanceMode === "commission" && !ouvertCom;
+    zone.classList.toggle("grise", lectureSeule);
     zone.classList.toggle("hidden", !relanceMode || !affiche.length);
     if (relanceMode && affiche.length) {
       const restants = liste.filter((x) => !envoyees.has(x.cc));
       const intro = relanceMode === "controle"
         ? (liste.length ? "<b>" + liste.length + " CC</b> n'ont pas encore déclaré le crédit restant lu sur la puce aujourd'hui." : "✅ <b>Toutes les boutiques ont fait le contrôle</b> du crédit restant aujourd'hui.")
-        : "<b>" + liste.length + " CC</b> n'ont pas encore versé la commission des mois passés.";
-      zone.innerHTML = '<div class="dc-relance-tete"><p>' + intro + " Appuyez sur le bouton vert de chaque CC : WhatsApp s'ouvre avec le message déjà écrit, il suffit d'appuyer sur Envoyer.</p>" +
-        (restants.length ? '<button class="btn small success" id="dc-relance-suivant">💬 Ouvrir le suivant (' + restants.length + " restant" + (restants.length > 1 ? "s" : "") + ")</button>" : '<span class="badge ok">✓ Tous relancés</span>') + "</div>" +
+        : (liste.length ? "<b>" + liste.length + " CC</b> n'ont pas encore versé la commission des mois passés (en surbrillance)." : "✅ <b>Toutes les boutiques ont versé</b> la commission des mois passés.");
+      zone.innerHTML = '<div class="dc-relance-tete"><p>' + intro + (lectureSeule ? " 🔒 <b>Consultation seulement</b> : la relance se fait le 1er et le 2 du mois (prochaine : " + fmtDate(premierDuMois(addDays(premierDuMois(today()), 32))) + ")."
+          : " Appuyez sur le bouton vert de chaque CC : WhatsApp s'ouvre avec le message déjà écrit, il suffit d'appuyer sur Envoyer.") + "</p>" +
+        (lectureSeule ? "" : restants.length ? '<button class="btn small success" id="dc-relance-suivant">💬 Ouvrir le suivant (' + restants.length + " restant" + (restants.length > 1 ? "s" : "") + ")</button>" : '<span class="badge ok">✓ Tous relancés</span>') + "</div>" +
         affiche.map((x) => {
           const tel = String(x.tel || "").trim(), env = envoyees.has(x.cc);
           if (relanceMode === "controle" && venteFaite(x.boutique, today())) {
@@ -1018,9 +1022,13 @@
             return '<div class="dc-relance-ligne envoye"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · contrôle fait" + (f.saisiPar ? " par " + esc(f.saisiPar) : "") + (hh ? " à " + hh : "") + "</small></div>" +
               '<span class="badge ok">✅ Contrôle fait</span></div>';
           }
+          if (relanceMode === "commission" && !(commissionInfo(x.boutique).duAncien > 0))
+            return '<div class="dc-relance-ligne envoye"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · commission des mois passés versée</small></div>" + '<span class="badge ok">✅ À jour</span></div>';
+          if (lectureSeule)
+            return '<div class="dc-relance-ligne surbrillance"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · commission due : " + money0(commissionInfo(x.boutique).duAncien) + "</small></div>" + '<span class="badge warn">À relancer le 1er</span></div>';
           const detail = relanceMode === "controle" ? (hierManquant(x.boutique) ? "⚠ hier aussi manquant" : "contrôle : pas encore") : "commission due : " + money0(commissionInfo(x.boutique).duAncien);
           const msg = relanceMode === "controle" ? messageControle(x.cc, x.boutique) : messageCommission(x.cc, x.boutique, commissionInfo(x.boutique).duAncien, true);
-          return '<div class="dc-relance-ligne' + (env ? " envoye" : "") + '"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · " + detail + "</small></div>" +
+          return '<div class="dc-relance-ligne' + (env ? " envoye" : relanceMode === "commission" ? " surbrillance" : "") + '"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · " + detail + "</small></div>" +
             (env ? "" : tel ? '<a class="btn small btn-wa" target="_blank" rel="noopener" data-relance-cc="' + esc(x.cc) + '" href="' + esc(lienWhatsApp(tel, msg)) + '" title="Relancer sur WhatsApp">' + ICONE_WA + "</a>"
               : '<span class="muted">pas de numéro (fiche RH)</span>') + (env ? '<span class="badge ok">✓ relancé aujourd’hui</span>' : "") + "</div>";
         }).join("");
