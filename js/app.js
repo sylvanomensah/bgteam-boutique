@@ -941,7 +941,7 @@
   // Message du 15 : rappel (pas une demande) — le dépôt des commissions se fera le 1er et le 2 du mois prochain
   function messageRappelCom(cc, bq, reste) {
     return "Bonjour " + civiliteNom(cc) + ", petit rappel : la commission du crédit télécom de " + boutiqueName(bq) + (reste > 0 ? " (" + money0(reste) + " à ce jour)" : "") +
-      " sera à déposer le 1er et le 2 " + moisProchainTxt() + ". Merci de vous y préparer. Sur l'application BGTEAM";
+      " sera à déposer le 1er ou le 2 " + moisProchainTxt() + " par Paiement Marchand au 1333322 (SHALOM AND FAVOR LIVING), puis à déclarer sur l'application BGTEAM. Merci de vous y préparer.";
   }
   function jourDemande() { return Number(today().slice(8, 10)) <= 2; }
   // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)
