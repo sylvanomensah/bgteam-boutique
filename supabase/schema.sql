@@ -1435,8 +1435,8 @@ create or replace function public.frigo_ajouter_course(p_boutique text, p_date d
 returns uuid language plpgsql security definer set search_path = public as $$
 declare v_id uuid; v_achats numeric := 0; v_vente numeric := 0; l jsonb; prof public.profiles%rowtype; v_dot public.frigo_dotations%rowtype; v_total numeric;
 begin
-  if not (public.is_admin() or (public.is_member() and p_boutique = public.my_boutique())) then
-    raise exception 'Seuls l''administrateur et les CC de la boutique peuvent faire la course du frigo';
+  if not (public.is_admin() or (public.is_member() and p_boutique = public.my_boutique() and coalesce((public.my_cc()).entrees, false))) then
+    raise exception 'Seuls l''administrateur et les CC autorisés « Courses frigo » de la boutique peuvent faire la course du frigo';
   end if;
   if not public.is_admin() then p_date := current_date; end if;
   select * into v_dot from public.frigo_dotations where boutique = p_boutique and statut = 'Ouverte' for update;
