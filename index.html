@@ -989,6 +989,16 @@
             <button class="btn" id="fg-seuil-save" style="align-self:flex-end">Enregistrer</button>
           </div>
         </details>
+        <!-- Proposition de rachat : produits qui se vendent le plus dans la boutique (CC « Courses frigo » et admin) -->
+        <div class="card hidden" id="fg-rachat">
+          <div class="toolbar"><h2 style="margin-right:auto" id="fg-rachat-titre">🛒 Proposition de rachat</h2>
+            <label class="cc-filter">Période<select id="fg-rachat-jours"><option value="7">7 derniers jours</option><option value="14">14 derniers jours</option><option value="30" selected>30 derniers jours</option></select></label></div>
+          <p class="hint" style="margin:0 0 8px">Produits qui se vendent le plus dans cette boutique, et quantité conseillée pour tenir <b>2 semaines</b> (ventes moyennes − stock actuel du frigo).</p>
+          <div class="table-wrap"><table class="table">
+            <thead><tr><th>#</th><th>Produit</th><th class="num">Vendus</th><th class="num">Par semaine</th><th class="num">Stock actuel</th><th class="num">Tient encore</th><th class="num">À racheter</th><th class="num">Ventes (FCFA)</th></tr></thead>
+            <tbody id="fg-rachat-rows"></tbody>
+          </table></div>
+        </div>
       </div>
     </section>
 

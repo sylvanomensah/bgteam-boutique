@@ -1148,3 +1148,7 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 .bio-login { display: grid; gap: 10px; justify-items: center; margin: 8px 0 4px; }
 .bio-login .bio-btn { width: 100%; font-size: 1.05rem; padding: 14px; }
 .bio-login small { color: var(--muted, #6b7280); }
+
+/* Frigo : proposition de rachat */
+#fg-rachat tr.rachat-oui > td { background: #fffaf0; }
+#fg-rachat .rachat-q { color: #b45309; font-size: 1.05rem; }

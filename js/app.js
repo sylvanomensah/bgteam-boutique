@@ -4378,6 +4378,30 @@
   // Boutiques qui ont un frigo (au moins une course)
   function boutiquesFrigo() { const s = new Set(db.fgCourses.map((c) => c.boutique)); return db.boutiques.filter((b) => s.has(b.code)); }
 
+  // 🛒 Proposition de rachat (CC « Courses frigo » de la boutique et admin) : meilleures ventes du frigo de la boutique
+  function renderRachat(scope) {
+    const card = $("#fg-rachat"), voir = scope.length === 1 && canFrigoCourse();
+    card.classList.toggle("hidden", !voir);
+    if (!voir) return;
+    const bq = scope[0].code, jours = Number($("#fg-rachat-jours").value) || 30, depuis = addDays(today(), -(jours - 1));
+    $("#fg-rachat-titre").textContent = "🛒 Proposition de rachat — " + boutiqueName(bq);
+    const g = {};
+    db.fgSorties.filter((x) => x.boutique === bq && x.date >= depuis).forEach((x) => {
+      const r = g[x.code] || (g[x.code] = { code: x.code, nom: (productByCode(x.code) || {}).nom || x.nom || x.code, qte: 0, montant: 0 });
+      r.qte += x.qte; r.montant += x.montant;
+    });
+    const lignes = Object.values(g).sort((a, b) => b.qte - a.qte || b.montant - a.montant).slice(0, 15).map((r) => {
+      const parJour = r.qte / jours, stock = Math.max(0, r2_(stockFrigoOf(r.code, bq)));
+      const tient = parJour > 0 ? Math.floor(stock / parJour) : null, aRacheter = Math.max(0, Math.ceil(parJour * 14 - stock));
+      return Object.assign(r, { parSem: r2_(parJour * 7), stock, tient, aRacheter });
+    });
+    $("#fg-rachat-rows").innerHTML = lignes.length ? lignes.map((r, i) => '<tr class="' + (r.aRacheter > 0 ? "rachat-oui" : "") + '"><td>' + (i < 3 ? ["🥇", "🥈", "🥉"][i] : i + 1) + "</td><td><b>" + esc(r.nom) + "</b></td>" +
+      '<td class="num">' + num(r.qte) + '</td><td class="num">' + num(Math.round(r.parSem * 10) / 10) + '</td><td class="num">' + num(r.stock) + "</td>" +
+      '<td class="num">' + (r.tient == null ? "—" : r.tient <= 3 ? '<b class="neg">' + r.tient + " j</b>" : r.tient + " j") + "</td>" +
+      '<td class="num">' + (r.aRacheter > 0 ? '<b class="rachat-q">' + num(r.aRacheter) + "</b>" : '<span class="pos">suffisant</span>') + '</td><td class="num">' + money0(r.montant) + "</td></tr>").join("")
+      : '<tr><td colspan="8" class="empty">Aucune vente du frigo sur cette période : pas encore de proposition.</td></tr>';
+  }
+  $("#fg-rachat-jours").addEventListener("change", () => renderRachat(frigoScope()));
   function renderFrigo() {
     const glob = fgGlobal(), admin = isAdmin(), t = today(), mois = t.slice(0, 7);
     const bcur = $("#fg-boutique").value || "ALL";
@@ -4400,6 +4424,7 @@
     if (fgTab === "recap") return renderRecapFrigo(scope);
     if (fgTab === "stock") return renderStockFrigo(scope);
 
+    try { renderRachat(scope); } catch (er) { /* jamais bloquant */ }
     // Cartes (une boutique) ou tableau (plusieurs)
     const une = scope.length === 1;
     $("#fg-table-card").classList.toggle("hidden", une || !scope.length);
