@@ -910,6 +910,8 @@
   }
   // Relances WhatsApp : « controle » (contrôle du soir) ou « commission » (commission des mois passés, le 1er et le 2)
   let relanceMode = null, relanceEnvoyees = { controle: new Set(), commission: new Set() }, relanceJour = "";
+  // Une seule relance par CC et par jour : les CC déjà relancés sont mémorisés pour la journée
+  function memoRelances() { try { localStorage.setItem("relances-" + today(), JSON.stringify({ controle: [...relanceEnvoyees.controle], commission: [...relanceEnvoyees.commission] })); } catch (er) {} }
   function messageCommission(cc, bq, reste, moisPassesSeulement) {
     const f = (db.fiches || []).find((x) => String(x.cc) === String(cc)) || {};
     const civ = f.sexe === "M" ? "Monsieur " : f.sexe === "F" ? "Madame " : "";
@@ -972,7 +974,10 @@
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
     // 📲 Relances WhatsApp des CC « Contrôle Crédit »
-    if (relanceJour !== today()) { relanceJour = today(); relanceEnvoyees = { controle: new Set(), commission: new Set() }; }
+    if (relanceJour !== today()) {
+      relanceJour = today(); relanceEnvoyees = { controle: new Set(), commission: new Set() };
+      try { const m = JSON.parse(localStorage.getItem("relances-" + today()) || "{}"); Object.keys(relanceEnvoyees).forEach((k) => (m[k] || []).forEach((cc) => relanceEnvoyees[k].add(cc))); } catch (er) {}
+    }
     const enCredit = (x) => x.boutique && boutiquesCredit().some((b) => b.code === x.boutique);
     const listes = {
       // contrôle du crédit restant (lu sur la puce) pas encore déclaré aujourd'hui
@@ -982,7 +987,9 @@
     };
     const ouvertCom = jourDemande();
     $("#dc-relance-btn").innerHTML =
-      '<button class="btn small ' + (listes.controle.length ? "primary" : "") + '" data-relance-ouvrir="controle"' + (listes.controle.length ? "" : " disabled") + ">📲 Relancer le contrôle du soir" + (listes.controle.length ? " (" + listes.controle.length + ")" : " : tout est fait ✓") + "</button> " +
+      (() => { const nr = listes.controle.filter((x) => !relanceEnvoyees.controle.has(x.cc)).length;
+        return '<button class="btn small ' + (nr ? "primary" : "") + '" data-relance-ouvrir="controle"' + (listes.controle.length ? "" : " disabled") + ">📲 Relancer le contrôle du soir" +
+          (nr ? " (" + nr + ")" : listes.controle.length ? " : relance faite aujourd'hui ✓" : " : tout est fait ✓") + "</button> "; })() +
       '<button class="btn small ' + (ouvertCom && listes.commission.length ? "primary" : "") + '" data-relance-ouvrir="commission"' + (ouvertCom && listes.commission.length ? "" : " disabled") +
         (ouvertCom ? "" : ' title="La relance de la commission se fait le 1er et le 2 de chaque mois"') + ">💸 Relancer la commission du mois passé" +
         (!ouvertCom ? " (le 1er et le 2)" : listes.commission.length ? " (" + listes.commission.length + ")" : " : tout est versé ✓") + "</button>";
@@ -1010,8 +1017,8 @@
           const detail = relanceMode === "controle" ? (hierManquant(x.boutique) ? "⚠ hier aussi manquant" : "contrôle : pas encore") : "commission due : " + money0(commissionInfo(x.boutique).duAncien);
           const msg = relanceMode === "controle" ? messageControle(x.cc, x.boutique) : messageCommission(x.cc, x.boutique, commissionInfo(x.boutique).duAncien, true);
           return '<div class="dc-relance-ligne' + (env ? " envoye" : "") + '"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · " + detail + "</small></div>" +
-            (tel ? '<a class="btn small btn-wa" target="_blank" rel="noopener" data-relance-cc="' + esc(x.cc) + '" href="' + esc(lienWhatsApp(tel, msg)) + '" title="Relancer sur WhatsApp">' + ICONE_WA + "</a>"
-              : '<span class="muted">pas de numéro (fiche RH)</span>') + (env ? '<span class="badge ok">✓ envoyé</span>' : "") + "</div>";
+            (env ? "" : tel ? '<a class="btn small btn-wa" target="_blank" rel="noopener" data-relance-cc="' + esc(x.cc) + '" href="' + esc(lienWhatsApp(tel, msg)) + '" title="Relancer sur WhatsApp">' + ICONE_WA + "</a>"
+              : '<span class="muted">pas de numéro (fiche RH)</span>') + (env ? '<span class="badge ok">✓ relancé aujourd’hui</span>' : "") + "</div>";
         }).join("");
     }
     $("#dc-rows").innerHTML = infos.length ? infos.map(({ b, c, m }) => {
@@ -1130,10 +1137,10 @@
     const ouv = e.target.closest("[data-relance-ouvrir]");
     if (ouv) { relanceMode = relanceMode === ouv.dataset.relanceOuvrir ? null : ouv.dataset.relanceOuvrir; return renderDashCom(); }
     const wa = e.target.closest("[data-relance-cc]");
-    if (wa && relanceMode) { relanceEnvoyees[relanceMode].add(wa.dataset.relanceCc); setTimeout(renderDashCom, 300); return; }
+    if (wa && relanceMode) { relanceEnvoyees[relanceMode].add(wa.dataset.relanceCc); memoRelances(); setTimeout(renderDashCom, 300); return; }
     if (e.target.closest("#dc-relance-suivant") && relanceMode) {
       const lien = [...document.querySelectorAll("#dc-relance [data-relance-cc]")].find((a) => !relanceEnvoyees[relanceMode].has(a.dataset.relanceCc));
-      if (lien) { relanceEnvoyees[relanceMode].add(lien.dataset.relanceCc); window.open(lien.href, "_blank", "noopener"); renderDashCom(); }
+      if (lien) { relanceEnvoyees[relanceMode].add(lien.dataset.relanceCc); memoRelances(); window.open(lien.href, "_blank", "noopener"); renderDashCom(); }
     }
   });
   $("#dash-com").addEventListener("click", (e) => {
