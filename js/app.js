@@ -929,9 +929,20 @@
     return "https://wa.me/" + n + (message ? "?text=" + encodeURIComponent(message) : "");
   }
   // La demande de versement des commissions se fait le 1er et le 2 de chaque mois
-  // Relance WhatsApp de la commission (tableau des CC) : active le 15 de chaque mois
-  function jourRelanceCom() { return Number(today().slice(8, 10)) === 15; }
-  function prochainRelanceCom() { const d = today(); return Number(d.slice(8, 10)) < 15 ? d.slice(0, 8) + "15" : premierDuMois(addDays(premierDuMois(d), 32)).slice(0, 8) + "15"; }
+  // Relance WhatsApp de la commission (tableau des CC) : le 1er et le 2 = demande de dépôt ; le 15 = simple rappel du dépôt du 1er et 2 du mois prochain
+  function jourRelanceCom() { return [1, 2, 15].includes(Number(today().slice(8, 10))); }
+  const jourRappelCom = () => Number(today().slice(8, 10)) === 15;
+  function prochainRelanceCom() {
+    const d = today(), j = Number(d.slice(8, 10));
+    if (j < 15) return d.slice(0, 8) + (j < 1 ? "01" : j < 2 ? "02" : "15");
+    return premierDuMois(addDays(premierDuMois(d), 32));
+  }
+  function moisProchainTxt() { return new Date(premierDuMois(addDays(premierDuMois(today()), 32)) + "T12:00:00").toLocaleDateString("fr-FR", { month: "long", year: "numeric" }); }
+  // Message du 15 : rappel (pas une demande) — le dépôt des commissions se fera le 1er et le 2 du mois prochain
+  function messageRappelCom(cc, bq, reste) {
+    return "Bonjour " + civiliteNom(cc) + ", petit rappel : la commission du crédit télécom de " + boutiqueName(bq) + (reste > 0 ? " (" + money0(reste) + " à ce jour)" : "") +
+      " sera à déposer le 1er et le 2 " + moisProchainTxt() + ". Merci de vous y préparer. Sur l'application BGTEAM";
+  }
   function jourDemande() { return Number(today().slice(8, 10)) <= 2; }
   // Cadre « Commissions du crédit télécom » du tableau de bord (gestionnaire des commissions et admin)
   function renderDashCom() {
@@ -976,8 +987,11 @@
     }
     const actifCom = jourRelanceCom();
     $("#dc-contacts-wrap").classList.toggle("grise", !actifCom);
-    $("#dc-contacts-info").innerHTML = actifCom ? "📲 <b>Relance active aujourd'hui (le 15)</b> : appuyez sur le bouton vert de chaque CC qui doit la commission — une seule relance par CC."
-      : "🔒 <b>Consultation seulement</b> : la relance WhatsApp de la commission s'active le <b>15</b> de chaque mois (prochaine : " + fmtDate(prochainRelanceCom()) + ").";
+    const rappel15 = jourRappelCom();
+    $("#dc-contacts-info").innerHTML = !actifCom
+      ? "🔒 <b>Consultation seulement</b> : la page s'active le <b>1er et le 2</b> (dépôt des commissions) et le <b>15</b> (rappel) de chaque mois — prochaine : " + fmtDate(prochainRelanceCom()) + "."
+      : rappel15 ? "📲 <b>Rappel du 15</b> : appuyez sur le bouton vert de chaque CC pour lui rappeler le dépôt des commissions le 1er et le 2 " + esc(moisProchainTxt()) + " (une seule relance par CC)."
+      : "📲 <b>Dépôt des commissions (1er et 2)</b> : appuyez sur le bouton vert de chaque CC qui doit la commission des mois passés (une seule relance par CC).";
     $("#dc-contacts").innerHTML = contacts.length ? contacts.map((x) => {
       const reste = x.boutique ? commissionInfo(x.boutique).aDeclarer : 0, tel = String(x.tel || "").trim(), env = relanceEnvoyees.commission.has(x.cc);
       if (env && tel) return "<tr><td>" + esc(x.boutique ? boutiqueName(x.boutique) : "Non affecté") + "</td><td><b>" + esc(ccName(x.cc)) + "</b></td><td>" +
@@ -985,7 +999,8 @@
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
       return "<tr><td>" + esc(x.boutique ? boutiqueName(x.boutique) : "Non affecté") + "</td><td><b>" + esc(ccName(x.cc)) + "</b></td><td>" +
         (tel ? '<span class="tel-actions"><a class="btn small" href="tel:' + esc(tel.replace(/[^\d+]/g, "")) + '">📞 ' + esc(tel) + "</a>" +
-          (actifCom && reste > 0 ? ' <a class="btn small btn-wa" target="_blank" rel="noopener" data-relance-cc="' + esc(x.cc) + '" href="' + esc(lienWhatsApp(tel, messageCommission(x.cc, x.boutique, reste))) + '" title="Relancer sur WhatsApp" aria-label="Relancer sur WhatsApp">' + ICONE_WA + "</a>" : "") + "</span>"
+          (actifCom && (rappel15 ? reste > 0 : commissionInfo(x.boutique).duAncien > 0) ? ' <a class="btn small btn-wa" target="_blank" rel="noopener" data-relance-cc="' + esc(x.cc) + '" href="' +
+            esc(lienWhatsApp(tel, rappel15 ? messageRappelCom(x.cc, x.boutique, reste) : messageCommission(x.cc, x.boutique, commissionInfo(x.boutique).duAncien, true))) + '" title="' + (rappel15 ? "Rappel" : "Relance") + ' sur WhatsApp" aria-label="WhatsApp">' + ICONE_WA + "</a>" : "") + "</span>"
           : '<span class="muted">Numéro non renseigné (fiche RH)</span>') +
         '</td><td class="num">' + (reste > 0 ? '<b class="neg">' + money0(reste) + "</b>" : '<span class="pos">0</span>') + "</td></tr>";
     }).join("") : '<tr><td colspan="4" class="empty">Aucun CC coché « Contrôle Crédit »' + (sel.value === "ALL" ? "" : " dans cette boutique") + ".</td></tr>";
@@ -1007,8 +1022,8 @@
         return '<button class="btn small ' + (nr ? "primary" : "") + '" data-relance-ouvrir="controle"' + (listes.controle.length ? "" : " disabled") + ">📲 Relancer le contrôle du soir" +
           (nr ? " (" + nr + ")" : listes.controle.length ? " : relance faite aujourd'hui ✓" : " : tout est fait ✓") + "</button> "; })() +
       '<button class="btn small ' + (ouvertCom && listes.commission.length ? "primary" : "") + '" data-relance-ouvrir="commission"' +
-        (ouvertCom ? "" : ' title="Consultation seulement : la relance de la commission s\'active le 15 de chaque mois"') + ">💸 Relancer la commission du mois passé" +
-        (!ouvertCom ? " (le 15)" : listes.commission.length ? " (" + listes.commission.length + ")" : " : tout est versé ✓") + "</button>";
+        (ouvertCom ? "" : ' title="Consultation seulement : active le 1er, le 2 et le 15 de chaque mois"') + ">💸 Relancer la commission du mois passé" +
+        (!ouvertCom ? " (le 1er, le 2 et le 15)" : jourRappelCom() ? " : rappel du 15" : listes.commission.length ? " (" + listes.commission.length + ")" : " : tout est versé ✓") + "</button>";
     const liste = relanceMode ? listes[relanceMode] : [], envoyees = relanceMode ? relanceEnvoyees[relanceMode] : new Set();
     // Tableau des contacts avec le reste à verser : seulement pour la relance de la commission
     $("#dc-contacts-wrap").classList.toggle("hidden", relanceMode !== "commission");
@@ -1384,7 +1399,7 @@
       }, 80);
       return;
     }
-    if (e.target.closest("[data-com-relance-go]")) { relanceMode = "commission"; show("dashboard"); setTimeout(() => { const w = $("#dc-contacts-wrap"); if (w) w.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80); return; }
+    if (e.target.closest("[data-com-relance-go]")) { relanceMode = "commission"; show("dashboard"); if (isAdmin()) { dashComPage = true; render("dashboard"); } setTimeout(() => { const w = $("#dc-contacts-wrap"); if (w) w.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80); return; }
     const go = e.target.closest("[data-fg-stock-go]");
     if (go) {
       // Ouvre Frigo → Stock frigo sur tous les produits, puis amène à la ligne du produit à valider
@@ -3226,10 +3241,10 @@
         '<button class="btn small" data-view-link="credit">Verser la commission</button></div>';
     }
     // 📲 Le 15 du mois : la relance WhatsApp de la commission est active (gestionnaire des commissions)
-    if (me && !isAdmin() && canGererCom() && jourRelanceCom()) {
+    if (me && canGererCom() && jourRappelCom()) {
       const aRel = boutiquesCredit().filter((b) => commissionInfo(b.code).aDeclarer > 0);
-      if (aRel.length) h += '<div class="alert-line">💸 <span><b>Relance de la commission active aujourd\'hui (le 15)</b> — ' + aRel.length + " boutique" + (aRel.length > 1 ? "s" : "") +
-        " doivent encore la commission : faites un rappel WhatsApp aux CC.</span>" + '<button class="btn small" data-com-relance-go>Faire le rappel</button></div>';
+      if (aRel.length) h += '<div class="alert-line">💸 <span><b>Rappel du 15 : page des commissions active</b> — rappelez par WhatsApp aux CC de ' + aRel.length + " boutique" + (aRel.length > 1 ? "s" : "") +
+        " que le dépôt des commissions se fera le 1er et le 2 " + esc(moisProchainTxt()) + ".</span>" + '<button class="btn small" data-com-relance-go>Faire le rappel</button></div>';
     }
     // Gestionnaire des commissions : versements déclarés à confirmer
     if (me && !isAdmin() && canGererCom()) {
