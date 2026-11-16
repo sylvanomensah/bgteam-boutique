@@ -3152,7 +3152,7 @@
         " : nouvelle course de " + money0(DOTATION_STANDARD) + " à doter.</span>" + '<button class="btn small" data-view-link="frigo">Doter</button></div>';
     }
     // 💰 Dotation du frigo en attente de course (CC de la boutique)
-    if (me && !isAdmin() && myBoutiqueCode()) {
+    if (me && !isAdmin() && myBoutiqueCode() && canFrigoCourse()) {
       const dfr = dotOuverte(myBoutiqueCode());
       if (dfr) h += '<div class="alert-line">💰 <span><b>Dotation du frigo : ' + money2(dfr.montant) + "</b> — faites la course du frigo pour exactement ce montant.</span>" +
         '<button class="btn small" data-view-link="frigo">Faire la course</button></div>';
@@ -4148,7 +4148,8 @@
   const moneyU = (n) => money(Math.round(Number(n || 0) * 100) / 100);
   const sumBy = (l, f) => l.reduce((a, x) => a + (Number(f(x)) || 0), 0);
   function canFrigoDotation() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.frigoDotation); }
-  function canFrigoCourse() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && myBoutiqueCode()); }
+  // Faire la course du frigo : CC coché « Courses frigo » (RH → Autorisations) dans sa boutique
+  function canFrigoCourse() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.entrees && myBoutiqueCode()); }
   const fgGlobal = () => isGlobal() || canFrigoDotation();
   function canFrigo() { return isAdmin() || fgGlobal() || !!myBoutiqueCode(); }
   function frigoScope() {
