@@ -3121,7 +3121,7 @@
       const lib = $("#fd-boutique").value === "ALL" ? "toutes les boutiques" : boutiqueName($("#fd-boutique").value);
       $("#fd-mini").innerHTML =
         '<div class="mini roul"><span>Solde de roulement</span><b>' + money2(T("roulement")) + "</b><small>" + (sol.length === 1 && sol[0].frigo ? "crédit de course restant (Frigo)" : "valeur d'achat du stock") + " · " + esc(lib) + "</small></div>" +
-        '<div class="mini bene' + (T("benefAttendu") < 0 ? " neg" : "") + '"><span>Bénéfice attendu du fond de roulement</span><b>' + money2(T("benefAttendu")) + "</b><small>valeur de vente du stock " + money2(T("vente")) + " − fond de roulement " + money2(T("roulement")) + "</small></div>";
+        '<div class="mini bene' + (T("benefAttendu") < 0 ? " neg" : "") + '"><span>Bénéfice attendu</span><b>' + money2(T("benefAttendu")) + "</b><small>valeur de vente du stock " + money2(T("vente")) + " − fond de roulement " + money2(T("roulement")) + "</small></div>";
       // Formulaire de retrait
       const rcur = $("#rt-boutique").value;
       $("#rt-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
