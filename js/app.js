@@ -995,6 +995,8 @@
         (!ouvertCom ? " (le 1er et le 2)" : listes.commission.length ? " (" + listes.commission.length + ")" : " : tout est versé ✓") + "</button>";
     if (relanceMode === "commission" && !ouvertCom) relanceMode = null;
     const liste = relanceMode ? listes[relanceMode] : [], envoyees = relanceMode ? relanceEnvoyees[relanceMode] : new Set();
+    // Tableau des contacts avec le reste à verser : seulement pour la relance de la commission
+    $("#dc-contacts-wrap").classList.toggle("hidden", relanceMode !== "commission");
     const zone = $("#dc-relance");
     // Contrôle du soir : on garde tous les CC dans la liste ; ceux dont la boutique a fait le contrôle affichent « ✅ Contrôle fait »
     const affiche = relanceMode === "controle" ? contacts.filter((x) => enCredit(x)) : liste;
