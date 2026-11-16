@@ -952,6 +952,8 @@
     ]);
     // Demande de versement
     const dem = demandeActive(), aRelancer = scope.filter((b) => comARelancer(b.code) > 0);
+    // Bandeau de demande : affiché seulement le 1er et le 2 du mois (jours où la demande est possible)
+    $("#dc-demande").classList.toggle("hidden", !jourDemande());
     $("#dc-demande").innerHTML = "<p>" + (dem ? "📣 Demande de versement envoyée le <b>" + new Date(dem.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + "</b> par " + esc(dem.demandeur || "—") +
         " — les CC peuvent verser tout de suite. " : "🔔 Rappel automatique le <b>1er et le 2</b> de chaque mois pour les commissions des mois passés. ") +
       (aRelancer.length ? "<b>" + aRelancer.length + "</b> boutique" + (aRelancer.length > 1 ? "s" : "") + " reçoi" + (aRelancer.length > 1 ? "vent" : "t") + " la notification jusqu'au versement : " + aRelancer.map((b) => esc(b.nom)).join(", ") + "."
