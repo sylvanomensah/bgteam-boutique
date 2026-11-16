@@ -3121,7 +3121,7 @@
       const lib = $("#fd-boutique").value === "ALL" ? "toutes les boutiques" : boutiqueName($("#fd-boutique").value);
       $("#fd-mini").innerHTML =
         '<div class="mini roul"><span>Solde de roulement</span><b>' + money2(T("roulement")) + "</b><small>" + (sol.length === 1 && sol[0].frigo ? "crédit de course restant (Frigo)" : "valeur d'achat du stock") + " · " + esc(lib) + "</small></div>" +
-        '<div class="mini bene' + (T("benefice") < 0 ? " neg" : "") + '"><span>Solde bénéfice</span><b>' + money2(T("benefice")) + "</b><small>" + (sol.length === 1 && sol[0].frigo ? "bénéfice des ventes retirable (Frigo)" : "marge des ventes − dépenses − retraits") + "</small></div>";
+        '<div class="mini bene' + (T("benefAttendu") < 0 ? " neg" : "") + '"><span>Bénéfice attendu du fond de roulement</span><b>' + money2(T("benefAttendu")) + "</b><small>valeur de vente du stock " + money2(T("vente")) + " − fond de roulement " + money2(T("roulement")) + "</small></div>";
       // Formulaire de retrait
       const rcur = $("#rt-boutique").value;
       $("#rt-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
@@ -3206,11 +3206,13 @@
     return out;
   }
   // Solde de roulement = valeur d'achat du stock disponible ; solde bénéfice = marge − dépenses − retraits
+  // Valeur de vente du stock disponible (stock frigo × prix de vente) : sert au bénéfice attendu du fond de roulement
+  function valeurVenteStock(bq) { return db.products.reduce((a, p) => a + Math.max(0, stockActuel(p, bq)) * Number(p.pv || 0), 0); }
   function soldesOf(bq) {
     // Boutique avec frigo : roulement = crédit de course restant, bénéfice = bénéfice des ventes retirable (menu Frigo)
     if (db.fgCourses.some((c) => c.boutique === bq)) {
       const f = frigoInfo(bq, today().slice(0, 7)), r2 = (n) => Math.round(n * 100) / 100;
-      return { frigo: true, roulement: r2(Math.max(0, f.restant)), articles: 0, marge: r2(f.benefVentes), depenses: 0, retraits: r2(f.retire), benefice: r2(f.aRetirer),
+      return { frigo: true, vente: r2(valeurVenteStock(bq)), benefAttendu: r2(valeurVenteStock(bq) - Math.max(0, f.restant)), roulement: r2(Math.max(0, f.restant)), articles: 0, marge: r2(f.benefVentes), depenses: 0, retraits: r2(f.retire), benefice: r2(f.aRetirer),
         aValider: sumMontant(db.remontees.filter((r) => r.boutique === bq && r.statut !== "Reçue")) };
     }
     let roulement = 0, articles = 0;
@@ -3219,7 +3221,7 @@
     const depenses = sumMontant(db.charges.filter((c) => c.boutique === bq));
     const retraits = sumMontant(db.retraits.filter((x) => x.boutique === bq));
     return {
-      roulement: Math.round(roulement), articles, marge: Math.round(marge), depenses, retraits,
+      roulement: Math.round(roulement), vente: Math.round(valeurVenteStock(bq)), benefAttendu: Math.round(valeurVenteStock(bq) - roulement), articles, marge: Math.round(marge), depenses, retraits,
       benefice: Math.round(marge - depenses - retraits),
       aValider: sumMontant(db.remontees.filter((r) => r.boutique === bq && r.statut !== "Reçue"))
     };
