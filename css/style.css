@@ -1143,3 +1143,8 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 
 /* Frigo (tableau de bord) : grisé hors du lundi (consultation seulement) */
 .table-wrap.fg-grise { filter: grayscale(1); opacity: .6; }
+
+/* Connexion par empreinte digitale */
+.bio-login { display: grid; gap: 10px; justify-items: center; margin: 8px 0 4px; }
+.bio-login .bio-btn { width: 100%; font-size: 1.05rem; padding: 14px; }
+.bio-login small { color: var(--muted, #6b7280); }

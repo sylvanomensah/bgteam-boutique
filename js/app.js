@@ -281,6 +281,7 @@
     btn.disabled = false;
     if (error) return authMsg(errMsg(error));
     f.password.value = "";
+    try { const b = bioInfo(), u = (await sb.auth.getUser()).data.user; if (b && u && b.uid !== u.id) bioSet(null); } catch (er) {}
     enter();
   });
   $("#signup-form").addEventListener("submit", async (e) => {
@@ -297,11 +298,78 @@
     if (data.session) enter();
     else authMsg("Compte créé. Vérifiez votre boîte e-mail pour confirmer l'adresse, puis connectez-vous.", true);
   });
+  // ---------- Connexion par empreinte digitale (WebAuthn, capteur de l'appareil) ----------
+  // L'empreinte déverrouille la session gardée sur CET appareil : « Déconnexion » verrouille l'application
+  // au lieu de fermer la session ; « Utiliser un autre compte » ferme vraiment la session.
+  const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const deB64u = (str) => Uint8Array.from(atob(str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4)), (c) => c.charCodeAt(0));
+  function bioInfo() { try { return JSON.parse(localStorage.getItem("bio-login") || "null"); } catch (e) { return null; } }
+  function bioSet(v) { try { if (v) localStorage.setItem("bio-login", JSON.stringify(v)); else localStorage.removeItem("bio-login"); } catch (e) {} }
+  async function bioDispo() {
+    try { return !!(window.PublicKeyCredential && window.isSecureContext && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { return false; }
+  }
+  async function bioActiver() {
+    if (!me) return;
+    const nom = me.nom || me.email || "BGTeam";
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: "BGTeam" },
+      user: { id: new TextEncoder().encode(String(me.id)), name: me.email || nom, displayName: nom },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "preferred" },
+      timeout: 60000
+    } });
+    if (!cred) throw new Error("Empreinte non enregistrée");
+    bioSet({ uid: me.id, email: me.email || "", nom, credId: b64u(cred.rawId) });
+  }
+  async function bioVerifier() {
+    const b = bioInfo(); if (!b) return false;
+    const a = await navigator.credentials.get({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: "public-key", id: deB64u(b.credId) }],
+      userVerification: "required", timeout: 60000
+    } });
+    return !!a;
+  }
+  // Écran de connexion : bouton « empreinte » si elle est activée et que la session de cet utilisateur est gardée
+  async function montrerBio() {
+    const b = bioInfo(), ses = sb ? (await sb.auth.getSession()).data.session : null;
+    const ok = !!(b && ses && ses.user && ses.user.id === b.uid);
+    $("#bio-login").classList.toggle("hidden", !ok);
+    $("#login-form").classList.toggle("hidden", ok);
+    if (ok) $("#bio-qui").textContent = "Compte : " + (b.nom || b.email);
+    return ok;
+  }
+  $("#bio-go").addEventListener("click", async () => {
+    authMsg("");
+    try { if (await bioVerifier()) return enter(); authMsg("Empreinte non reconnue."); }
+    catch (e) { authMsg("Empreinte annulée ou non reconnue. Réessayez, ou utilisez le mot de passe."); }
+  });
+  $("#bio-autre").addEventListener("click", async () => {
+    await sb.auth.signOut({ scope: "local" }); bioSet(null);
+    $("#bio-login").classList.add("hidden"); $("#login-form").classList.remove("hidden"); authMsg("");
+  });
+  $("#bio-activer").addEventListener("click", async () => {
+    try { await bioActiver(); toast("👆 Connexion par empreinte activée sur cet appareil."); } catch (e) { toast("Activation impossible : " + (e && e.name === "NotAllowedError" ? "annulée." : (e.message || e))); }
+    renderBioCard();
+  });
+  $("#bio-desactiver").addEventListener("click", () => { bioSet(null); toast("Connexion par empreinte désactivée sur cet appareil."); renderBioCard(); });
+  async function renderBioCard() {
+    const dispo = await bioDispo(), b = bioInfo(), actif = !!(b && me && b.uid === me.id);
+    $("#bio-card").classList.toggle("hidden", !dispo);
+    if (!dispo) return;
+    $("#bio-etat").innerHTML = actif ? "✅ <b>Activée sur cet appareil.</b> À la prochaine ouverture (ou après « Déconnexion »), posez simplement votre doigt sur le capteur."
+      : "Connectez-vous avec votre empreinte au lieu du mot de passe, sur ce téléphone ou cet ordinateur.";
+    $("#bio-activer").classList.toggle("hidden", actif);
+    $("#bio-desactiver").classList.toggle("hidden", !actif);
+  }
   document.querySelectorAll("[data-logout]").forEach((b) => b.addEventListener("click", async () => {
     stopRealtime();
-    await sb.auth.signOut();
+    const bio = bioInfo(), garder = !!(bio && me && bio.uid === me.id);
+    if (!garder) await sb.auth.signOut(); // avec l'empreinte : la session reste sur l'appareil, verrouillée
     me = null; db = emptyDb(); cart = []; currentView = null;
     screen("auth");
+    if (garder) montrerBio();
   }));
   $("#pending-retry").addEventListener("click", () => enter());
 
@@ -767,7 +835,7 @@
     document.title = db.settings.nom + " — Boutique";
     ({
       dashboard: renderDashboard, caisse: renderCaisse, ventes: renderVentes, stats: renderStats,
-      stock: renderStock, entrees: renderEntrees, fonds: renderFonds, bobines: renderBobines, credit: renderCredit, frigo: renderFrigo, facture: renderFacture, parametres: renderParametres, rh: renderRh, compte: renderCompte
+      stock: renderStock, entrees: renderEntrees, fonds: renderFonds, bobines: renderBobines, credit: renderCredit, frigo: renderFrigo, facture: renderFacture, parametres: renderParametres, rh: renderRh, compte: () => { renderCompte(); renderBioCard(); }
     })[view]();
   }
   function productOptions(selected) {
@@ -6084,6 +6152,8 @@
     sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
     const { data: { session } } = await sb.auth.getSession();
     if (!session) return screen("auth");
+    const b = bioInfo();
+    if (b && session.user && b.uid === session.user.id) { screen("auth"); return montrerBio(); }
     enter();
   })();
 })();

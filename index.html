@@ -38,6 +38,12 @@
         <button data-tab="login" class="active">Connexion</button>
         <button data-tab="signup">Créer un compte</button>
       </div>
+      <!-- Connexion par empreinte digitale (appareil où elle a été activée) -->
+      <div id="bio-login" class="bio-login hidden">
+        <button type="button" class="btn primary bio-btn" id="bio-go">👆 Se connecter avec l'empreinte</button>
+        <small id="bio-qui"></small>
+        <button type="button" class="link" id="bio-autre">Utiliser un autre compte / le mot de passe</button>
+      </div>
       <form id="login-form" class="auth-form">
         <label>E-mail<input type="email" name="email" required autocomplete="username"></label>
         <label>Mot de passe<input type="password" name="password" required autocomplete="current-password"></label>
@@ -1083,6 +1089,11 @@
     <!-- MON COMPTE -->
     <section id="view-compte" class="view">
       <h1>Mon compte</h1>
+      <div class="card bio-card hidden" id="bio-card">
+        <h2>👆 Connexion par empreinte digitale</h2>
+        <p class="hint" id="bio-etat"></p>
+        <div class="actions"><button class="btn primary" id="bio-activer">Activer sur cet appareil</button><button class="btn" id="bio-desactiver">Désactiver</button></div>
+      </div>
       <div id="compte-body"></div>
     </section>
 
