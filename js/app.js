@@ -2906,6 +2906,8 @@
     $("#fd-match").innerHTML = rows.length ? rows.map((x) => "<tr><td>Du " + fmtDate(x.w) + " au " + fmtDate(weekEnd(x.w)) + "</td><td>" + esc(x.b.nom) +
       '</td><td class="num">' + money0(x.v) + '</td><td class="num">' + money0(x.r) + '</td><td class="num">' + (weekEnd(x.w) >= t && !x.r ? "—" : ecartHtml(x.r - x.v)) + "</td><td>" + x.st + "</td></tr>").join("")
       : '<tr><td colspan="6" class="empty">Aucune vente ni remontée sur ce mois.</td></tr>';
+    // Rapprochement : visible seulement par l'admin et Edwige (gestionnaire des commissions / Dashboard)
+    $("#fd-match-card").classList.toggle("hidden", !(isAdmin() || canGererCom()));
     listeSemaines("#fd-match", "#fd-match-sem");
     limiter3("#fd-match", $("#fd-match-q").value);
     // Total du mois, semaine en cours comprise : un montant remonté sur une autre semaine est quand même compensé
