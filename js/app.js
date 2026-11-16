@@ -3146,9 +3146,9 @@
     if (me && !isAdmin() && canCloture() && boutiquesCredit().some((b) => b.code === myBoutiqueCode())) {
       const bqc = myBoutiqueCode(), manqueHier = hierManquant(bqc), manqueSoir = !venteFaite(bqc, today()) && new Date().getHours() >= 15;
       // Notification dès 15 h ; bouton « Faire le contrôle » à partir de 20 h (ou tout de suite si le contrôle d'hier manque)
-      const boutonCs = manqueHier || new Date().getHours() >= 20;
+      const boutonCs = manqueHier || controleOuvert(bqc);
       if (manqueHier || manqueSoir) h += '<div class="alert-line">🌙 <span><b>' + (manqueHier ? "Contrôle du crédit restant d'hier non fait" : "Contrôle du crédit restant de ce soir à faire") +
-        "</b> — " + (manqueHier ? "les nouvelles recharges sont bloquées tant qu'il n'est pas déclaré." : "lisez le crédit restant YAS et MOOV sur les puces et notez-le.") + "</span>" +
+        "</b> — " + (manqueHier ? "les nouvelles recharges sont bloquées tant qu'il n'est pas déclaré." : "lisez le crédit restant YAS et MOOV sur les puces et notez-le" + (controleOuvert(bqc) ? "." : " à partir de " + hm(debutControle(bqc, today())) + " (30 min avant la fermeture).")) + "</span>" +
         (boutonCs ? '<button class="btn small" data-cs-go>Faire le contrôle</button>' : "") + "</div>";
       // ✅ Contrôle de ce soir déjà fait par un autre CC de la boutique : les autres CC en sont informés (à la place du rappel)
       const faits = db.crSoldes.filter((x) => x.boutique === bqc && x.date === today()).sort((p, q) => String(q.at).localeCompare(String(p.at)));
@@ -3606,6 +3606,13 @@
   function boutiquesCredit() { const s = new Set(db.crAchats.map((x) => x.boutique).concat(db.crSoldes.map((x) => x.boutique), db.crVentes.map((x) => x.boutique))); return db.boutiques.filter((b) => s.has(b.code)); }
   // Contrôle du crédit restant fait chaque soir par les CC (règle « hier d'abord » active à partir du 11/11/2026)
   const VENTES_DEBUT = "2026-11-11";
+  // Heure de fermeture des boutiques : lundi et jeudi 21 h, les autres jours 22 h ; ATILAMONOU (B2) : 22 h tous les jours.
+  // Le contrôle du crédit du soir s'ouvre 30 minutes avant la fermeture.
+  const BQ_HORAIRE_SPECIAL = ["B2"];
+  function heureFermeture(bq, d) { const j = parse(d || today()).getDay(); return BQ_HORAIRE_SPECIAL.includes(bq) ? 22 * 60 : (j === 1 || j === 4 ? 21 * 60 : 22 * 60); }
+  function debutControle(bq, d) { return heureFermeture(bq, d) - 30; }
+  const hm = (min) => String(Math.floor(min / 60)).padStart(2, "0") + "h" + String(min % 60).padStart(2, "0");
+  function controleOuvert(bq) { const n = new Date(); return n.getHours() * 60 + n.getMinutes() >= debutControle(bq, today()); }
   const venteFaite = (bq, d) => db.crSoldes.some((x) => x.boutique === bq && x.date === d); // contrôle fait ce jour-là
   const venteLe = (bq, op, d) => soldeLe(bq, op, d);
   function hierManquant(bq) {
@@ -4071,6 +4078,7 @@
     if (d > today()) return toast("Impossible d'enregistrer un contrôle pour un jour à venir.");
     if (!bq) return toast("Choisissez une boutique.");
     if (!admin && venteFaite(bq, d)) return toast("Le contrôle de ce jour est déjà fait.");
+    if (!admin && d === today() && !controleOuvert(bq)) return toast("⏰ Le contrôle du soir se fait à partir de " + hm(debutControle(bq, d)) + " (30 minutes avant la fermeture de la boutique).");
     if (y === "" || m === "") return toast("Indiquez le crédit restant YAS et MOOV lu sur les puces (0 si vide).");
     const v = { YAS: Number(y), MOOV: Number(m) };
     if (!(v.YAS >= 0 && v.MOOV >= 0)) return toast("Montant invalide.");
