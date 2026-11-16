@@ -989,16 +989,24 @@
     if (relanceMode === "commission" && !ouvertCom) relanceMode = null;
     const liste = relanceMode ? listes[relanceMode] : [], envoyees = relanceMode ? relanceEnvoyees[relanceMode] : new Set();
     const zone = $("#dc-relance");
-    zone.classList.toggle("hidden", !relanceMode || !liste.length);
-    if (relanceMode && liste.length) {
+    // Contrôle du soir : on garde tous les CC dans la liste ; ceux dont la boutique a fait le contrôle affichent « ✅ Contrôle fait »
+    const affiche = relanceMode === "controle" ? contacts.filter((x) => enCredit(x)) : liste;
+    zone.classList.toggle("hidden", !relanceMode || !affiche.length);
+    if (relanceMode && affiche.length) {
       const restants = liste.filter((x) => !envoyees.has(x.cc));
       const intro = relanceMode === "controle"
-        ? "<b>" + liste.length + " CC</b> n'ont pas encore déclaré le crédit restant lu sur la puce aujourd'hui."
+        ? (liste.length ? "<b>" + liste.length + " CC</b> n'ont pas encore déclaré le crédit restant lu sur la puce aujourd'hui." : "✅ <b>Toutes les boutiques ont fait le contrôle</b> du crédit restant aujourd'hui.")
         : "<b>" + liste.length + " CC</b> n'ont pas encore versé la commission des mois passés.";
       zone.innerHTML = '<div class="dc-relance-tete"><p>' + intro + " Appuyez sur le bouton vert de chaque CC : WhatsApp s'ouvre avec le message déjà écrit, il suffit d'appuyer sur Envoyer.</p>" +
         (restants.length ? '<button class="btn small success" id="dc-relance-suivant">💬 Ouvrir le suivant (' + restants.length + " restant" + (restants.length > 1 ? "s" : "") + ")</button>" : '<span class="badge ok">✓ Tous relancés</span>') + "</div>" +
-        liste.map((x) => {
+        affiche.map((x) => {
           const tel = String(x.tel || "").trim(), env = envoyees.has(x.cc);
+          if (relanceMode === "controle" && venteFaite(x.boutique, today())) {
+            const f = db.crSoldes.filter((y) => y.boutique === x.boutique && y.date === today()).sort((p, q) => String(q.at).localeCompare(String(p.at)))[0] || {};
+            const hh = f.at ? new Date(f.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "";
+            return '<div class="dc-relance-ligne envoye"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · contrôle fait" + (f.saisiPar ? " par " + esc(f.saisiPar) : "") + (hh ? " à " + hh : "") + "</small></div>" +
+              '<span class="badge ok">✅ Contrôle fait</span></div>';
+          }
           const detail = relanceMode === "controle" ? (hierManquant(x.boutique) ? "⚠ hier aussi manquant" : "contrôle : pas encore") : "commission due : " + money0(commissionInfo(x.boutique).duAncien);
           const msg = relanceMode === "controle" ? messageControle(x.cc, x.boutique) : messageCommission(x.cc, x.boutique, commissionInfo(x.boutique).duAncien, true);
           return '<div class="dc-relance-ligne' + (env ? " envoye" : "") + '"><div><b>' + esc(ccName(x.cc)) + "</b><small>" + esc(boutiqueName(x.boutique)) + " · " + detail + "</small></div>" +
