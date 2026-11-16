@@ -1310,7 +1310,6 @@
     $("#kpis").innerHTML =
       heroTile("Chiffre d'affaires", money(Math.round(m.ca)), deltaHtml(m.ca, pm.ca, true)) +
       heroTile("Coût d'achat des ventes", money(Math.round(m.cogs)), deltaHtml(m.cogs, pm.cogs, false)) +
-      heroTile("Marge brute · " + pct(m.marge, m.ca) + " %", money(Math.round(m.marge)), deltaHtml(m.marge, pm.marge, true)) +
       heroTile("Charges" + (bq === "ALL" ? " (toutes)" : ""), money(Math.round(m.charges)), deltaHtml(m.charges, pm.charges, false)) +
       heroTile((m.net >= 0 ? "✅ Bénéfice net" : "⛔ Perte nette") + " · " + pct(m.net, m.ca) + " %", money(Math.round(m.net)), deltaHtml(m.net, pm.net, true), m.net >= 0 ? "hero-good" : "hero-bad") +
       heroTile("Tickets", num(m.tickets), deltaHtml(m.tickets, pm.tickets, true)) +
