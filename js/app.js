@@ -305,7 +305,10 @@
   const deB64u = (str) => Uint8Array.from(atob(str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4)), (c) => c.charCodeAt(0));
   function bioInfo() { try { return JSON.parse(localStorage.getItem("bio-login") || "null"); } catch (e) { return null; } }
   function bioSet(v) { try { if (v) localStorage.setItem("bio-login", JSON.stringify(v)); else localStorage.removeItem("bio-login"); } catch (e) {} }
+  // Empreinte : téléphones et tablettes seulement (pas sur les ordinateurs)
+  const estMobile = () => /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
   async function bioDispo() {
+    if (!estMobile()) return false;
     try { return !!(window.PublicKeyCredential && window.isSecureContext && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { return false; }
   }
   async function bioActiver() {
@@ -346,7 +349,7 @@
     catch (e) { authMsg("Empreinte annulée ou non reconnue. Réessayez, ou utilisez le mot de passe."); }
   });
   $("#bio-autre").addEventListener("click", async () => {
-    await sb.auth.signOut({ scope: "local" }); bioSet(null);
+    await sb.auth.signOut({ scope: "local" }); // l'empreinte reste activée : après connexion par mot de passe du même compte, elle resservira
     $("#bio-login").classList.add("hidden"); $("#login-form").classList.remove("hidden"); authMsg("");
   });
   $("#bio-activer").addEventListener("click", async () => {
@@ -356,7 +359,8 @@
   $("#bio-desactiver").addEventListener("click", () => { bioSet(null); toast("Connexion par empreinte désactivée sur cet appareil."); renderBioCard(); });
   async function renderBioCard() {
     const dispo = await bioDispo(), b = bioInfo(), actif = !!(b && me && b.uid === me.id);
-    $("#bio-card").classList.remove("hidden");
+    $("#bio-card").classList.toggle("hidden", !estMobile()); // ordinateurs : pas d'empreinte
+    if (!estMobile()) return;
     if (!dispo) {
       $("#bio-etat").innerHTML = "⚠ Cet appareil n'a pas de capteur d'empreinte (ou de visage) disponible, ou il n'est pas configuré. Ouvrez l'application sur votre <b>téléphone</b> (ou activez Windows Hello sur l'ordinateur) puis revenez ici.";
       $("#bio-activer").classList.add("hidden"); $("#bio-desactiver").classList.add("hidden");
@@ -3262,10 +3266,10 @@
   document.addEventListener("click", async (e) => {
     if (e.target.closest("[data-bio-oui]")) {
       try { await bioActiver(); toast("👆 Connexion par empreinte activée sur cet appareil."); } catch (er) { toast("Activation impossible : " + (er && er.name === "NotAllowedError" ? "annulée." : (er.message || er))); }
-      try { localStorage.setItem("bio-proposee", "1"); } catch (er) {}
+      try { sessionStorage.setItem("bio-proposee", "1"); } catch (er) {}
       return renderAppAlert();
     }
-    if (e.target.closest("[data-bio-non]")) { try { localStorage.setItem("bio-proposee", "1"); } catch (er) {} renderAppAlert(); }
+    if (e.target.closest("[data-bio-non]")) { try { sessionStorage.setItem("bio-proposee", "1"); } catch (er) {} renderAppAlert(); }
   });
   function renderAppAlert() {
     if (bioOk === null && me) { bioOk = false; bioDispo().then((v) => { bioOk = v; if (v) renderAppAlert(); }); }
@@ -3361,7 +3365,7 @@
         '</span> <button class="btn small" data-view-link="fonds">Remonter les fonds</button></div>';
     }
     // 👆 Proposition d'activer l'empreinte (appareil compatible, pas encore activée, pas refusée)
-    let propose = ""; try { propose = localStorage.getItem("bio-proposee") || ""; } catch (e) {}
+    let propose = ""; try { propose = sessionStorage.getItem("bio-proposee") || ""; } catch (e) {}
     const bioAct = bioInfo();
     if (me && bioOk && !propose && !(bioAct && bioAct.uid === me.id))
       h = '<div class="alert-line ok">👆 <span><b>Connectez-vous avec votre empreinte</b> — plus besoin de taper le mot de passe sur cet appareil.</span><button class="btn small success" data-bio-oui>Activer</button> <button class="btn small" data-bio-non>Plus tard</button></div>' + h;
