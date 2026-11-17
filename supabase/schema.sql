@@ -1794,9 +1794,12 @@ drop policy if exists bet_insert on public.bet_saisies;
 create policy bet_insert on public.bet_saisies for insert to authenticated
   with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date <= current_date));
 drop policy if exists bet_update on public.bet_saisies;
+-- Mise à jour des GG : l'admin à tout moment ; le CC autorisé 1er Bet le jour du contrôle et le lendemain (le 16, le 1er du mois suivant)
 create policy bet_update on public.bet_saisies for update to authenticated
-  using (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and created_by = auth.uid() and created_at > now() - interval '2 hours'))
-  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique()));
+  using (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and coalesce((public.my_cc()).bet, false)
+         and date >= (now() at time zone 'Africa/Lome')::date - 1))
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and coalesce((public.my_cc()).bet, false)
+         and date >= (now() at time zone 'Africa/Lome')::date - 1));
 drop policy if exists bet_delete on public.bet_saisies;
 create policy bet_delete on public.bet_saisies for delete to authenticated
   using (public.is_admin() or (created_by = auth.uid() and created_at > now() - interval '2 hours'));

@@ -4526,6 +4526,11 @@
     sel.value = [...sel.options].some((o) => o.value === cur) ? cur : sel.options[0] ? sel.options[0].value : "";
     sel.disabled = !glob;
     if (!$("#bet-mois").value) $("#bet-mois").value = today().slice(0, 7);
+    // Période de contrôle ouverte pour le CC : le jour même (15 ou fin de mois) et le lendemain toute la journée
+    // (mise à jour des GG le 16, et le 1er du mois suivant pour la fin de mois)
+    const hierB = addDays(today(), -1), mC = today().slice(0, 7), mH = hierB.slice(0, 7);
+    const pOuverte = [mC + "-15", lastDayOfMonth(mC + "-01"), lastDayOfMonth(mH + "-01")].find((d) => d === today() || d === hierB) || null;
+    if (!isAdmin() && pOuverte && !betMoisChoisi) $("#bet-mois").value = pOuverte.slice(0, 7);
     const bq = sel.value, mois = $("#bet-mois").value;
     // Contrôle 1er Bet : du 1er au 15, puis du 1er à la fin du mois (30 ou 31, selon le mois)
     const p15 = mois + "-15", pFin = lastDayOfMonth(mois + "-01"), dcur = $("#bet-date").value;
@@ -4533,8 +4538,6 @@
     $("#bet-date").value = [p15, pFin].includes(dcur) ? dcur : (mois === today().slice(0, 7) && today() > p15 ? pFin : p15);
     // Contrôle des GG : le CC le fait le 15 (période du 1er au 15) et le dernier jour du mois (du 1er à la fin) ;
     // rattrapage possible le lendemain matin avant midi. L'admin peut saisir à tout moment.
-    const hier = addDays(today(), -1), matin = new Date().getHours() < 12;
-    const pOuverte = [p15, pFin].find((d) => d === today() || (d === hier && matin));
     const ctrlOuvert = isAdmin() || (!!pOuverte && mois === pOuverte.slice(0, 7));
     if (!isAdmin() && pOuverte) $("#bet-date").value = pOuverte;
     $("#bet-date").disabled = !isAdmin();
@@ -4543,9 +4546,10 @@
     $("#bet-form").classList.toggle("hidden", !ctrlOuvert);
     const moisCourant = today().slice(0, 7), p15c = moisCourant + "-15", pFinc = lastDayOfMonth(moisCourant + "-01");
     const prochain = today() <= p15c ? p15c : pFinc;
+    const deja = pOuverte && bq && bq !== "ALL" ? db.bet.find((r) => r.boutique === bq && r.date === pOuverte) : null;
     $("#bet-ctrl-info").innerHTML = ctrlOuvert
-      ? (isAdmin() ? "Choisissez la période, saisissez GG Rapide et GG Zone : l'écart se calcule avec le total des surplus déclarés." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> " + betPeriode($("#bet-date").value) + " — l'écart se calcule avec le total des surplus déclarés.")
-      : "🔒 Le contrôle des GG se fait <b>le 15</b> (du 1er au 15) et <b>le dernier jour du mois</b> (du 1er à la fin du mois). Prochain contrôle : <b>" + fmtDate(prochain) + "</b>. Chaque matin, déclarez seulement le surplus du jour ci-dessus.";
+      ? (isAdmin() ? "Choisissez la période, saisissez GG Rapide et GG Zone : l'écart se calcule avec le total des surplus déclarés." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> " + betPeriode($("#bet-date").value) + " — l'écart se calcule avec le total des surplus déclarés." + (deja ? " ✏️ Déjà saisi : vous pouvez le <b>mettre à jour</b> " + (pOuverte === today() ? "aujourd'hui et demain" : "jusqu'à ce soir") + " si les GG ont changé." : ""))
+      : "🔒 Le contrôle des GG se fait <b>le 15</b> (du 1er au 15, mise à jour possible le 16) et <b>le dernier jour du mois</b> (du 1er à la fin du mois, mise à jour possible le 1er du mois suivant). Prochain contrôle : <b>" + fmtDate(prochain) + "</b>. Chaque matin, déclarez seulement le surplus du jour ci-dessus.";
     $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
     $("#bet-save").disabled = !bq || bq === "ALL" || !canBet();
     renderBetRem(bq, mois);
@@ -4571,6 +4575,8 @@
     listeSemaines("#bet-rows", "#bet-dates");
     limiter3("#bet-rows", $("#bet-q").value);
   }
+  let betMoisChoisi = false; // le mois a été choisi à la main : on ne le change plus automatiquement
+  $("#bet-mois").addEventListener("change", () => { betMoisChoisi = true; });
   ["#bet-boutique", "#bet-mois"].forEach((id) => $(id).addEventListener("change", renderBet));
   $("#bet-q").addEventListener("input", renderBet);
   $("#bet-save").addEventListener("click", (e) => {
