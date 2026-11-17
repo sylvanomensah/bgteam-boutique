@@ -1043,7 +1043,7 @@
     <!-- FACTURATION -->
     <!-- 1ER BET : GG Rapide, GG Zone, total des fonds remontés et écart (calculé) -->
     <section id="view-bet" class="view">
-      <div class="toolbar"><h1 style="margin:0;margin-right:auto" id="bet-titre">1er Bet</h1>
+      <div class="toolbar bet-head"><h1 style="margin:0;margin-right:auto"><span class="bet-logo">1<sup>er</sup> Bet</span> <span id="bet-titre">1er Bet</span></h1>
         <label class="cc-filter">Boutique<select id="bet-boutique"></select></label>
         <label class="cc-filter">Mois<input type="month" id="bet-mois"></label></div>
       <div class="card" id="bet-rem-card" style="margin-top:12px">
@@ -1058,7 +1058,7 @@
       <div class="kpis" id="bet-kpis"></div>
       <div class="bet-ctrl-bar" id="bet-ctrl-card">
         <p class="hint" id="bet-ctrl-info" style="margin:0"></p>
-        <label class="cc-filter admin-only">Période de contrôle<select id="bet-date"></select></label>
+        <select id="bet-date" class="hidden"></select>
         <div class="hidden" id="bet-form">
           <label>GG Rapide<input type="number" min="0" step="any" id="bet-rapide" inputmode="decimal" placeholder="0"></label>
           <label>GG Zone<input type="number" min="0" step="any" id="bet-zone" inputmode="decimal" placeholder="0"></label>

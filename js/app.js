@@ -4548,9 +4548,9 @@
     const prochain = pFinc;
     const deja = pOuverte && bq && bq !== "ALL" ? db.bet.find((r) => r.boutique === bq && r.date === pOuverte) : null;
     $("#bet-ctrl-info").innerHTML = ctrlOuvert
-      ? (isAdmin() ? "Choisissez la période, saisissez GG Rapide et GG Zone : l'écart se calcule avec le total des surplus déclarés." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> directement dans les cases ci-dessus (" + betPeriode($("#bet-date").value) + ") — l'écart se calcule avec les surplus déclarés." + (deja ? " ✏️ Déjà saisi : vous pouvez le <b>mettre à jour</b> " + (pOuverte === today() ? "aujourd'hui et demain" : "jusqu'à ce soir") + " si les GG ont changé." : ""))
+      ? (isAdmin() ? "Saisissez GG Rapide et GG Zone dans les cases : l'écart se calcule avec le total des surplus du mois (admin : enregistrement possible à tout moment)." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> directement dans les cases ci-dessus (" + betPeriode($("#bet-date").value) + ") — l'écart se calcule avec les surplus déclarés." + (deja ? " ✏️ Déjà saisi : vous pouvez le <b>mettre à jour</b> " + (pOuverte === today() ? "aujourd'hui et demain" : "jusqu'à ce soir") + " si les GG ont changé." : ""))
       : "🧮 Saisissez GG Rapide et GG Zone à tout moment pour <b>simuler l'écart</b> " + betPeriode($("#bet-date").value) + ". L'enregistrement (historique) se fait <b>le dernier jour du mois</b> (mise à jour possible le 1er du mois suivant). Prochain enregistrement : <b>" + fmtDate(prochain) + "</b>.";
-    $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
+    $("#bet-titre").textContent = fmtMonth(mois + "-01");
     $("#bet-save").disabled = !bq || bq === "ALL" || !canBet();
     renderBetRem(bq, mois);
     // Total fond remonté = remontées déclarées du 1er à la fin de la période choisie (modifiable)

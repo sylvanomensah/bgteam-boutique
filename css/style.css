@@ -1176,3 +1176,45 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 #bet-kpis .surplus-ligne input { flex: 1 1 60%; font-size: 1.15rem; }
 #bet-kpis .surplus-ligne .btn, #bet-kpis #bet-save { font-size: .85rem !important; padding: 8px 12px !important; line-height: 1.2; font-weight: 700; }
 #bet-kpis .surplus-ligne .btn { margin-top: 4px; }
+
+/* ================= 1er Bet : thème vert / or (inspiré de Premier Bet) et affichage téléphone ================= */
+#view-bet { --bet-vert: #0b6b3a; --bet-vert-2: #0f8a4b; --bet-vert-clair: #e8f6ee; --bet-or: #f4b400; --bet-or-clair: #fff6d6; }
+#view-bet .bet-head { background: linear-gradient(135deg, var(--bet-vert) 0%, var(--bet-vert-2) 60%, #13a35a 100%); color: #fff; border-radius: 18px; padding: 14px 16px; gap: 10px 14px;
+  box-shadow: 0 8px 24px rgba(11, 107, 58, .25); position: relative; overflow: hidden; }
+#view-bet .bet-head::after { content: ""; position: absolute; right: -40px; top: -40px; width: 160px; height: 160px; border-radius: 50%; background: radial-gradient(circle, rgba(244,180,0,.35), transparent 70%); }
+#view-bet .bet-head h1 { color: #fff; display: flex; align-items: center; gap: 10px; font-size: 1.35rem; }
+#view-bet .bet-logo { background: var(--bet-or); color: #0b3d22; font-weight: 900; padding: 4px 10px; border-radius: 10px; font-size: 1rem; letter-spacing: .3px; }
+#view-bet .bet-logo sup { font-size: .6em; }
+#view-bet .bet-head #bet-titre { font-weight: 700; opacity: .95; }
+#view-bet .bet-head label { color: #eafff2; position: relative; z-index: 1; }
+#view-bet .bet-head select, #view-bet .bet-head input { background: rgba(255,255,255,.95); border-color: transparent; }
+/* Cases */
+#view-bet #bet-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+#view-bet #bet-kpis .kpi { background: #fff; border: 1px solid #dcefe3; border-left: 5px solid var(--bet-vert); box-shadow: 0 4px 14px rgba(11,107,58,.08); padding: 14px; }
+#view-bet #bet-kpis .kpi::before, #view-bet #bet-kpis .kpi::after { display: none; }
+#view-bet #bet-kpis .kpi:nth-child(2) { border-left-color: var(--bet-vert-2); }
+#view-bet #bet-kpis .kpi-surplus { border-left-color: var(--bet-or); background: linear-gradient(180deg, var(--bet-or-clair), #fff); grid-column: 1 / -1; }
+#view-bet #bet-kpis .kpi:nth-child(4) { grid-column: 1 / -1; background: linear-gradient(180deg, var(--bet-vert-clair), #fff); }
+#view-bet #bet-kpis .kpi-saisie { outline: none; }
+#view-bet #bet-kpis .kpi .label { color: var(--bet-vert); font-weight: 800; }
+#view-bet #bet-kpis .kpi-saisie input { width: 100%; border: 2px solid #cfe8d9; border-radius: 12px; background: #fff; font-size: 1.25rem; padding: 8px 12px; }
+#view-bet #bet-kpis .kpi-saisie input:focus { border-color: var(--bet-or); box-shadow: 0 0 0 3px rgba(244,180,0,.25); outline: none; }
+#view-bet #bet-kpis #bet-ecart { background: transparent; border-color: transparent; font-size: 1.6rem; padding: 2px 0; }
+#view-bet #bet-kpis #bet-ecart.neg { color: #c62828; } #view-bet #bet-kpis #bet-ecart.pos { color: var(--bet-vert); }
+#view-bet .kpi-surplus .label { flex-direction: row !important; align-items: center !important; }
+#view-bet .kpi-surplus .label select { width: auto !important; max-width: 60%; border: 1px solid #f1d27a; border-radius: 999px; background: #fff; padding: 4px 10px; }
+#view-bet .surplus-ligne { gap: 10px; }
+#view-bet .surplus-ligne .btn, #view-bet #bet-save { white-space: nowrap; width: auto !important; background: var(--bet-vert); border-color: var(--bet-vert); color: #fff; border-radius: 12px; padding: 10px 16px !important; font-size: .9rem !important; }
+#view-bet #bet-save { width: 100% !important; margin-top: 10px; background: linear-gradient(135deg, var(--bet-vert), var(--bet-vert-2)); }
+#view-bet .surplus-cumul b { color: var(--bet-vert); }
+#view-bet .bet-ctrl-bar .hint { background: var(--bet-vert-clair); border: 1px solid #cfe8d9; border-radius: 12px; padding: 10px 12px; color: #1d4d33; }
+#view-bet .card { border-top: 3px solid var(--bet-vert); }
+#view-bet .card h2 { color: var(--bet-vert); }
+#view-bet #bet-rem-pdf, #view-bet #bet-rem-xls { border-color: var(--bet-or); }
+@media (max-width: 640px) {
+  #view-bet .bet-head { flex-direction: column; align-items: stretch; }
+  #view-bet .bet-head .cc-filter { width: 100%; }
+  #view-bet #bet-kpis .kpi { padding: 12px; }
+  #view-bet #bet-kpis .kpi .value { font-size: 1.3rem; }
+  #view-bet .kpi-surplus .label select { max-width: 55%; font-size: .78rem; }
+}
