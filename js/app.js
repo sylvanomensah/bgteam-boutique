@@ -4529,13 +4529,14 @@
     // Période de contrôle ouverte pour le CC : le jour même (15 ou fin de mois) et le lendemain toute la journée
     // (mise à jour des GG le 16, et le 1er du mois suivant pour la fin de mois)
     const hierB = addDays(today(), -1), mC = today().slice(0, 7), mH = hierB.slice(0, 7);
-    const pOuverte = [mC + "-15", lastDayOfMonth(mC + "-01"), lastDayOfMonth(mH + "-01")].find((d) => d === today() || d === hierB) || null;
+    const pOuverte = [lastDayOfMonth(mC + "-01"), lastDayOfMonth(mH + "-01")].find((d) => d === today() || d === hierB) || null;
     if (!isAdmin() && pOuverte && !betMoisChoisi) $("#bet-mois").value = pOuverte.slice(0, 7);
     const bq = sel.value, mois = $("#bet-mois").value;
     // Contrôle 1er Bet : du 1er au 15, puis du 1er à la fin du mois (30 ou 31, selon le mois)
     const p15 = mois + "-15", pFin = lastDayOfMonth(mois + "-01"), dcur = $("#bet-date").value;
-    $("#bet-date").innerHTML = '<option value="' + p15 + '">' + betPeriode(p15) + '</option><option value="' + pFin + '">' + betPeriode(pFin) + "</option>";
-    $("#bet-date").value = [p15, pFin].includes(dcur) ? dcur : (mois === today().slice(0, 7) && today() > p15 ? pFin : p15);
+    // Contrôle des GG : une seule période, le mois entier (plus d'enregistrement le 15)
+    $("#bet-date").innerHTML = '<option value="' + pFin + '">' + betPeriode(pFin) + "</option>";
+    $("#bet-date").value = pFin;
     // Contrôle des GG : le CC le fait le 15 (période du 1er au 15) et le dernier jour du mois (du 1er à la fin) ;
     // rattrapage possible le lendemain matin avant midi. L'admin peut saisir à tout moment.
     const ctrlOuvert = isAdmin() || (!!pOuverte && mois === pOuverte.slice(0, 7));
@@ -4544,11 +4545,11 @@
     $("#bet-fonds").readOnly = !isAdmin(); // CC : total des surplus déclarés, calculé automatiquement
     if (!isAdmin()) $("#bet-fonds").dataset.auto = "";
     const moisCourant = today().slice(0, 7), p15c = moisCourant + "-15", pFinc = lastDayOfMonth(moisCourant + "-01");
-    const prochain = today() <= p15c ? p15c : pFinc;
+    const prochain = pFinc;
     const deja = pOuverte && bq && bq !== "ALL" ? db.bet.find((r) => r.boutique === bq && r.date === pOuverte) : null;
     $("#bet-ctrl-info").innerHTML = ctrlOuvert
       ? (isAdmin() ? "Choisissez la période, saisissez GG Rapide et GG Zone : l'écart se calcule avec le total des surplus déclarés." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> directement dans les cases ci-dessus (" + betPeriode($("#bet-date").value) + ") — l'écart se calcule avec les surplus déclarés." + (deja ? " ✏️ Déjà saisi : vous pouvez le <b>mettre à jour</b> " + (pOuverte === today() ? "aujourd'hui et demain" : "jusqu'à ce soir") + " si les GG ont changé." : ""))
-      : "🧮 Saisissez GG Rapide et GG Zone à tout moment pour <b>simuler l'écart</b> " + betPeriode($("#bet-date").value) + ". L'enregistrement (historique) se fait <b>le 15</b> (mise à jour le 16) et <b>le dernier jour du mois</b> (mise à jour le 1er). Prochain enregistrement : <b>" + fmtDate(prochain) + "</b>.";
+      : "🧮 Saisissez GG Rapide et GG Zone à tout moment pour <b>simuler l'écart</b> " + betPeriode($("#bet-date").value) + ". L'enregistrement (historique) se fait <b>le dernier jour du mois</b> (mise à jour possible le 1er du mois suivant). Prochain enregistrement : <b>" + fmtDate(prochain) + "</b>.";
     $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
     $("#bet-save").disabled = !bq || bq === "ALL" || !canBet();
     renderBetRem(bq, mois);
