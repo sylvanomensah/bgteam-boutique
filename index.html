@@ -1047,8 +1047,24 @@
         <label class="cc-filter">Boutique<select id="bet-boutique"></select></label>
         <label class="cc-filter">Mois<input type="month" id="bet-mois"></label></div>
       <div class="kpis" id="bet-kpis" style="margin-top:12px"></div>
+      <div class="card" id="bet-rem-card">
+        <h2>💰 Surplus du jour</h2>
+        <div class="form form-inline">
+          <label>Jour<select id="bet-rem-date"></select></label>
+          <label>Montant du surplus<input type="number" min="0" step="any" id="bet-rem-montant" inputmode="decimal" placeholder="0"></label>
+          <button class="btn success" id="bet-rem-save" style="align-self:flex-end">Déclarer le surplus</button>
+        </div>
+        <p class="hint" style="margin:6px 0 0" id="bet-rem-info"></p>
+      </div>
       <div class="card">
-        <h2>Saisie</h2>
+        <div class="toolbar"><h2 style="margin-right:auto">Surplus du mois</h2><button class="btn small" id="bet-rem-pdf" title="Imprimer ou enregistrer en PDF">🖨 Imprimer / PDF</button> <button class="btn small hidden" id="bet-rem-xls" title="Télécharger pour Excel">📊 Excel</button><input id="bet-rem-q" type="search" class="fr-q" list="bet-rem-dates" placeholder="Choisir une date…"><datalist id="bet-rem-dates"></datalist></div>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Surplus</th><th>Déclaré le</th><th>Par</th><th></th></tr></thead>
+          <tbody id="bet-rem-rows"></tbody>
+        </table></div>
+      </div>
+      <div class="card" id="bet-ctrl-card">
+        <h2>Contrôle de la période</h2>
         <div class="form form-inline" id="bet-form">
           <label>Période de contrôle<select id="bet-date"></select></label>
           <label>GG Rapide<input type="number" min="0" step="any" id="bet-rapide" inputmode="decimal" placeholder="0"></label>
@@ -1059,8 +1075,8 @@
         </div>
         <p class="hint" style="margin:6px 0 0">Écart = Total fond remonté − (GG Rapide + GG Zone). Négatif = il manque de l'argent ; positif = excédent.</p>
       </div>
-      <div class="card">
-        <div class="toolbar"><h2 style="margin-right:auto">Historique</h2><input id="bet-q" type="search" class="fr-q" list="bet-dates" placeholder="Choisir une période…"><datalist id="bet-dates"></datalist></div>
+      <div class="card" id="bet-hist-card">
+        <div class="toolbar"><h2 style="margin-right:auto">Historique des contrôles</h2><input id="bet-q" type="search" class="fr-q" list="bet-dates" placeholder="Choisir une période…"><datalist id="bet-dates"></datalist></div>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Période</th><th>Boutique</th><th class="num">GG Rapide</th><th class="num">GG Zone</th><th class="num">Total fond remonté</th><th class="num">Écart</th><th>Saisi par</th><th></th></tr></thead>
           <tbody id="bet-rows"></tbody>
@@ -1160,6 +1176,7 @@
               <th class="c" title="Enregistre les achats de crédit YAS / MOOV de sa boutique et verse la commission">📱<br>Contrôle Crédit</th>
               <th class="c" title="Fixe la dotation de crédit du frigo des boutiques">🧊<br>Dotation frigo</th>
               <th class="c" title="Tableau de bord des commissions du crédit télécom : demande le versement et confirme la réception">💼<br>Dashboard</th>
+              <th class="c" title="Menu 1er Bet : déclare le surplus de chaque jour et les contrôles">🎲<br>1er Bet</th>
               <th class="c" title="Voit l'onglet Fiche CC du menu RH : fiches, jours de repos et congés de tous les CC">🗂<br>Fiches RH</th>
               <th>🧻 Bobines</th><th></th></tr></thead>
             <tbody id="rh-perms"></tbody>
@@ -1177,6 +1194,7 @@
             <option value="credit">📱 Contrôle Crédit</option>
             <option value="frigodot">🧊 Dotation frigo</option>
             <option value="gerecom">💼 Dashboard</option>
+            <option value="bet">🎲 1er Bet</option>
             <option value="rh">🗂 Fiches RH</option>
             <option value="saisie">🧻 Bobines : saisie utilisation</option>
             <option value="gestion">🧻 Bobines : toutes + appro.</option>

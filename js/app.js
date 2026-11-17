@@ -31,7 +31,7 @@
   let dashComPage = false; // admin : page « Commissions du crédit télécom » du tableau de bord
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], crContacts: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [], fgAjust: [], bet: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], crContacts: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [], fgAjust: [], bet: [], betRem: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -149,7 +149,8 @@
     try { fgSorties = chk(await sb.rpc("frigo_sorties")) || []; } catch (e) { fgSorties = []; }
     // Stock frigo : lignes des courses (quantités ; prix d'achat pour l'admin)
     // 1er Bet : saisies (GG Rapide, GG Zone, total des fonds remontés)
-    let betSaisies = [];
+    let betSaisies = [], betRems = [];
+    try { betRems = await fetchAll("bet_remontees", "date"); } catch (e) { betRems = []; }
     try { betSaisies = await fetchAll("bet_saisies", "date"); } catch (e) { betSaisies = []; }
     // Corrections du stock frigo faites par l'admin (écart d'inventaire)
     let fgAjust = [];
@@ -170,7 +171,7 @@
         creditSeuil: st.credit_seuil == null ? 5000 : Number(st.credit_seuil),
         frigoSeuil: st.frigo_seuil == null ? 5000 : Number(st.frigo_seuil),
         ordreBlocs: st.ordre_blocs && typeof st.ordre_blocs === "object" ? st.ordre_blocs : {},
-        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, frigoDotation: !!c.frigo_dotation, gereCom: !!c.gere_commissions, colGereCom: "gere_commissions" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
+        ccList: ccs.map((c) => ({ code: String(c.code), actif: c.actif, agents: Array.isArray(c.agents) ? c.agents : [], boutique: c.boutique || "", entrees: !!c.entrees, voirStock: !!c.voir_stock, bobines: ["gestion", "saisie"].includes(c.bobines) ? c.bobines : "boutique", recoitEspeces: !!c.recoit_especes, gereRh: !!c.gere_rh, credit: !!c.credit, frigoDotation: !!c.frigo_dotation, gereCom: !!c.gere_commissions, bet: !!c.bet, colGereCom: "gere_commissions" in c, repos: Array.isArray(c.repos) ? c.repos.map(Number) : [] }))
           .sort((a, b) => Number(a.code) - Number(b.code) || a.code.localeCompare(b.code))
       },
       products: products.map((p) => ({
@@ -223,6 +224,7 @@
       fgLignes: fgLignes.map((x) => ({ courseId: x.course_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, code: x.code || "", nom: x.nom || x.code || "",
         qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat), transfert: !!x.transfert })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
+      betRem: (betRems || []).map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant) || 0, saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       bet: (betSaisies || []).map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, rapide: Number(x.gg_rapide) || 0, zone: Number(x.gg_zone) || 0, fonds: Number(x.fonds) || 0, saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       fgAjust: (fgAjust || []).map((x) => ({ id: x.id, boutique: x.boutique, code: x.code, qte: Number(x.qte) || 0, coutUnit: x.cout_unit == null ? null : Number(x.cout_unit), date: x.date, note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
@@ -475,6 +477,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_dotations" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_ajustements" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "bet_saisies" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "bet_remontees" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -791,7 +794,7 @@
     if (view === "bobines") return bobinesDroit() !== "non";
     if (view === "credit") return canCreditSaisie() || isGlobal() || !!myBoutiqueCode(); // tous les CC voient le crédit de leur boutique
     if (view === "frigo") return canFrigo();
-    if (view === "bet") return isAdmin() || isGlobal() || !!myBoutiqueCode();
+    if (view === "bet") return isAdmin() || isGlobal() || canBet() || !!myBoutiqueCode(); // CC de la boutique : consultation des surplus déclarés
     return true;
   }
   function show(view) {
@@ -3355,6 +3358,13 @@
       if (aRel.length) h += '<div class="alert-line">💸 <span><b>Rappel du 15 : page des commissions active</b> — rappelez par WhatsApp aux CC de ' + aRel.length + " boutique" + (aRel.length > 1 ? "s" : "") +
         " que le dépôt des commissions se fera le 1er et le 2 " + esc(moisProchainTxt()) + ".</span>" + '<button class="btn small" data-com-relance-go>Faire le rappel</button></div>';
     }
+    // 🎲 1er Bet : remontée de fonds à déclarer (CC autorisé) — rattrapage d'hier le matin avant midi, rappel du jour le soir
+    if (me && !isAdmin() && canBet()) {
+      const bqb = myBoutiqueCode(), hier = addDays(today(), -1), hh = new Date().getHours();
+      const fait = (d) => (db.betRem || []).some((r) => r.boutique === bqb && r.date === d);
+      if (hh < 12 && !fait(hier)) h += '<div class="alert-line">🎲 <span><b>Surplus 1er Bet d’hier non déclaré</b> — rattrapez-la ce matin, <b>avant midi</b>.</span><button class="btn small" data-view-link="bet">Déclarer</button></div>';
+      else if (hh >= 18 && !fait(today())) h += '<div class="alert-line">🎲 <span><b>Surplus 1er Bet du jour à déclarer</b> — indiquez le surplus d’aujourd’hui.</span><button class="btn small" data-view-link="bet">Déclarer</button></div>';
+    }
     // Gestionnaire des commissions : versements déclarés à confirmer
     if (me && !isAdmin() && canGererCom()) {
       const att = db.crVers.filter((v) => v.statut !== "Reçue");
@@ -4416,6 +4426,10 @@
   }
   $("#fg-rachat-jours").addEventListener("change", () => renderRachat(frigoScope()));
   // ---------- 1er Bet ----------
+  // CC autorisé « 1er Bet » (RH → Autorisations) : déclare la remontée de fonds de chaque jour de sa boutique
+  function canBet() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.bet && myBoutiqueCode()); }
+  // Jours déclarables : aujourd'hui ; hier aussi jusqu'à midi (rattrapage le lendemain matin si le CC était absent)
+  function betJoursRem() { const j = [today()]; if (isAdmin() || new Date().getHours() < 12) j.push(addDays(today(), -1)); return j; }
   // Libellé d'une période de contrôle (date de fin = le 15 ou le dernier jour du mois)
   const betPeriode = (d) => "du 01/" + d.slice(5, 7) + " au " + fmtDate(d);
   const betEcart = (r) => r2_((Number(r.fonds) || 0) - ((Number(r.rapide) || 0) + (Number(r.zone) || 0)));
@@ -4426,6 +4440,86 @@
     $("#bet-ecart").classList.toggle("neg", v < 0); $("#bet-ecart").classList.toggle("pos", v > 0);
   }
   ["#bet-rapide", "#bet-zone", "#bet-fonds"].forEach((id) => $(id).addEventListener("input", betMajEcart));
+  $("#bet-fonds").addEventListener("input", () => { $("#bet-fonds").dataset.auto = "non"; });
+  $("#bet-date").addEventListener("change", () => { $("#bet-fonds").dataset.auto = ""; renderBet(); });
+  function renderBetRem(bq, mois) {
+    const peut = canBet() && bq && bq !== "ALL";
+    $("#bet-rem-card").classList.toggle("hidden", !canBet());
+    const jours = betJoursRem(), dcur = $("#bet-rem-date").value;
+    $("#bet-rem-date").innerHTML = jours.map((d) => '<option value="' + d + '">' + (d === today() ? "Aujourd'hui — " : "Hier (rattrapage avant midi) — ") + fmtDate(d) + "</option>").join("");
+    if (jours.includes(dcur)) $("#bet-rem-date").value = dcur;
+    else { const manque = jours.find((d) => d !== today() && bq && !db.betRem.some((r) => r.boutique === bq && r.date === d)); $("#bet-rem-date").value = manque || today(); }
+    $("#bet-rem-save").disabled = !peut;
+    const d = $("#bet-rem-date").value, deja = db.betRem.find((r) => r.boutique === bq && r.date === d);
+    $("#bet-rem-info").innerHTML = !peut ? "Choisissez une boutique." : deja ? "✅ Surplus déjà déclaré pour le " + fmtDate(d) + " : <b>" + money0(deja.montant) + "</b> (par " + esc(deja.saisiPar || "—") + "). Une nouvelle déclaration le remplacera."
+      : "Déclarez chaque jour le surplus. Si vous étiez absent, vous pouvez rattraper la déclaration d'hier <b>demain matin avant midi</b>.";
+    const liste = db.betRem.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date));
+    $("#bet-rem-rows").innerHTML = liste.length ? liste.map((r) => {
+      const canDel = isAdmin() || (r.createdBy === me.id && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
+      return "<tr><td>" + esc(jourLong(r.date)) + "</td><td>" + esc(boutiqueName(r.boutique)) + '</td><td class="num"><b>' + money0(r.montant) + "</b></td><td>" +
+        new Date(r.createdAt).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) + (r.date < String(r.createdAt).slice(0, 10) ? ' <span class="badge warn">rattrapage</span>' : "") +
+        "</td><td>" + esc(r.saisiPar || "—") + "</td><td>" + (canDel ? '<button class="btn small danger" data-betrem-del="' + r.id + '">✕</button>' : "") + "</td></tr>";
+    }).join("") : '<tr><td colspan="6" class="empty">Aucun surplus déclaré en ' + esc(fmtMonth(mois + "-01")) + ".</td></tr>";
+    $("#bet-rem-xls").classList.toggle("hidden", !peutExcelBet());
+    $("#bet-rem-pdf").classList.toggle("hidden", !(canBet() || isGlobal()));
+    $("#bet-ctrl-card").classList.toggle("hidden", !(canBet() || isGlobal())); // contrôle de période : CC autorisés seulement
+    $("#bet-hist-card").classList.toggle("hidden", !(canBet() || isGlobal()));
+    $("#bet-kpis").classList.toggle("hidden", !(canBet() || isGlobal()));
+    listeSemaines("#bet-rem-rows", "#bet-rem-dates");
+    limiter3("#bet-rem-rows", $("#bet-rem-q").value);
+    return liste;
+  }
+  // Total des remontées déclarées du 1er du mois à la fin de la période (pour le contrôle)
+  const betRemPeriode = (bq, fin) => sumBy(db.betRem.filter((r) => r.boutique === bq && r.date >= fin.slice(0, 8) + "01" && r.date <= fin), (r) => r.montant);
+  // 🖨 Historique des surplus du mois et total : impression / PDF (CC autorisés 1er Bet et admin)
+  $("#bet-rem-pdf").addEventListener("click", () => {
+    if (!canBet() && !isGlobal()) return toast("Vous n'êtes pas autorisé au menu 1er Bet.");
+    const bq = $("#bet-boutique").value, mois = $("#bet-mois").value;
+    const liste = db.betRem.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois).sort((a, b) => a.date.localeCompare(b.date) || boutiqueName(a.boutique).localeCompare(boutiqueName(b.boutique)));
+    if (!liste.length) return toast("Aucun surplus à imprimer pour ce mois.");
+    const total = sumBy(liste, (r) => r.montant), lib = bq === "ALL" ? "Toutes les boutiques" : boutiqueName(bq);
+    const w = window.open("", "_blank");
+    if (!w) return toast("Autorisez les fenêtres (pop-up) pour imprimer.");
+    w.document.write("<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><title>Surplus 1er Bet — " + esc(lib) + " — " + esc(fmtMonth(mois + "-01")) + "</title>" +
+      "<style>body{font-family:Arial,sans-serif;margin:24px;color:#111}h1{font-size:20px;margin:0 0 4px}p{margin:0 0 16px;color:#555}table{width:100%;border-collapse:collapse;font-size:13px}" +
+      "th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}th{background:#f1f3f9}td.n,th.n{text-align:right}tfoot td{font-weight:bold;background:#eef2ff}</style></head><body>" +
+      "<h1>" + esc(db.settings.nom || "BGTeam") + " — Surplus 1er Bet</h1><p>" + esc(lib) + " · " + esc(fmtMonth(mois + "-01")) + " · imprimé le " + fmtDate(today()) + " par " + esc(me.nom || me.email || "") + "</p>" +
+      "<table><thead><tr><th>Jour</th><th>Boutique</th><th class=\"n\">Surplus</th><th>Déclaré par</th></tr></thead><tbody>" +
+      liste.map((r) => "<tr><td>" + esc(jourLong(r.date)) + "</td><td>" + esc(boutiqueName(r.boutique)) + "</td><td class=\"n\">" + money0(r.montant) + "</td><td>" + esc(r.saisiPar || "—") + "</td></tr>").join("") +
+      "</tbody><tfoot><tr><td colspan=\"2\">TOTAL (" + liste.length + " jour" + (liste.length > 1 ? "s" : "") + ")</td><td class=\"n\">" + money0(total) + "</td><td></td></tr></tfoot></table>" +
+      "<script>window.onload=function(){window.print();}</script></body></html>");
+    w.document.close();
+  });
+  // 📊 Export Excel des surplus du mois : admin et CC 01 (Nic) seulement
+  const peutExcelBet = () => isAdmin() || (!!me && /^0*1$/.test(String(me.cc || "")));
+  $("#bet-rem-xls").addEventListener("click", () => {
+    if (!peutExcelBet()) return toast("Export Excel réservé à l'administrateur et au CC 01.");
+    const bq = $("#bet-boutique").value, mois = $("#bet-mois").value;
+    const liste = db.betRem.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois).sort((a, b) => a.date.localeCompare(b.date) || boutiqueName(a.boutique).localeCompare(boutiqueName(b.boutique)));
+    if (!liste.length) return toast("Aucun surplus à exporter pour ce mois.");
+    const lignes = [["Jour", "Date", "Boutique", "Surplus (FCFA)", "Déclaré par", "Déclaré le"]].concat(liste.map((r) => [jourLong(r.date).split(" ")[0], fmtDate(r.date), boutiqueName(r.boutique), r.montant, r.saisiPar || "", new Date(r.createdAt).toLocaleString("fr-FR")]));
+    lignes.push(["TOTAL", liste.length + " jour(s)", bq === "ALL" ? "Toutes les boutiques" : boutiqueName(bq), sumBy(liste, (r) => r.montant), "", ""]);
+    download("surplus-1erbet-" + (bq === "ALL" ? "toutes" : boutiqueName(bq).replace(/\W+/g, "-")) + "-" + mois + ".csv", "﻿" + toCsv(lignes), "text/csv;charset=utf-8");
+  });
+  $("#bet-rem-date").addEventListener("change", renderBet);
+  $("#bet-rem-q").addEventListener("input", renderBet);
+  $("#bet-rem-save").addEventListener("click", (e) => {
+    const bq = $("#bet-boutique").value, d = $("#bet-rem-date").value, v = $("#bet-rem-montant").value.trim();
+    if (!canBet()) return toast("Vous n'êtes pas autorisé au menu 1er Bet (RH → Autorisations).");
+    if (!bq || bq === "ALL") return toast("Choisissez une boutique.");
+    if (!betJoursRem().includes(d)) return toast("Ce jour ne peut plus être déclaré (rattrapage possible seulement le lendemain avant midi).");
+    if (v === "" || !(Number(v) >= 0)) return toast("Indiquez le montant du surplus (0 si rien).");
+    const deja = db.betRem.find((r) => r.boutique === bq && r.date === d);
+    if (!confirm((deja ? "⚠ Un surplus est déjà déclaré pour ce jour (" + money0(deja.montant) + ") : elle sera remplacée.\n\n" : "") + "Surplus 1er Bet — " + boutiqueName(bq) + " — " + fmtDate(d) + "\nMontant : " + money0(Number(v)) + "\n\nConfirmer ?")) return;
+    act(async () => {
+      chk(await sb.from("bet_remontees").upsert({ boutique: bq, date: d, montant: Number(v), saisi_par: me.nom || me.email || "" }, { onConflict: "boutique,date" }));
+      $("#bet-rem-montant").value = "";
+    }, "Surplus du " + fmtDate(d) + " déclaré : " + money0(Number(v)) + ".", e.target);
+  });
+  $("#bet-rem-rows").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-betrem-del]"); if (!b) return;
+    if (confirm("Supprimer ce surplus ?")) act(async () => chk(await sb.from("bet_remontees").delete().eq("id", b.dataset.betremDel)), "Surplus supprimé.", b);
+  });
   function renderBet() {
     const glob = isAdmin() || isGlobal(), sel = $("#bet-boutique"), cur = sel.value || (glob ? "ALL" : myBoutiqueCode());
     sel.innerHTML = (glob ? '<option value="ALL">Toutes les boutiques</option>' : "") + db.boutiques.filter((b) => glob || b.code === myBoutiqueCode()).map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
@@ -4438,14 +4532,17 @@
     $("#bet-date").innerHTML = '<option value="' + p15 + '">' + betPeriode(p15) + '</option><option value="' + pFin + '">' + betPeriode(pFin) + "</option>";
     $("#bet-date").value = [p15, pFin].includes(dcur) ? dcur : (mois === today().slice(0, 7) && today() > p15 ? pFin : p15);
     $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
-    $("#bet-save").disabled = !bq || bq === "ALL";
+    $("#bet-save").disabled = !bq || bq === "ALL" || !canBet();
+    renderBetRem(bq, mois);
+    // Total fond remonté = remontées déclarées du 1er à la fin de la période choisie (modifiable)
+    if (bq && bq !== "ALL" && $("#bet-date").value && document.activeElement !== $("#bet-fonds") && $("#bet-fonds").dataset.auto !== "non") $("#bet-fonds").value = r2_(betRemPeriode(bq, $("#bet-date").value)) || "";
     betMajEcart();
     const liste = db.bet.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || boutiqueName(a.boutique).localeCompare(boutiqueName(b.boutique)));
     const T = (f) => liste.reduce((a, r) => a + f(r), 0), ec = r2_(T(betEcart));
     $("#bet-kpis").innerHTML = kpiHtml([
       ["GG Rapide (mois)", money0(T((r) => r.rapide))],
       ["GG Zone (mois)", money0(T((r) => r.zone))],
-      ["Total fond remonté (mois)", money0(T((r) => r.fonds))],
+      ["Surplus déclarés (mois)", money0(sumBy(db.betRem.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois), (r) => r.montant)), "", 'title="Somme des surplus de chaque jour"'],
       ["Écart (mois)", (ec > 0 ? "+" : "") + money0(ec), ec < -0.5 ? "danger" : ec > 0.5 ? "warn" : "hero-good"]
     ]);
     $("#bet-rows").innerHTML = liste.length ? liste.map((r) => {
@@ -5954,18 +6051,18 @@
     $("#rp-cc").value = ccsBq.some((c) => c.code === ccCur) ? ccCur : "";
     const cc = $("#rp-cc").value;
     const list = ccsBq.filter((c) => (!cc || c.code === cc) &&
-      (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === "rh" && c.gereRh) || (f === "credit" && c.credit) || (f === "frigodot" && c.frigoDotation) || (f === "gerecom" && c.gereCom) ||
+      (!f || f === "inactifs" || (f === "entrees" && c.entrees) || (f === "global" && c.voirStock) || (f === "rh" && c.gereRh) || (f === "credit" && c.credit) || (f === "frigodot" && c.frigoDotation) || (f === "gerecom" && c.gereCom) || (f === "bet" && c.bet) ||
         (f === c.bobines)));
     $("#rp-count").textContent = list.length + " CC affiché(s). Cochez ou décochez : chaque changement est enregistré immédiatement.";
     const caseP = (c, attr, on) => '<td class="c"><input type="checkbox" class="pt-check" data-' + attr + '="' + esc(c.code) + '"' + (on ? " checked" : "") + "></td>";
     $("#rh-perms").innerHTML = list.length ? list.map((c) => {
       return "<tr" + (c.actif ? "" : ' class="pending"') + '><td class="pt-cc">' + avatarHtml(c.code) + "<div><b>" + esc(ccName(c.code)) + "</b><small>" + esc(c.boutique ? boutiqueName(c.boutique) : "Non affecté") + "</small></div></td>" +
         caseP(c, "cc-entrees", c.entrees) + caseP(c, "cc-voirstock", c.voirStock) + caseP(c, "cc-credit", c.credit) +
-        caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-gerecom", c.gereCom) + caseP(c, "cc-rh", c.gereRh) +
+        caseP(c, "cc-frigodot", c.frigoDotation) + caseP(c, "cc-gerecom", c.gereCom) + caseP(c, "cc-bet", c.bet) + caseP(c, "cc-rh", c.gereRh) +
         '<td><select class="inline-select" data-cc-bobines="' + esc(c.code) + '">' +
           [["boutique", "Consultation"], ["saisie", "Saisie utilisation"], ["gestion", "Toutes + appro."]].map(([v, l]) => '<option value="' + v + '"' + (c.bobines === v ? " selected" : "") + ">" + l + "</option>").join("") + "</select></td>" +
         '<td><button class="btn small" data-open-fiche="' + esc(c.code) + '">Fiche</button></td></tr>';
-    }).join("") : '<tr><td colspan="9" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
+    }).join("") : '<tr><td colspan="10" class="empty">Aucun CC ne correspond aux filtres.</td></tr>';
   }
   ["#rp-boutique", "#rp-cc", "#rp-filtre"].forEach((id) => $(id).addEventListener("change", renderPerms));
   // Choisir un titre : applique d'un coup ses autorisations
@@ -6085,6 +6182,12 @@
   }
   // Changement d'une autorisation (onglet Autorisations, fiche CC)
   function onPermChange(e) {
+    const bt = e.target.closest("[data-cc-bet]");
+    if (bt) {
+      const code = bt.dataset.ccBet, on = bt.checked;
+      return act(async () => chk(await sb.from("ccs").update({ bet: on }).eq("code", code)),
+        ccName(code) + (on ? " a accès au menu 1er Bet (surplus de chaque jour)." : " n'a plus accès au menu 1er Bet."));
+    }
     const crd = e.target.closest("[data-cc-credit]");
     if (crd) {
       const code = crd.dataset.ccCredit, on = crd.checked;
