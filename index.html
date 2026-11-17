@@ -1115,6 +1115,7 @@
             <label>Intitulé du code marchand<input data-k="paiement_nom" placeholder="Ex. : SHALOM AND FAVOR LIVING"></label>
           </div>
           <button class="btn primary" id="p-save">Enregistrer</button>
+          <button class="btn admin-only" id="p-pin" type="button">🔐 Code PIN de suppression</button>
         </div>
         <div class="card">
           <h2>Sauvegarde des données</h2>
@@ -1458,6 +1459,22 @@
   </dialog>
 
   <!-- Confirmation d'une recharge de crédit -->
+  <!-- PIN de l'admin (4 chiffres) demandé avant toute suppression d'historique -->
+  <dialog id="pin-dialog">
+    <form method="dialog">
+      <h2 id="pin-titre">🔐 Code PIN administrateur</h2>
+      <p class="hint" id="pin-texte">Saisissez votre code PIN à 4 chiffres pour supprimer.</p>
+      <label id="pin-l1">Code PIN<input type="password" id="pin-1" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" class="pin-input"></label>
+      <label id="pin-l2" class="hidden">Confirmez le code PIN<input type="password" id="pin-2" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" class="pin-input"></label>
+      <label id="pin-l0" class="hidden">Ancien code PIN<input type="password" id="pin-0" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" class="pin-input"></label>
+      <p class="neg" id="pin-err" style="margin:6px 0 0"></p>
+      <div class="actions">
+        <button class="btn" value="non">Annuler</button>
+        <button class="btn danger" value="oui" id="pin-ok">Valider</button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- Ajuster une course du frigo (admin) -->
   <dialog id="fca-dialog" class="wide">
     <form method="dialog">

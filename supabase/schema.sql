@@ -1841,6 +1841,46 @@ create policy bet_rem_delete on public.bet_remontees for delete to authenticated
   using (public.is_admin() or (created_by = auth.uid() and created_at > now() - interval '2 hours'));
 grant select, insert, update, delete on public.bet_remontees to authenticated;
 
+-- Code PIN de l'admin (4 chiffres) demandé par l'application avant toute suppression d'historique.
+-- Stocké chiffré (bcrypt), table illisible directement ; seules les fonctions ci-dessous (admin) y accèdent.
+create extension if not exists pgcrypto with schema extensions;
+create table if not exists public.admin_pin (
+  id int primary key default 1 check (id = 1),
+  pin_hash text not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.admin_pin enable row level security;
+revoke all on table public.admin_pin from anon, authenticated;
+create or replace function public.admin_pin_existe() returns boolean
+language plpgsql stable security definer set search_path = public, extensions as $p$
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return exists (select 1 from public.admin_pin);
+end $p$;
+create or replace function public.admin_pin_verifier(p_pin text) returns boolean
+language plpgsql stable security definer set search_path = public, extensions as $p$
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  return exists (select 1 from public.admin_pin where pin_hash = extensions.crypt(coalesce(p_pin, ''), pin_hash));
+end $p$;
+create or replace function public.admin_pin_definir(p_nouveau text, p_ancien text) returns void
+language plpgsql security definer set search_path = public, extensions as $p$
+begin
+  if not public.is_admin() then raise exception 'Réservé à l''administrateur'; end if;
+  if coalesce(p_nouveau, '') !~ '^[0-9]{4}$' then raise exception 'Le code PIN doit avoir 4 chiffres'; end if;
+  if exists (select 1 from public.admin_pin) and not exists (select 1 from public.admin_pin where pin_hash = extensions.crypt(coalesce(p_ancien, ''), pin_hash)) then
+    raise exception 'Ancien code PIN incorrect';
+  end if;
+  insert into public.admin_pin (id, pin_hash, updated_at) values (1, extensions.crypt(p_nouveau, extensions.gen_salt('bf')), now())
+    on conflict (id) do update set pin_hash = excluded.pin_hash, updated_at = now();
+end $p$;
+revoke all on function public.admin_pin_existe() from public, anon;
+revoke all on function public.admin_pin_verifier(text) from public, anon;
+revoke all on function public.admin_pin_definir(text, text) from public, anon;
+grant execute on function public.admin_pin_existe() to authenticated;
+grant execute on function public.admin_pin_verifier(text) to authenticated;
+grant execute on function public.admin_pin_definir(text, text) to authenticated;
+
 -- Temps réel : diffuse les nouvelles ventes, entrées et courses aux écrans ouverts
 -- (les règles de sécurité ci-dessus s'appliquent aussi à cette diffusion).
 do $$

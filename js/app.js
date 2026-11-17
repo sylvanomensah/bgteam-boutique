@@ -304,6 +304,60 @@
     if (data.session) enter();
     else authMsg("Compte créé. Vérifiez votre boîte e-mail pour confirmer l'adresse, puis connectez-vous.", true);
   });
+  // ---------- Code PIN de l'admin (4 chiffres) avant toute suppression d'historique ----------
+  // Vérifié par la base (fonction admin_pin_verifier) ; valable 2 minutes pour enchaîner plusieurs suppressions.
+  let pinValideJusqua = 0;
+  const estBoutonSuppression = (b) => !!b && [...b.attributes].some((a) => /^data-([a-z]+-)?del$|^data-[a-z]?del$/.test(a.name));
+  async function dialoguePin(mode) {
+    // mode : "verifier" | "creer" | "changer"
+    const dlg = $("#pin-dialog"), p0 = $("#pin-0"), p1 = $("#pin-1"), p2 = $("#pin-2");
+    [p0, p1, p2].forEach((x) => { x.value = ""; }); $("#pin-err").textContent = "";
+    $("#pin-l0").classList.toggle("hidden", mode !== "changer");
+    $("#pin-l2").classList.toggle("hidden", mode === "verifier");
+    $("#pin-titre").textContent = mode === "verifier" ? "🔐 Code PIN administrateur" : mode === "creer" ? "🔐 Créer votre code PIN" : "🔐 Changer le code PIN";
+    $("#pin-texte").textContent = mode === "verifier" ? "Saisissez votre code PIN à 4 chiffres pour supprimer." :
+      mode === "creer" ? "Pour protéger les historiques, choisissez un code PIN à 4 chiffres. Il sera demandé avant chaque suppression." : "Saisissez l'ancien code puis le nouveau (4 chiffres).";
+    $("#pin-1").previousSibling.textContent = mode === "verifier" ? "Code PIN" : "Nouveau code PIN";
+    dlg.returnValue = "";
+    const ok = await new Promise((resolve) => { dlg.onclose = () => resolve(dlg.returnValue === "oui"); dlg.showModal(); setTimeout(() => (mode === "changer" ? p0 : p1).focus(), 50); });
+    return ok ? { ancien: p0.value.trim(), pin: p1.value.trim(), confirme: p2.value.trim() } : null;
+  }
+  async function demanderPin() {
+    if (Date.now() < pinValideJusqua) return true;
+    const ex = await sb.rpc("admin_pin_existe");
+    if (ex.error) { toast("Code PIN indisponible : " + errMsg(ex.error)); return false; }
+    if (!ex.data) {
+      const r = await dialoguePin("creer"); if (!r) return false;
+      if (!/^\d{4}$/.test(r.pin)) { toast("Le code PIN doit avoir exactement 4 chiffres."); return false; }
+      if (r.pin !== r.confirme) { toast("Les deux codes ne sont pas identiques."); return false; }
+      const c = await sb.rpc("admin_pin_definir", { p_nouveau: r.pin, p_ancien: "" });
+      if (c.error) { toast("Code PIN non enregistré : " + errMsg(c.error)); return false; }
+      toast("🔐 Code PIN créé.");
+      pinValideJusqua = Date.now() + 2 * 60 * 1000; return true;
+    }
+    const r = await dialoguePin("verifier"); if (!r) return false;
+    const v = await sb.rpc("admin_pin_verifier", { p_pin: r.pin });
+    if (v.error || !v.data) { toast("⛔ Code PIN incorrect : suppression annulée."); return false; }
+    pinValideJusqua = Date.now() + 2 * 60 * 1000; return true;
+  }
+  // Intercepte les boutons de suppression (✕) de l'admin : le code PIN d'abord, puis la suppression normale
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("button, a"); if (!b || !isAdmin() || !estBoutonSuppression(b)) return;
+    if (b.dataset.pinOk === "1") { delete b.dataset.pinOk; return; } // clic relancé après le PIN
+    if (Date.now() < pinValideJusqua) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (await demanderPin()) { b.dataset.pinOk = "1"; b.click(); }
+  }, true);
+  $("#p-pin") && $("#p-pin").addEventListener("click", async () => {
+    const ex = await sb.rpc("admin_pin_existe");
+    if (ex.error) return toast("Code PIN indisponible : " + errMsg(ex.error));
+    const r = await dialoguePin(ex.data ? "changer" : "creer"); if (!r) return;
+    if (!/^\d{4}$/.test(r.pin)) return toast("Le code PIN doit avoir exactement 4 chiffres.");
+    if (r.pin !== r.confirme) return toast("Les deux codes ne sont pas identiques.");
+    const c = await sb.rpc("admin_pin_definir", { p_nouveau: r.pin, p_ancien: r.ancien || "" });
+    if (c.error) return toast("Code PIN non modifié : " + errMsg(c.error));
+    pinValideJusqua = 0; toast("🔐 Code PIN enregistré.");
+  });
   // ---------- Connexion par empreinte digitale (WebAuthn, capteur de l'appareil) ----------
   // L'empreinte déverrouille la session gardée sur CET appareil : « Déconnexion » verrouille l'application
   // au lieu de fermer la session ; « Utiliser un autre compte » ferme vraiment la session.
