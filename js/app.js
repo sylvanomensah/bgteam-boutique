@@ -4446,7 +4446,7 @@
     const peut = canBet() && bq && bq !== "ALL";
     $("#bet-rem-card").classList.add("hidden"); // la déclaration se fait dans la case « Surplus » en haut
     const jours = betJoursRem(), dcur = $("#bet-rem-date").value;
-    $("#bet-rem-date").innerHTML = jours.map((d) => '<option value="' + d + '">' + (d === today() ? "Aujourd'hui — " : "Hier (rattrapage avant midi) — ") + fmtDate(d) + "</option>").join("");
+    $("#bet-rem-date").innerHTML = jours.map((d) => '<option value="' + d + '">' + (d === today() ? "Aujourd'hui " + fmtDate(d).slice(0, 5) : "Hier " + fmtDate(d).slice(0, 5) + " (avant midi)") + "</option>").join("");
     if (jours.includes(dcur)) $("#bet-rem-date").value = dcur;
     else { const manque = jours.find((d) => d !== today() && bq && !db.betRem.some((r) => r.boutique === bq && r.date === d)); $("#bet-rem-date").value = manque || today(); }
     $("#bet-rem-save").disabled = !peut;
