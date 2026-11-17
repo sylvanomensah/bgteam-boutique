@@ -4115,9 +4115,8 @@
     const versRecu = s(vers.filter((v) => v.statut === "Reçue"), (v) => v.montant);
     const k = (label, val, sub, cls) => '<div class="kpi ' + (cls || "") + '"><div class="label">' + label + '</div><div class="value">' + val + (sub ? "<small>" + sub + "</small>" : "") + "</div></div>";
     $("#rc-kpis").innerHTML =
-      k(logoOp("YAS", true) + "Crédit YAS acheté", money0(s(yas, (x) => x.montant)), yas.length + " recharge" + (yas.length > 1 ? "s" : "")) +
-      k(logoOp("MOOV", true) + "Crédit MOOV acheté", money0(s(moov, (x) => x.montant)), moov.length + " recharge" + (moov.length > 1 ? "s" : "")) +
-      k("Total crédit acheté", money0(s(ach, (x) => x.montant)), ach.length + " recharge" + (ach.length > 1 ? "s" : "") + " au total") +
+      // Récap des deux opérateurs dans une seule case
+      k("Total crédit acheté", money0(s(ach, (x) => x.montant)), "YAS " + money0(s(yas, (x) => x.montant)) + " (" + yas.length + ") · MOOV " + money0(s(moov, (x) => x.montant)) + " (" + moov.length + ") · " + ach.length + " recharge" + (ach.length > 1 ? "s" : "")) +
       (() => { const vm = ventesCredit(codes).filter((x) => x.date.slice(0, 7) === mois), sy = vm.reduce((a, x) => a + (x.YAS || 0), 0), sm = vm.reduce((a, x) => a + (x.MOOV || 0), 0);
         return k("📈 Crédit vendu (calculé)", money0(sy + sm), "YAS " + money0(sy) + " · MOOV " + money0(sm)); })() +
       k("Commission générée", money0(s(ach, (x) => x.commission)), "YAS " + money0(s(yas, (x) => x.commission)) + " · MOOV " + money0(s(moov, (x) => x.commission)), "hero") +
