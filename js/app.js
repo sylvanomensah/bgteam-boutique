@@ -3115,7 +3115,10 @@
       $("#dp-boutique").value = db.boutiques.some((b) => b.code === dcur) ? dcur : fBq !== "ALL" ? fBq : (db.boutiques[0] || {}).code || "";
       if (!$("#dp-date").value) $("#dp-date").value = t;
 
-      k.push(["Dépenses (mois)", money0(sumMontant(deps))]);
+      // Bénéfice réalisé de la semaine (lundi → aujourd'hui) : marges des ventes du frigo, à la place des dépenses
+      const lundiS = mondayOf(today());
+      const benefSem = db.fgSorties.filter((x) => codes.includes(x.boutique) && x.date >= lundiS && x.date <= today()).reduce((acc, x) => acc + x.montant - x.consomme, 0);
+      k.push(["Bénéfice réalisé de la semaine", money0(benefSem), benefSem < 0 ? "danger" : "hero-good", 'title="Marges des ventes du frigo du ' + fmtDate(lundiS) + " au " + fmtDate(today()) + '"']);
     }
     // Soldes, retraits et journal : administrateur
     if (admin) {
@@ -3126,10 +3129,6 @@
       $("#fd-mini").innerHTML =
         '<div class="mini roul"><span>Valeur d’achat du stock</span><b>' + money2(T("roulement")) + "</b><small>" + "stock restant au prix d'achat · " + esc(lib) + "</small></div>" +
         '<div class="mini bene' + (T("benefAttendu") < 0 ? " neg" : "") + '"><span>Bénéfice attendu</span><b>' + money2(T("benefAttendu")) + "</b><small>valeur de vente du stock " + money2(T("vente")) + " − valeur d'achat " + money2(T("roulement")) + "</small></div>";
-      // Bénéfice réalisé de la semaine (lundi → aujourd'hui) : somme des marges des ventes du frigo (prix de vente − coût d'achat)
-      const lundiS = mondayOf(today()), codesS = sol.map((x) => x.b.code);
-      const benefSem = db.fgSorties.filter((x) => codesS.includes(x.boutique) && x.date >= lundiS && x.date <= today()).reduce((acc, x) => acc + x.montant - x.consomme, 0);
-      $("#fd-mini").innerHTML += '<div class="mini reel' + (benefSem < 0 ? " neg" : "") + '"><span>Bénéfice réalisé de la semaine</span><b>' + money2(benefSem) + "</b><small>marges des ventes du " + fmtDate(lundiS) + " au " + fmtDate(today()) + "</small></div>";
       // Formulaire de retrait
       const rcur = $("#rt-boutique").value;
       $("#rt-boutique").innerHTML = db.boutiques.map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
