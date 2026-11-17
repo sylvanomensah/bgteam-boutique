@@ -1820,8 +1820,11 @@ create table if not exists public.bet_remontees (
 alter table public.bet_remontees enable row level security;
 create or replace function public.bet_jour_ok(d date) returns boolean
 language sql stable security definer set search_path = public as $f$
-  select d = (now() at time zone 'Africa/Lome')::date
-      or (d = (now() at time zone 'Africa/Lome')::date - 1 and extract(hour from now() at time zone 'Africa/Lome') < 12);
+  -- Surplus d'un jour : déclaré le lendemain avant midi (heure de Lomé).
+  -- Exception de démarrage : en novembre 2026, tous les jours du 1er à la veille, à toute heure.
+  select (d = (now() at time zone 'Africa/Lome')::date - 1 and extract(hour from now() at time zone 'Africa/Lome') < 12)
+      or (d >= date '2026-11-01' and d <= date '2026-11-30' and d < (now() at time zone 'Africa/Lome')::date
+          and (now() at time zone 'Africa/Lome')::date <= date '2026-12-01');
 $f$;
 drop policy if exists bet_rem_select on public.bet_remontees;
 create policy bet_rem_select on public.bet_remontees for select to authenticated

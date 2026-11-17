@@ -4517,7 +4517,16 @@
   function canBet() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.bet && myBoutiqueCode()); }
   // Jours déclarables : aujourd'hui ; hier aussi jusqu'à midi (rattrapage le lendemain matin si le CC était absent)
   // Le surplus d'un jour se déclare TOUJOURS le lendemain matin, avant midi (l'admin : à toute heure)
-  function betJoursRem() { return isAdmin() || new Date().getHours() < 12 ? [addDays(today(), -1)] : []; }
+  // Exception de démarrage (novembre 2026) : on peut déclarer tous les surplus du 1er à hier, à toute heure
+  const BET_RATTRAPAGE_MOIS = "2026-11";
+  function betJoursRem() {
+    const hier = addDays(today(), -1);
+    if (hier.slice(0, 7) === BET_RATTRAPAGE_MOIS || today().slice(0, 7) === BET_RATTRAPAGE_MOIS) {
+      const j = []; for (let d = hier; d >= BET_RATTRAPAGE_MOIS + "-01"; d = addDays(d, -1)) j.push(d);
+      return j;
+    }
+    return isAdmin() || new Date().getHours() < 12 ? [hier] : [];
+  }
   // Libellé d'une période de contrôle (date de fin = le 15 ou le dernier jour du mois)
   const betPeriode = (d) => "du 01/" + d.slice(5, 7) + " au " + fmtDate(d);
   const betEcart = (r) => r2_((Number(r.fonds) || 0) - ((Number(r.rapide) || 0) + (Number(r.zone) || 0)));
@@ -4534,9 +4543,9 @@
     const peut = canBet() && bq && bq !== "ALL";
     $("#bet-rem-card").classList.add("hidden"); // la déclaration se fait dans la case « Surplus » en haut
     const jours = betJoursRem(), dcur = $("#bet-rem-date").value;
-    $("#bet-rem-date").innerHTML = jours.map((d) => '<option value="' + d + '">' + "Hier " + fmtDate(d).slice(0, 5) + (isAdmin() ? "" : " (avant midi)") + "</option>").join("");
+    $("#bet-rem-date").innerHTML = jours.map((d) => '<option value="' + d + '">' + (d === addDays(today(), -1) ? "Hier " : parse(d).toLocaleDateString("fr-FR", { weekday: "short" }) + " ") + fmtDate(d).slice(0, 5) + (betJoursRem().length === 1 && !isAdmin() ? " (avant midi)" : "") + (db.betRem.some((r) => r.boutique === $("#bet-boutique").value && r.date === d) ? " ✓" : "") + "</option>").join("");
     if (jours.includes(dcur)) $("#bet-rem-date").value = dcur;
-    else if (jours.length) $("#bet-rem-date").value = jours[0];
+    else if (jours.length) $("#bet-rem-date").value = jours.slice().reverse().find((d) => !db.betRem.some((r) => r.boutique === bq && r.date === d)) || jours[0];
     $("#bet-rem-save").disabled = !peut || !jours.length;
     const d = $("#bet-rem-date").value, deja = db.betRem.find((r) => r.boutique === bq && r.date === d);
     $("#bet-rem-info").innerHTML = !peut ? "Choisissez une boutique." : deja ? "✅ Surplus déjà déclaré pour le " + fmtDate(d) + " : <b>" + money0(deja.montant) + "</b> (par " + esc(deja.saisiPar || "—") + "). Une nouvelle déclaration le remplacera."
