@@ -1778,6 +1778,17 @@
       statutBadge(statutCaisse(p, bq)) + " · Prix de vente : " + money(p.pv);
   }
   // Boutique de la caisse = boutique du CC qui encaisse (stock commun si le CC n'a pas de boutique)
+  // Caisse : boutons − / + autour de la quantité (plus pratique au téléphone)
+  (function () {
+    const q = $("#c-qte"); if (!q || q.parentElement.classList.contains("qte-step")) return;
+    const w = document.createElement("span"); w.className = "qte-step";
+    q.parentElement.insertBefore(w, q);
+    const moins = document.createElement("button"); moins.type = "button"; moins.className = "qte-btn"; moins.textContent = "−"; moins.setAttribute("aria-label", "Moins");
+    const plus = document.createElement("button"); plus.type = "button"; plus.className = "qte-btn"; plus.textContent = "+"; plus.setAttribute("aria-label", "Plus");
+    w.append(moins, q, plus);
+    moins.addEventListener("click", () => { q.value = Math.max(1, (Number(q.value) || 1) - 1); q.dispatchEvent(new Event("input", { bubbles: true })); });
+    plus.addEventListener("click", () => { q.value = (Number(q.value) || 0) + 1; q.dispatchEvent(new Event("input", { bubbles: true })); });
+  })();
   function caisseBoutique() { return ccBoutique(lockedCc() || $("#c-cc").value) || ""; }
   $("#c-cc").addEventListener("change", () => updateProductInfo(false));
   function renderCart() {

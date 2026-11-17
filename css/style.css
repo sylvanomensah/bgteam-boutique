@@ -1273,3 +1273,47 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
   .kpi { padding: 10px; }
   #view-bet #bet-kpis { grid-template-columns: 1fr; }
 }
+
+/* =====================================================================
+   CAISSE — présentation téléphone plus attrayante (17/11/2026)
+   ===================================================================== */
+.qte-step { display: flex; align-items: stretch; gap: 6px; margin-top: 6px; }
+.qte-step input { text-align: center; font-weight: 800; font-size: 1.1rem; flex: 1 1 auto; min-width: 0; margin: 0 !important; }
+.qte-btn { flex: 0 0 44px; border: 0; border-radius: 12px; background: var(--g-navy, #1d1b4f); color: #ffb347; font-size: 1.4rem; font-weight: 900; cursor: pointer; }
+.qte-btn:active { transform: scale(.94); }
+@media (max-width: 640px) {
+  #view-caisse .caisse-head { background: var(--g-navy, #1d1b4f); border-radius: 18px; padding: 14px 16px; box-shadow: 0 8px 22px rgba(11, 18, 48, .28); position: relative; overflow: hidden; }
+  #view-caisse .caisse-head::after { content: ""; position: absolute; right: -30px; top: -30px; width: 130px; height: 130px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 138, 0, .45), transparent 70%); }
+  #view-caisse .caisse-head h1 { color: #fff; font-size: 1.25rem; position: relative; z-index: 1; }
+  #view-caisse .caisse-head h1::before { content: "🛒 "; }
+  #view-caisse .pepite-top { position: relative; z-index: 1; background: rgba(255, 255, 255, .1); color: #fff; border-color: rgba(255, 179, 71, .5); }
+  #view-caisse .grid2 { gap: 12px; }
+  #view-caisse .card { border-radius: 18px; padding: 14px; box-shadow: 0 6px 18px rgba(11, 18, 48, .08); }
+  #view-caisse .card h2 { font-size: 1rem; margin: 4px 0 10px; }
+  /* Infos du ticket : date et CC côte à côte */
+  #view-caisse .card:first-child > .form:first-of-type { grid-template-columns: 1fr 1fr; gap: 10px; }
+  #view-caisse .card:first-child > .form:first-of-type label.full { grid-column: 1 / -1; }
+  /* Recherche produit : grande, arrondie */
+  #c-search { font-size: 1.05rem !important; padding: 13px 14px; border-radius: 14px; border: 2px solid #ffd59a; background: #fffaf2; }
+  #c-search:focus { border-color: #ff8a00; box-shadow: 0 0 0 3px rgba(255, 138, 0, .2); outline: none; }
+  #c-sug { border-radius: 14px; }
+  #c-sug .fc-opt { padding: 12px 14px; border-bottom: 1px solid #f1f2f7; font-weight: 600; }
+  #c-sug .fc-opt small { display: block; margin: 2px 0 0; font-weight: 500; }
+  /* Quantité et prix côte à côte */
+  #view-caisse .card:first-child > .form:nth-of-type(2) { grid-template-columns: 1fr 1fr; gap: 10px; }
+  #view-caisse .card:first-child > .form:nth-of-type(2) label.full { grid-column: 1 / -1; }
+  #c-stock-info { background: #f4f6fd; border-radius: 12px; padding: 8px 12px; margin: 8px 0 10px; }
+  #c-add { width: 100%; padding: 14px; font-size: 1.05rem; border-radius: 14px; background: var(--g-bg, linear-gradient(135deg, #ffb347, #ff8a00)); border: 0; color: #1b1300; font-weight: 800; box-shadow: 0 6px 16px rgba(255, 138, 0, .35); }
+  /* Ticket : total bien visible */
+  #view-caisse .total-line { background: var(--g-navy, #1d1b4f); color: #c9d1e8; border-radius: 16px; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; font-size: 1rem; text-align: left; }
+  #view-caisse .total-line strong { color: #ffb347; font-size: 1.6rem; }
+  #view-caisse .card:nth-child(2) > .form { grid-template-columns: 1fr 1fr; gap: 10px; }
+  #c-reliquat { font-weight: 800; color: #0b6b3a; background: #e8f6ee; }
+  #view-caisse .card:nth-child(2) .actions { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+  #c-validate { padding: 14px; font-size: 1.05rem; border-radius: 14px; font-weight: 800; box-shadow: 0 6px 16px rgba(22, 163, 74, .35); }
+  #c-clear { border-radius: 14px; }
+  #c-cart td { vertical-align: middle; }
+  #view-caisse .c-last { background: #f8f9fe; border-radius: 14px; padding: 12px; border-top: 0; }
+  #c-last-search { max-width: none; min-width: 0; width: 100%; }
+  #view-caisse .hello-cc { box-shadow: 0 6px 18px rgba(11, 18, 48, .1); }
+}
