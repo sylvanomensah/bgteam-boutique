@@ -4462,7 +4462,7 @@
     }).join("") : '<tr><td colspan="6" class="empty">Aucun surplus déclaré en ' + esc(fmtMonth(mois + "-01")) + ".</td></tr>";
     $("#bet-rem-xls").classList.toggle("hidden", !peutExcelBet());
     $("#bet-rem-pdf").classList.toggle("hidden", !(canBet() || isGlobal()));
-    $("#bet-ctrl-card").classList.toggle("hidden", !(canBet() || isGlobal())); // contrôle de période : CC autorisés seulement
+    $("#bet-ctrl-card").classList.toggle("hidden", !(canBet() || isGlobal())); // contrôle des GG : CC autorisés seulement
     $("#bet-hist-card").classList.toggle("hidden", !(canBet() || isGlobal()));
     $("#bet-kpis").classList.toggle("hidden", !(canBet() || isGlobal()));
     listeSemaines("#bet-rem-rows", "#bet-rem-dates");
@@ -4543,12 +4543,11 @@
     $("#bet-date").disabled = !isAdmin();
     $("#bet-fonds").readOnly = !isAdmin(); // CC : total des surplus déclarés, calculé automatiquement
     if (!isAdmin()) $("#bet-fonds").dataset.auto = "";
-    $("#bet-form").classList.toggle("hidden", !ctrlOuvert);
     const moisCourant = today().slice(0, 7), p15c = moisCourant + "-15", pFinc = lastDayOfMonth(moisCourant + "-01");
     const prochain = today() <= p15c ? p15c : pFinc;
     const deja = pOuverte && bq && bq !== "ALL" ? db.bet.find((r) => r.boutique === bq && r.date === pOuverte) : null;
     $("#bet-ctrl-info").innerHTML = ctrlOuvert
-      ? (isAdmin() ? "Choisissez la période, saisissez GG Rapide et GG Zone : l'écart se calcule avec le total des surplus déclarés." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> " + betPeriode($("#bet-date").value) + " — l'écart se calcule avec le total des surplus déclarés." + (deja ? " ✏️ Déjà saisi : vous pouvez le <b>mettre à jour</b> " + (pOuverte === today() ? "aujourd'hui et demain" : "jusqu'à ce soir") + " si les GG ont changé." : ""))
+      ? (isAdmin() ? "Choisissez la période, saisissez GG Rapide et GG Zone : l'écart se calcule avec le total des surplus déclarés." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> directement dans les cases ci-dessus (" + betPeriode($("#bet-date").value) + ") — l'écart se calcule avec les surplus déclarés." + (deja ? " ✏️ Déjà saisi : vous pouvez le <b>mettre à jour</b> " + (pOuverte === today() ? "aujourd'hui et demain" : "jusqu'à ce soir") + " si les GG ont changé." : ""))
       : "🔒 Le contrôle des GG se fait <b>le 15</b> (du 1er au 15, mise à jour possible le 16) et <b>le dernier jour du mois</b> (du 1er à la fin du mois, mise à jour possible le 1er du mois suivant). Prochain contrôle : <b>" + fmtDate(prochain) + "</b>. Chaque matin, déclarez seulement le surplus du jour ci-dessus.";
     $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
     $("#bet-save").disabled = !bq || bq === "ALL" || !canBet();
@@ -4558,12 +4557,30 @@
     betMajEcart();
     const liste = db.bet.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || boutiqueName(a.boutique).localeCompare(boutiqueName(b.boutique)));
     const T = (f) => liste.reduce((a, r) => a + f(r), 0), ec = r2_(T(betEcart));
-    $("#bet-kpis").innerHTML = kpiHtml([
-      ["GG Rapide (mois)", money0(T((r) => r.rapide))],
-      ["GG Zone (mois)", money0(T((r) => r.zone))],
-      ["Surplus déclarés (mois)", money0(sumBy(db.betRem.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois), (r) => r.montant)), "", 'title="Somme des surplus de chaque jour"'],
-      ["Écart (mois)", (ec > 0 ? "+" : "") + money0(ec), ec < -0.5 ? "danger" : ec > 0.5 ? "warn" : "hero-good"]
-    ]);
+    // Les 4 cases : le contrôle des GG se fait directement dedans (le 15/16 et en fin de mois / le 1er)
+    const hold = $("#bet-form");
+    ["#bet-rapide", "#bet-zone", "#bet-ecart", "#bet-save"].forEach((id) => hold.appendChild($(id))); // on met les champs à l'abri avant de redessiner
+    const saisieOk = ctrlOuvert && bq && bq !== "ALL" && (canBet() || isAdmin());
+    const perK = $("#bet-date").value;
+    // Hors contrôle : dernier contrôle du mois (fin de mois, sinon le 15) de chaque boutique
+    const derniers = (bq === "ALL" ? db.boutiques.map((b) => b.code) : [bq]).map((c) => db.bet.filter((r) => r.boutique === c && r.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date))[0]).filter(Boolean);
+    const D = (f) => derniers.reduce((a, r) => a + f(r), 0), ecD = r2_(D(betEcart));
+    const libP = saisieOk ? betPeriode(perK) : derniers.length === 1 ? betPeriode(derniers[0].date) : "dernier contrôle";
+    const surplusP = saisieOk ? betRemPeriode(bq, perK) : sumBy(db.betRem.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois), (r) => r.montant);
+    $("#bet-kpis").innerHTML =
+      '<div class="kpi' + (saisieOk ? " kpi-saisie" : "") + '"><div class="label">GG Rapide <small>' + esc(libP) + '</small></div><div class="value">' + (saisieOk ? '<span data-slot="rapide"></span>' : money0(D((r) => r.rapide))) + "</div></div>" +
+      '<div class="kpi' + (saisieOk ? " kpi-saisie" : "") + '"><div class="label">GG Zone <small>' + esc(libP) + '</small></div><div class="value">' + (saisieOk ? '<span data-slot="zone"></span>' : money0(D((r) => r.zone))) + "</div></div>" +
+      '<div class="kpi"><div class="label">Surplus déclarés <small>' + esc(saisieOk ? betPeriode(perK) : "mois") + '</small></div><div class="value">' + money0(surplusP) + "</div></div>" +
+      '<div class="kpi ' + (saisieOk ? "kpi-saisie" : ecD < -0.5 ? "danger" : ecD > 0.5 ? "warn" : "hero-good") + '"><div class="label">Écart <small>' + esc(libP) + '</small></div><div class="value">' + (saisieOk ? '<span data-slot="ecart"></span><span data-slot="save"></span>' : (ecD > 0 ? "+" : "") + money0(ecD)) + "</div></div>";
+    if (saisieOk) {
+      const slot = (n) => $("#bet-kpis [data-slot=\"" + n + "\"]");
+      slot("rapide").appendChild($("#bet-rapide")); slot("zone").appendChild($("#bet-zone"));
+      slot("ecart").appendChild($("#bet-ecart")); slot("save").appendChild($("#bet-save"));
+      $("#bet-fonds").value = r2_(surplusP); betMajEcart();
+      const dj = db.bet.find((r) => r.boutique === bq && r.date === perK);
+      if (dj && $("#bet-rapide").dataset.per !== bq + perK) { $("#bet-rapide").value = dj.rapide; $("#bet-zone").value = dj.zone; betMajEcart(); }
+      $("#bet-rapide").dataset.per = bq + perK;
+    }
     $("#bet-rows").innerHTML = liste.length ? liste.map((r) => {
       const canDel = isAdmin() || (r.createdBy === me.id && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
       return "<tr><td>" + esc(betPeriode(r.date)) + "</td><td>" + esc(boutiqueName(r.boutique)) + '</td><td class="num">' + money0(r.rapide) + '</td><td class="num">' + money0(r.zone) +

@@ -1056,25 +1056,23 @@
         <p class="hint" style="margin:6px 0 0" id="bet-rem-info"></p>
       </div>
       <div class="kpis" id="bet-kpis"></div>
+      <div class="bet-ctrl-bar" id="bet-ctrl-card">
+        <p class="hint" id="bet-ctrl-info" style="margin:0"></p>
+        <label class="cc-filter admin-only">Période de contrôle<select id="bet-date"></select></label>
+        <div class="hidden" id="bet-form">
+          <label>GG Rapide<input type="number" min="0" step="any" id="bet-rapide" inputmode="decimal" placeholder="0"></label>
+          <label>GG Zone<input type="number" min="0" step="any" id="bet-zone" inputmode="decimal" placeholder="0"></label>
+          <label>Total fond remonté<input type="number" min="0" step="any" id="bet-fonds" inputmode="decimal" placeholder="0"></label>
+          <label>Écart (calculé)<input id="bet-ecart" readonly tabindex="-1"></label>
+          <button class="btn success" id="bet-save">Enregistrer le contrôle</button>
+        </div>
+      </div>
       <div class="card">
         <div class="toolbar"><h2 style="margin-right:auto">Surplus du mois</h2><button class="btn small" id="bet-rem-pdf" title="Imprimer ou enregistrer en PDF">🖨 Imprimer / PDF</button> <button class="btn small hidden" id="bet-rem-xls" title="Télécharger pour Excel">📊 Excel</button><input id="bet-rem-q" type="search" class="fr-q" list="bet-rem-dates" placeholder="Choisir une date…"><datalist id="bet-rem-dates"></datalist></div>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Surplus</th><th>Déclaré le</th><th>Par</th><th></th></tr></thead>
           <tbody id="bet-rem-rows"></tbody>
         </table></div>
-      </div>
-      <div class="card" id="bet-ctrl-card">
-        <h2>📊 Contrôle des GG (le 15 et en fin de mois)</h2>
-        <p class="hint" id="bet-ctrl-info" style="margin:0 0 8px"></p>
-        <div class="form form-inline" id="bet-form">
-          <label>Période de contrôle<select id="bet-date"></select></label>
-          <label>GG Rapide<input type="number" min="0" step="any" id="bet-rapide" inputmode="decimal" placeholder="0"></label>
-          <label>GG Zone<input type="number" min="0" step="any" id="bet-zone" inputmode="decimal" placeholder="0"></label>
-          <label>Total fond remonté<input type="number" min="0" step="any" id="bet-fonds" inputmode="decimal" placeholder="0"></label>
-          <label>Écart (calculé)<input id="bet-ecart" readonly tabindex="-1"></label>
-          <button class="btn success" id="bet-save" style="align-self:flex-end">Enregistrer</button>
-        </div>
-        <p class="hint" style="margin:6px 0 0">Écart = Total fond remonté − (GG Rapide + GG Zone). Négatif = il manque de l'argent ; positif = excédent.</p>
       </div>
       <div class="card" id="bet-hist-card">
         <div class="toolbar"><h2 style="margin-right:auto">Historique des contrôles</h2><input id="bet-q" type="search" class="fr-q" list="bet-dates" placeholder="Choisir une période…"><datalist id="bet-dates"></datalist></div>

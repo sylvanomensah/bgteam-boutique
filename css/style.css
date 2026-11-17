@@ -1154,3 +1154,11 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 #fg-rachat .rachat-q { color: #b45309; font-size: 1.05rem; }
 .fd-mini .mini.reel { background: #e8f7ee; color: #17804a; border: 1px solid #b7e4c7; }
 .fd-mini .mini.reel.neg { background: #fdecec; color: var(--danger); border-color: #f5c2c2; }
+
+/* 1er Bet : contrôle des GG directement dans les cases */
+.bet-ctrl-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin: 4px 0 14px; }
+.bet-ctrl-bar .hint { flex: 1 1 320px; }
+#bet-kpis .kpi .label small { display: block; font-weight: 500; text-transform: none; color: var(--muted, #6b7280); }
+#bet-kpis .kpi-saisie { outline: 2px solid var(--primary, #4f46e5); }
+#bet-kpis .kpi-saisie input { width: 100%; font-size: 1.3rem; font-weight: 800; padding: 6px 10px; margin-top: 4px; }
+#bet-kpis #bet-save { margin-top: 8px; width: 100%; }
