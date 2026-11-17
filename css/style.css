@@ -1218,3 +1218,58 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
   #view-bet #bet-kpis .kpi .value { font-size: 1.3rem; }
   #view-bet .kpi-surplus .label select { max-width: 55%; font-size: .78rem; }
 }
+
+/* =====================================================================
+   PASSE « TÉLÉPHONE » (17/11/2026) : présentation des éléments ajoutés récemment
+   ===================================================================== */
+@media (max-width: 640px) {
+  /* Titres de cadres + recherche : la recherche passe sous le titre, pleine largeur */
+  .card > .toolbar { flex-wrap: wrap; gap: 8px; }
+  .card > .toolbar > h2 { flex: 1 1 100%; margin-right: 0 !important; }
+  .card > .toolbar .fr-q, .card > .toolbar input[type="search"] { flex: 1 1 100%; max-width: none; width: 100%; }
+  .card > .toolbar .btn.small { flex: 1 1 auto; }
+  /* Montants : jamais coupés hors de la case */
+  .kpi .value { font-size: clamp(1rem, 5vw, 1.25rem); overflow-wrap: anywhere; }
+  .kpi .value small { font-size: .72rem; }
+  .kpi .label small { font-size: .68rem; }
+  /* Bandeaux de notification : texte puis boutons en dessous */
+  .app-alert .alert-line { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+  .app-alert .alert-line > span { flex: 1 1 calc(100% - 30px); }
+  .app-alert .alert-line .btn { flex: 1 1 auto; }
+  /* Fenêtres : presque plein écran, défilement interne */
+  dialog { width: 96vw; max-width: 96vw; max-height: 92vh; overflow-y: auto; padding: 16px 14px; }
+  dialog .actions { flex-wrap: wrap; }
+  dialog .actions .btn { flex: 1 1 45%; }
+  #fca-dialog .inline-input { width: 70px; }
+  /* Tableau de bord : liens, pages Crédit télécom / Frigo */
+  .tb-liens { width: 100%; }
+  .tb-liens .btn { width: 100%; }
+  #dash-com > .toolbar, #dash-fg > .toolbar { flex-wrap: wrap; }
+  #dash-com > .toolbar h2, #dash-fg > .toolbar h2 { flex: 1 1 auto; }
+  .fg-podium { flex: 1 1 100%; order: 3; }
+  .fg-rang { font-size: .78rem; padding: 3px 8px; }
+  .dc-relance-bar { flex-wrap: wrap; gap: 8px; }
+  .dc-relance-bar > span, .dc-relance-bar .btn { width: 100%; }
+  .dc-relance-bar .btn { margin-top: 4px; }
+  .dc-relance-ligne { flex-wrap: wrap; gap: 6px; }
+  .dc-sansvente ul { columns: 1; }
+  .tel-actions { justify-content: flex-start; }
+  /* Fonds & dépenses : petites cases et historique de la semaine */
+  .fd-mini { flex-direction: column; }
+  .fd-mini .mini { width: 100%; }
+  .rm-histo .info-row { flex-wrap: wrap; gap: 4px; }
+  /* Historique des ventes : rapports du CC en 2 lignes */
+  .rep-mini .rep-l1 input { margin-left: 0; flex: 1 1 100%; }
+  /* Frigo : proposition de rachat, stock, récap */
+  #fg-rachat .toolbar label { width: 100%; }
+  .bet-ctrl-bar { flex-direction: column; align-items: stretch; }
+  /* Mon compte : empreinte */
+  .bio-card .actions .btn { width: 100%; }
+  /* Boutons plus faciles à toucher */
+  .btn.small { min-height: 36px; }
+}
+@media (max-width: 400px) {
+  .kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kpi { padding: 10px; }
+  #view-bet #bet-kpis { grid-template-columns: 1fr; }
+}
