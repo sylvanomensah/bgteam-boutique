@@ -3450,7 +3450,7 @@
       const bqb = myBoutiqueCode(), hier = addDays(today(), -1), hh = new Date().getHours();
       const fait = (d) => (db.betRem || []).some((r) => r.boutique === bqb && r.date === d);
       if (hh < 12 && !fait(hier)) h += '<div class="alert-line">🎲 <span><b>Surplus 1er Bet d’hier non déclaré</b> — rattrapez-la ce matin, <b>avant midi</b>.</span><button class="btn small" data-view-link="bet">Déclarer</button></div>';
-      else if (hh >= 18 && !fait(today())) h += '<div class="alert-line">🎲 <span><b>Surplus 1er Bet du jour à déclarer</b> — indiquez le surplus d’aujourd’hui.</span><button class="btn small" data-view-link="bet">Déclarer</button></div>';
+      else if (false) h += '<div class="alert-line">🎲 <span><b>Surplus 1er Bet du jour à déclarer</b> — indiquez le surplus d’aujourd’hui.</span><button class="btn small" data-view-link="bet">Déclarer</button></div>';
     }
     // Gestionnaire des commissions : versements déclarés à confirmer
     if (me && !isAdmin() && canGererCom()) {
@@ -4516,7 +4516,8 @@
   // CC autorisé « 1er Bet » (RH → Autorisations) : déclare la remontée de fonds de chaque jour de sa boutique
   function canBet() { if (isAdmin()) return true; const c = myCcRow(); return !!(c && c.actif && c.bet && myBoutiqueCode()); }
   // Jours déclarables : aujourd'hui ; hier aussi jusqu'à midi (rattrapage le lendemain matin si le CC était absent)
-  function betJoursRem() { const j = [today()]; if (isAdmin() || new Date().getHours() < 12) j.push(addDays(today(), -1)); return j; }
+  // Le surplus d'un jour se déclare TOUJOURS le lendemain matin, avant midi (l'admin : à toute heure)
+  function betJoursRem() { return isAdmin() || new Date().getHours() < 12 ? [addDays(today(), -1)] : []; }
   // Libellé d'une période de contrôle (date de fin = le 15 ou le dernier jour du mois)
   const betPeriode = (d) => "du 01/" + d.slice(5, 7) + " au " + fmtDate(d);
   const betEcart = (r) => r2_((Number(r.fonds) || 0) - ((Number(r.rapide) || 0) + (Number(r.zone) || 0)));
@@ -4533,10 +4534,10 @@
     const peut = canBet() && bq && bq !== "ALL";
     $("#bet-rem-card").classList.add("hidden"); // la déclaration se fait dans la case « Surplus » en haut
     const jours = betJoursRem(), dcur = $("#bet-rem-date").value;
-    $("#bet-rem-date").innerHTML = jours.map((d) => '<option value="' + d + '">' + (d === today() ? "Aujourd'hui " + fmtDate(d).slice(0, 5) : "Hier " + fmtDate(d).slice(0, 5) + " (avant midi)") + "</option>").join("");
+    $("#bet-rem-date").innerHTML = jours.map((d) => '<option value="' + d + '">' + "Hier " + fmtDate(d).slice(0, 5) + (isAdmin() ? "" : " (avant midi)") + "</option>").join("");
     if (jours.includes(dcur)) $("#bet-rem-date").value = dcur;
-    else { const manque = jours.find((d) => d !== today() && bq && !db.betRem.some((r) => r.boutique === bq && r.date === d)); $("#bet-rem-date").value = manque || today(); }
-    $("#bet-rem-save").disabled = !peut;
+    else if (jours.length) $("#bet-rem-date").value = jours[0];
+    $("#bet-rem-save").disabled = !peut || !jours.length;
     const d = $("#bet-rem-date").value, deja = db.betRem.find((r) => r.boutique === bq && r.date === d);
     $("#bet-rem-info").innerHTML = !peut ? "Choisissez une boutique." : deja ? "✅ Surplus déjà déclaré pour le " + fmtDate(d) + " : <b>" + money0(deja.montant) + "</b> (par " + esc(deja.saisiPar || "—") + "). Une nouvelle déclaration le remplacera."
       : "Déclarez chaque jour le surplus. Si vous étiez absent, vous pouvez rattraper la déclaration d'hier <b>demain matin avant midi</b>.";
@@ -4672,6 +4673,9 @@
     if (remOk) {
       slot("rdate").appendChild($("#bet-rem-date")); slot("rmontant").appendChild($("#bet-rem-montant")); slot("rsave").appendChild($("#bet-rem-save"));
       $("#bet-rem-save").textContent = "Enregistrer";
+      const ouvertR = betJoursRem().length > 0;
+      $("#bet-rem-date").classList.toggle("hidden", !ouvertR); $("#bet-rem-montant").disabled = !ouvertR;
+      if (!ouvertR) slot("rsave").insertAdjacentHTML("afterend", '<small class="surplus-cumul">🔒 Le surplus d’hier se déclare le matin, <b>avant midi</b>. Prochaine déclaration : demain matin (surplus d’aujourd’hui).</small>');
       // Le surplus déjà déclaré pour le jour choisi apparaît dans la case ; sinon elle est vide pour le déclarer
       const dR = $("#bet-rem-date").value, djR = db.betRem.find((r) => r.boutique === bq && r.date === dR), cle = bq + dR + (djR ? djR.montant : "");
       if ($("#bet-rem-montant").dataset.cle !== cle) { $("#bet-rem-montant").value = djR ? djR.montant : ""; $("#bet-rem-montant").dataset.cle = cle; }
