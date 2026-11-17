@@ -4416,6 +4416,8 @@
   }
   $("#fg-rachat-jours").addEventListener("change", () => renderRachat(frigoScope()));
   // ---------- 1er Bet ----------
+  // Libellé d'une période de contrôle (date de fin = le 15 ou le dernier jour du mois)
+  const betPeriode = (d) => "du 01/" + d.slice(5, 7) + " au " + fmtDate(d);
   const betEcart = (r) => r2_((Number(r.fonds) || 0) - ((Number(r.rapide) || 0) + (Number(r.zone) || 0)));
   const betEcartHtml = (v) => Math.abs(v) < 0.005 ? '<span class="pos">0</span>' : '<b class="' + (v < 0 ? "neg" : "pos") + '">' + (v > 0 ? "+" : "−") + money0(Math.abs(v)) + "</b>";
   function betMajEcart() {
@@ -4430,9 +4432,11 @@
     sel.value = [...sel.options].some((o) => o.value === cur) ? cur : sel.options[0] ? sel.options[0].value : "";
     sel.disabled = !glob;
     if (!$("#bet-mois").value) $("#bet-mois").value = today().slice(0, 7);
-    if (!$("#bet-date").value) $("#bet-date").value = today();
-    $("#bet-date").max = today();
     const bq = sel.value, mois = $("#bet-mois").value;
+    // Contrôle 1er Bet : du 1er au 15, puis du 1er à la fin du mois (30 ou 31, selon le mois)
+    const p15 = mois + "-15", pFin = lastDayOfMonth(mois + "-01"), dcur = $("#bet-date").value;
+    $("#bet-date").innerHTML = '<option value="' + p15 + '">' + betPeriode(p15) + '</option><option value="' + pFin + '">' + betPeriode(pFin) + "</option>";
+    $("#bet-date").value = [p15, pFin].includes(dcur) ? dcur : (mois === today().slice(0, 7) && today() > p15 ? pFin : p15);
     $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
     $("#bet-save").disabled = !bq || bq === "ALL";
     betMajEcart();
@@ -4446,7 +4450,7 @@
     ]);
     $("#bet-rows").innerHTML = liste.length ? liste.map((r) => {
       const canDel = isAdmin() || (r.createdBy === me.id && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
-      return "<tr><td>" + esc(jourLong(r.date)) + "</td><td>" + esc(boutiqueName(r.boutique)) + '</td><td class="num">' + money0(r.rapide) + '</td><td class="num">' + money0(r.zone) +
+      return "<tr><td>" + esc(betPeriode(r.date)) + "</td><td>" + esc(boutiqueName(r.boutique)) + '</td><td class="num">' + money0(r.rapide) + '</td><td class="num">' + money0(r.zone) +
         '</td><td class="num"><b>' + money0(r.fonds) + '</b></td><td class="num">' + betEcartHtml(betEcart(r)) + "</td><td>" + esc(r.saisiPar || "—") + "</td><td>" +
         (canDel ? '<button class="btn small danger" data-bet-del="' + r.id + '" title="Supprimer">✕</button>' : "") + "</td></tr>";
     }).join("") : '<tr><td colspan="8" class="empty">Aucune saisie en ' + esc(fmtMonth(mois + "-01")) + ".</td></tr>";
@@ -4460,15 +4464,16 @@
   $("#bet-save").addEventListener("click", (e) => {
     const bq = $("#bet-boutique").value, d = $("#bet-date").value;
     if (!bq || bq === "ALL") return toast("Choisissez une boutique.");
-    if (!d || d > today()) return toast("Choisissez une date (pas dans le futur).");
+    if (!d) return toast("Choisissez la période de contrôle.");
+    if (d > today()) return toast("⏰ Le contrôle " + betPeriode(d) + " se fait le " + fmtDate(d) + " (fin de la période).");
     const r = { rapide: $("#bet-rapide").value.trim(), zone: $("#bet-zone").value.trim(), fonds: $("#bet-fonds").value.trim() };
     if (r.rapide === "" || r.zone === "" || r.fonds === "") return toast("Remplissez GG Rapide, GG Zone et Total fond remonté (0 si rien).");
     const v = { gg_rapide: Number(r.rapide), gg_zone: Number(r.zone), fonds: Number(r.fonds) };
     if (!(v.gg_rapide >= 0 && v.gg_zone >= 0 && v.fonds >= 0)) return toast("Montant invalide.");
     const deja = db.bet.find((x) => x.boutique === bq && x.date === d);
     const ec = betEcart({ rapide: v.gg_rapide, zone: v.gg_zone, fonds: v.fonds });
-    if (!confirm((deja ? "⚠ Une saisie existe déjà pour " + boutiqueName(bq) + " le " + fmtDate(d) + " : elle sera remplacée.\n\n" : "") +
-      "1er Bet — " + boutiqueName(bq) + " — " + fmtDate(d) + "\n\nGG Rapide : " + money0(v.gg_rapide) + "\nGG Zone : " + money0(v.gg_zone) + "\nTotal fond remonté : " + money0(v.fonds) +
+    if (!confirm((deja ? "⚠ Une saisie existe déjà pour " + boutiqueName(bq) + " (" + betPeriode(d) + ") : elle sera remplacée.\n\n" : "") +
+      "1er Bet — " + boutiqueName(bq) + " — " + betPeriode(d) + "\n\nGG Rapide : " + money0(v.gg_rapide) + "\nGG Zone : " + money0(v.gg_zone) + "\nTotal fond remonté : " + money0(v.fonds) +
       "\nÉcart : " + (ec > 0 ? "+" : "") + money0(ec) + "\n\nConfirmer ?")) return;
     act(async () => {
       chk(await sb.from("bet_saisies").upsert({ boutique: bq, date: d, ...v, saisi_par: me.nom || me.email || "" }, { onConflict: "boutique,date" }));
