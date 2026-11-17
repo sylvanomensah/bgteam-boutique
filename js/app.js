@@ -1630,73 +1630,136 @@
     "Rangez le frigo : un produit visible se vend mieux 👀",
     "Gardez de la monnaie pour rendre vite ⚡"
   ];
-  // « Pépite du jour » : une blague, un compliment, une astuce santé, une astuce beauté (femme) ou bien-être (homme)
-  const PEPITES = {
-    blague: [
-      "Pourquoi les poissons détestent l'ordinateur ? Parce qu'ils ont peur du net ! 🐟",
-      "Le comble pour un vendeur de frigo ? Recevoir un accueil glacial ! 🧊",
-      "Que dit une imprimante dans l'eau ? « J'ai papier ! » 🖨️",
-      "Pourquoi le livre de maths est triste ? Parce qu'il a trop de problèmes 📘",
-      "Quel est le sport préféré des téléphones ? Le recharge-ball 📱",
-      "Le comble pour un caissier ? Ne pas avoir le sens de la monnaie ! 💰",
-      "Pourquoi les canards sont toujours à l'heure ? Parce qu'ils sont dans l'étang 🦆",
-      "Que fait une fraise sur un cheval ? Tagada, tagada ! 🍓",
-      "Pourquoi l'épouvantail a reçu un prix ? Parce qu'il était exceptionnel dans son champ 🌾",
-      "Comment appelle-t-on un chat tombé dans un pot de peinture le jour de Noël ? Un chat-peint de Noël 🎄"
-    ],
-    compliment: [
-      "Votre travail fait vivre la boutique. Merci pour votre sérieux 🙏",
-      "Les clients reviennent grâce à votre accueil. Bravo ! 🌟",
-      "Chaque vente que vous notez rend BGTeam plus fort 💪",
-      "Votre régularité est une vraie force. Continuez comme ça ! 🏆",
-      "Vous êtes un pilier de l'équipe BGTeam 🧱",
-      "Votre bonne humeur est contagieuse 😄",
-      "Merci pour votre honnêteté : c'est la plus belle des qualités 💎"
-    ],
-    sante: [
-      "Buvez au moins 6 à 8 verres d'eau aujourd'hui 💧",
-      "Levez-vous et marchez 5 minutes toutes les heures 🚶",
-      "Un fruit vaut mieux qu'un biscuit pour le goûter 🍌",
-      "Respirez profondément 3 fois quand vous êtes stressé 🌬️",
-      "Dormir 7 à 8 heures, c'est le meilleur médicament 😴",
-      "Protégez-vous du soleil aux heures chaudes ☀️",
-      "Lavez-vous souvent les mains : c'est la première protection 🧼"
-    ],
-    beaute: [
-      "Un peu d'huile de karité le soir garde la peau douce ✨",
-      "Buvez de l'eau : c'est le secret d'un teint lumineux 💧",
-      "Un masque au miel 10 minutes adoucit la peau 🍯",
-      "Protégez vos cheveux du soleil avec un foulard 🧣",
-      "Démaquillez-vous toujours avant de dormir 🌙",
-      "Un sourire reste le plus beau des maquillages 😊",
-      "L'aloe vera apaise la peau après une journée au soleil 🌿"
-    ],
-    bienetre: [
-      "Une tenue propre et repassée inspire confiance aux clients 👔",
-      "Un peu de sport le matin donne de l'énergie toute la journée 🏃",
-      "Gardez une barbe ou une coupe soignée : ça fait la différence ✂️",
-      "Le beurre de karité protège aussi les mains et les lèvres 🤲",
-      "Prenez 10 minutes pour vous ce soir : musique, marche, famille 🎶"
-    ]
-  };
-  let monSexe = null; // sexe du CC connecté (fiche RH), lu une fois
-  async function chargerMonSexe() {
-    if (monSexe !== null || !me || !me.cc) return;
-    const f = (db.fiches || []).find((x) => String(x.cc) === String(me.cc));
-    if (f) { monSexe = f.sexe || ""; return; }
-    try { const r = await sb.rpc("mon_sexe"); monSexe = r.error ? "" : r.data || ""; } catch (e) { monSexe = ""; }
-    if (currentView === "caisse") renderHelloCc();
-  }
-  // Tirage au hasard une fois par chargement de la page : une nouvelle pépite à chaque actualisation
-  // (elle reste la même pendant la navigation, pour ne pas changer à chaque vente)
-  const PEPITE_ALEA = Math.floor(Math.random() * 1e6);
+  // « Astuce du jour » : astuces brèves (vente, frigo, crédit, argent, clients, santé, bien-être…), une nouvelle chaque jour.
+  // Le numéro du jour parcourt toute la liste avant de revenir à la même astuce (pas de répétition avant 118 jours).
+  const ASTUCES = [
+      "🛒 Proposez toujours une boisson fraîche avec un achat.",
+      "🛒 Saluez chaque client par un sourire : il revient plus souvent.",
+      "🛒 Rangez les produits qui se vendent le plus à hauteur des yeux.",
+      "🛒 Vérifiez le prix avant de valider : une erreur coûte cher.",
+      "🛒 Comptez la monnaie devant le client, à voix haute.",
+      "🛒 Proposez le format familial aux clients réguliers.",
+      "🛒 Un client pressé ? Servez-le vite, il s'en souviendra.",
+      "🛒 Notez chaque vente tout de suite, jamais « plus tard ».",
+      "🛒 Gardez de la petite monnaie dès l'ouverture.",
+      "🛒 Présentez les nouveautés près de la caisse.",
+      "🛒 Appelez vos clients fidèles par leur prénom.",
+      "🛒 Un comptoir propre donne envie d'acheter.",
+      "🛒 Proposez deux choix, pas dix : le client décide plus vite.",
+      "🛒 Remerciez même le client qui n'achète rien.",
+      "🛒 Annoncez le total avant d'encaisser.",
+      "🛒 Un reçu imprimé rassure le client.",
+      "🛒 Gardez la caisse fermée quand vous ne servez pas.",
+      "🛒 Écoutez ce que les clients demandent et que vous n'avez pas.",
+      "🛒 Les heures de pointe : soyez prêt 10 minutes avant.",
+      "🛒 Un produit en rupture = une vente perdue : signalez-le vite.",
+      "🧊 Les boissons bien fraîches se vendent deux fois plus.",
+      "🧊 Placez devant les produits les plus anciens.",
+      "🧊 Ne surchargez pas le frigo : l'air froid doit circuler.",
+      "🧊 Fermez vite la porte du frigo : il consomme moins.",
+      "🧊 Regardez la « Proposition de rachat » avant chaque course.",
+      "🧊 Une course bien préparée évite les ruptures du week-end.",
+      "🧊 Vérifiez les dates des produits une fois par semaine.",
+      "🧊 Essuyez le frigo chaque semaine : propre = plus de ventes.",
+      "🧊 Gardez le reçu de chaque course.",
+      "🧊 Signalez tout de suite un produit cassé ou périmé.",
+      "📱 Faites le contrôle du crédit à l'heure, chaque soir.",
+      "📱 Notez la référence de chaque recharge.",
+      "📱 Vérifiez le numéro du client deux fois avant d'envoyer.",
+      "📱 Rechargez avant de tomber à zéro : pas de client refusé.",
+      "📱 Proposez le crédit aux clients qui achètent une boisson.",
+      "📱 Un transfert raté ? Prévenez tout de suite le gestionnaire.",
+      "📱 Gardez votre code secret pour vous seul.",
+      "💰 Remontez les fonds le lundi, sans attendre.",
+      "💰 Séparez l'argent de la boutique de votre argent personnel.",
+      "💰 Comptez la caisse au début et à la fin de la journée.",
+      "💰 Un petit écart aujourd'hui devient un gros problème demain.",
+      "💰 Gardez les billets rangés par valeur.",
+      "💰 Ne laissez jamais la caisse sans surveillance.",
+      "💰 Notez tout de suite chaque sortie d'argent.",
+      "💰 Épargnez un peu chaque semaine, même 500 F.",
+      "💰 Un budget écrit aide à tenir ses dépenses.",
+      "📋 Préparez la liste des courses la veille.",
+      "📋 Rangez la boutique avant de fermer : demain sera plus facile.",
+      "📋 Une tâche de 2 minutes ? Faites-la tout de suite.",
+      "📋 Commencez la journée par la tâche la plus importante.",
+      "📋 Notez les idées des clients dans un carnet.",
+      "📋 Vérifiez les notifications de l'application chaque matin.",
+      "📋 Un problème ? Signalez-le tôt, il sera vite réglé.",
+      "🤝 Un client mécontent bien écouté devient fidèle.",
+      "🤝 Restez calme face à un client énervé.",
+      "🤝 Dites « je vais vérifier » plutôt que « je ne sais pas ».",
+      "🤝 Tenez toujours vos promesses aux clients.",
+      "🤝 Un « merci, à bientôt » fait toute la différence.",
+      "🤝 Regardez le client dans les yeux en le servant.",
+      "🤝 Parlez clairement et sans vous presser.",
+      "🤝 Retenez ce que vos clients préfèrent.",
+      "🤝 Proposez de l'aide avant qu'on vous la demande.",
+      "🤝 La politesse ne coûte rien et rapporte beaucoup.",
+      "💧 Buvez un verre d'eau toutes les deux heures.",
+      "🚶 Levez-vous et marchez quelques minutes chaque heure.",
+      "🍌 Un fruit au goûter plutôt qu'un biscuit.",
+      "🌬️ Stressé ? Respirez lentement trois fois.",
+      "😴 Dormez 7 à 8 heures : vous serez plus efficace.",
+      "☀️ Évitez le soleil fort entre 12 h et 15 h.",
+      "🧼 Lavez-vous les mains après avoir touché l'argent.",
+      "🥗 Mangez des légumes au moins une fois par jour.",
+      "🧂 Moins de sel, c'est mieux pour la tension.",
+      "🍬 Limitez les boissons très sucrées.",
+      "👀 Reposez vos yeux : regardez au loin quelques secondes.",
+      "🦷 Brossez-vous les dents matin et soir.",
+      "🧘 Étirez-vous 2 minutes au réveil.",
+      "🍽️ Ne sautez pas le petit-déjeuner.",
+      "🤧 Toussez dans votre coude, pas dans la main.",
+      "🏃 Montez les escaliers plutôt que d'attendre.",
+      "📵 Posez le téléphone une heure avant de dormir.",
+      "🌿 Une tisane le soir aide à bien dormir.",
+      "🥜 Une poignée d'arachides donne de l'énergie.",
+      "🪑 Tenez-vous droit sur votre chaise.",
+      "👔 Une tenue propre inspire confiance aux clients.",
+      "✨ Un peu de karité garde les mains douces.",
+      "😊 Le sourire est le meilleur des accessoires.",
+      "💇 Une coiffure soignée fait bonne impression.",
+      "🎶 Écoutez une musique douce pour vous détendre.",
+      "📖 Lisez 10 minutes par jour : l'esprit reste vif.",
+      "🌅 Prenez l'air quelques minutes chaque matin.",
+      "🫶 Appelez un proche ce soir, ça fait du bien.",
+      "🙏 Remerciez quelqu'un aujourd'hui.",
+      "🎯 Fixez-vous un petit objectif pour aujourd'hui.",
+      "🏆 Félicitez-vous pour chaque bonne journée.",
+      "🧠 Apprenez une chose nouvelle chaque semaine.",
+      "🌱 Un échec, c'est une leçon pour demain.",
+      "⏰ Arrivez 5 minutes en avance : la journée commence bien.",
+      "🤗 Une bonne ambiance d'équipe rend le travail léger.",
+      "🔒 Ne donnez jamais votre mot de passe, même à un collègue.",
+      "🔒 Activez l'empreinte pour vous connecter plus vite.",
+      "🔒 Déconnectez-vous si vous prêtez votre téléphone.",
+      "🔒 Méfiez-vous des SMS qui demandent un code.",
+      "🔋 Gardez votre téléphone chargé pour la journée.",
+      "📶 Pas de réseau ? Notez la vente et saisissez-la dès le retour.",
+      "📸 Prenez une photo nette de chaque reçu de dépôt.",
+      "🔄 Actualisez l'application chaque matin pour la dernière version.",
+      "🧾 Vérifiez votre historique de ventes en fin de journée.",
+      "📲 Répondez vite aux messages de l'équipe.",
+      "🚀 Chaque petite vente compte pour le grand objectif.",
+      "🌟 Aujourd'hui est une nouvelle chance de faire mieux.",
+      "💪 La régularité bat la vitesse.",
+      "🔥 Faites de votre mieux, le reste suivra.",
+      "🧭 Restez concentré sur ce que vous pouvez changer.",
+      "🌈 Une attitude positive attire les clients.",
+      "🎉 Célébrez les bonnes journées avec l'équipe.",
+      "🧱 L'honnêteté construit la confiance, jour après jour.",
+      "⭐ Soyez fier de votre travail.",
+      "🌻 Une journée bien commencée est à moitié réussie."
+  ];
+  let monSexe = null; // gardé pour compatibilité (fiche RH)
+  async function chargerMonSexe() { monSexe = monSexe || ""; }
   function pepiteDuJour(code) {
     void code;
-    const graine = PEPITE_ALEA;
-    const cats = ["blague", "compliment", "sante", monSexe === "F" ? "beaute" : monSexe === "M" ? "bienetre" : "sante", "blague"];
-    const cat = cats[graine % cats.length], liste = PEPITES[cat];
-    const titre = { blague: "😄 Blague du jour", compliment: "🌟 Pour vous", sante: "🩺 Astuce santé", beaute: "💄 Astuce beauté", bienetre: "💪 Astuce bien-être" }[cat];
-    return titre + " : " + liste[Math.floor(graine / cats.length) % liste.length];
+    const jour = Math.floor(parse(today()).getTime() / 86400000), n = ASTUCES.length;
+    // pas premier avec n pour parcourir toutes les astuces dans un ordre varié
+    let pas = 37; const pgcd = (x, y) => (y ? pgcd(y, x % y) : x); while (pgcd(pas, n) !== 1) pas++;
+    return "💡 Astuce du jour : " + ASTUCES[((jour * pas) % n + n) % n];
   }
   function renderHelloCc() {
     const el = $("#c-hello");
@@ -1716,7 +1779,7 @@
     const objectif = veille.ca > 0 ? (ecart >= 0 ? "🔥 Vous dépassez hier de " + money0(ecart) + " !" : "🎯 Encore " + money0(-ecart) + " pour égaler hier") : "🚀 Belle journée de ventes !";
     const conseil = CONSEILS[Math.floor(Date.parse(t) / 86400000) % CONSEILS.length];
     chargerMonSexe();
-    // la pépite du jour (blague, compliment, astuce santé / beauté / bien-être) remplace l'ancienne ligne objectif + conseil
+    // l'astuce du jour (brève, nouvelle chaque jour) remplace l'ancienne ligne objectif + conseil
     void objectif; void conseil;
     // pépite affichée en gras à côté du titre « Caisse — nouvelle vente »
     $("#c-pepite").textContent = pepiteDuJour(code);
