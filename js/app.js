@@ -4463,7 +4463,7 @@
     $("#bet-rem-xls").classList.toggle("hidden", !peutExcelBet());
     $("#bet-rem-pdf").classList.toggle("hidden", !(canBet() || isGlobal()));
     $("#bet-ctrl-card").classList.toggle("hidden", !(canBet() || isGlobal())); // contrôle des GG : CC autorisés seulement
-    $("#bet-hist-card").classList.toggle("hidden", !(canBet() || isGlobal()));
+    $("#bet-hist-card").classList.add("hidden"); // Historique des contrôles retiré à la demande (17/11/2026)
     $("#bet-kpis").classList.toggle("hidden", !(canBet() || isGlobal()));
     listeSemaines("#bet-rem-rows", "#bet-rem-dates");
     limiter3("#bet-rem-rows", $("#bet-rem-q").value);
