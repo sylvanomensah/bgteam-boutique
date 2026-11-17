@@ -1317,3 +1317,28 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
   #c-last-search { max-width: none; min-width: 0; width: 100%; }
   #view-caisse .hello-cc { box-shadow: 0 6px 18px rgba(11, 18, 48, .1); }
 }
+
+/* CAISSE — le style attrayant s'applique aussi sur grand écran et en « mode ordinateur » des téléphones */
+#view-caisse .caisse-head { background: var(--g-navy, #1d1b4f); border-radius: 18px; padding: 14px 18px; box-shadow: 0 8px 22px rgba(11, 18, 48, .28); position: relative; overflow: hidden; align-items: center; }
+#view-caisse .caisse-head::after { content: ""; position: absolute; right: -30px; top: -30px; width: 150px; height: 150px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 138, 0, .45), transparent 70%); pointer-events: none; }
+#view-caisse .caisse-head h1 { color: #fff; position: relative; z-index: 1; }
+#view-caisse .caisse-head h1::before { content: "🛒 "; }
+#view-caisse .pepite-top { position: relative; z-index: 1; background: rgba(255, 255, 255, .1); color: #fff; border-color: rgba(255, 179, 71, .5); }
+#view-caisse .card { border-radius: 18px; box-shadow: 0 6px 18px rgba(11, 18, 48, .08); }
+#view-caisse #c-search { font-size: 1.05rem; padding: 13px 14px; border-radius: 14px; border: 2px solid #ffd59a; background: #fffaf2; }
+#view-caisse #c-search:focus { border-color: #ff8a00; box-shadow: 0 0 0 3px rgba(255, 138, 0, .2); outline: none; }
+#view-caisse #c-sug .fc-opt { padding: 11px 14px; border-bottom: 1px solid #f1f2f7; font-weight: 600; }
+#view-caisse #c-stock-info { background: #f4f6fd; border-radius: 12px; padding: 8px 12px; margin: 8px 0 10px; }
+#view-caisse #c-add { width: 100%; padding: 14px; font-size: 1.05rem; border-radius: 14px; background: var(--g-bg, linear-gradient(135deg, #ffb347, #ff8a00)); border: 0; color: #1b1300; font-weight: 800; box-shadow: 0 6px 16px rgba(255, 138, 0, .35); }
+#view-caisse #c-add:disabled { opacity: .55; box-shadow: none; }
+#view-caisse .total-line { background: var(--g-navy, #1d1b4f); color: #c9d1e8; border-radius: 16px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; font-size: 1rem; text-align: left; }
+#view-caisse .total-line strong { color: #ffb347; font-size: 1.7rem; }
+#view-caisse #c-reliquat { font-weight: 800; color: #0b6b3a; background: #e8f6ee; }
+#view-caisse #c-remis { border: 2px solid #cfe8d9; }
+#view-caisse .card:nth-child(2) .actions { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+#view-caisse #c-validate { padding: 14px; font-size: 1.05rem; border-radius: 14px; font-weight: 800; box-shadow: 0 6px 16px rgba(22, 163, 74, .35); }
+#view-caisse #c-clear { border-radius: 14px; }
+#view-caisse #c-cart .empty { text-align: center; padding: 22px 10px; color: #8a93ad; }
+#view-caisse #c-cart .empty::before { content: "🧺"; display: block; font-size: 1.8rem; margin-bottom: 4px; }
+#view-caisse .c-last { background: #f8f9fe; border-radius: 14px; padding: 12px; border-top: 0; }
+#view-caisse #c-date, #view-caisse #c-cc { background: #f4f6fd; }
