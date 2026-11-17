@@ -4104,7 +4104,7 @@
   // Jour choisi : l'admin peut prendre n'importe quel jour passé ; un CC suit la règle (hier d'abord)
   function venteJourChoisi(bq) { return isAdmin() && $("#cs-date").value ? $("#cs-date").value : venteCible(bq); }
   // Récap d'un mois : crédits achetés YAS / MOOV, commission générée, historiques
-  $("#rc-rech-q").addEventListener("input", () => renderCredit());
+  ["#rc-rech-q", "#rc-clot-q", "#rc-ventes-q", "#rc-vers-q"].forEach((id) => $(id).addEventListener("input", () => renderCredit()));
   function renderRecapCredit(scope) {
     const mois = $("#cr-mois").value || today().slice(0, 7), codes = scope.map((b) => b.code), s = (l, f) => l.reduce((a, x) => a + f(x), 0);
     const nomMois = fmtMonth(mois + "-01");
@@ -4143,11 +4143,13 @@
     // Contrôles du crédit restant chaque jour (une ligne par jour et par boutique)
     $("#rc-clot").innerHTML = controlesRows(codes, mois, false).replace(/<td><\/td><\/tr>/g, "</tr>");
     $("#rc-ventes").innerHTML = ventesRows(codes, mois);
+    ["#rc-clot", "#rc-ventes"].forEach((id) => { listeSemaines(id, id + "-dates"); limiter3(id, $(id + "-q").value); });
     $("#rc-vers").innerHTML = vers.length ? vers.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map((v) =>
       "<tr><td>" + new Date(v.createdAt).toLocaleDateString("fr-FR") + "</td><td>" + heureDe(v.createdAt) + "</td><td>" + esc(boutiqueName(v.boutique)) + "</td><td>" + (v.cc ? esc(ccName(v.cc)) : "Admin") +
       '</td><td class="num"><b>' + money0(v.montant) + "</b></td><td>" + esc(v.mode) + "</td><td>" +
       (v.statut === "Reçue" ? '<span class="badge ok">✓ Reçu</span>' : '<span class="badge warn">⏳ En attente</span>') + "</td></tr>").join("")
       : '<tr><td colspan="7" class="empty">Aucun versement en ' + esc(nomMois) + ".</td></tr>";
+    listeSemaines("#rc-vers", "#rc-vers-dates"); limiter3("#rc-vers", $("#rc-vers-q").value);
   }
   // Reversement de commission : ouvert le 1er et le 2 du mois, ou à tout moment pour un CC autorisé par l'admin
   // Gestionnaire des commissions (ex. EDWIGE) : tableau de bord des commissions, demande de versement, confirmation de réception
