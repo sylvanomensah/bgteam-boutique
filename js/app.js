@@ -4104,6 +4104,7 @@
   // Jour choisi : l'admin peut prendre n'importe quel jour passé ; un CC suit la règle (hier d'abord)
   function venteJourChoisi(bq) { return isAdmin() && $("#cs-date").value ? $("#cs-date").value : venteCible(bq); }
   // Récap d'un mois : crédits achetés YAS / MOOV, commission générée, historiques
+  $("#rc-rech-q").addEventListener("input", () => renderCredit());
   function renderRecapCredit(scope) {
     const mois = $("#cr-mois").value || today().slice(0, 7), codes = scope.map((b) => b.code), s = (l, f) => l.reduce((a, x) => a + f(x), 0);
     const nomMois = fmtMonth(mois + "-01");
@@ -4136,6 +4137,9 @@
       "<tr><td>" + fmtDate(x.date) + "</td><td>" + heure(x.createdAt) + "</td><td>" + esc(boutiqueName(x.boutique)) + "</td><td>" + logoOp(x.op, true) + '</td><td class="num">' + money0(x.montant) +
       '</td><td class="num pos">+' + money0(x.commission) + "</td><td>" + esc(x.saisiPar || "—") + "</td></tr>").join("")
       : '<tr><td colspan="7" class="empty">Aucune recharge en ' + esc(nomMois) + ".</td></tr>";
+    // 3 lignes ; les autres par la recherche (dates proposées)
+    listeSemaines("#rc-rech", "#rc-rech-dates");
+    limiter3("#rc-rech", $("#rc-rech-q").value);
     // Contrôles du crédit restant chaque jour (une ligne par jour et par boutique)
     $("#rc-clot").innerHTML = controlesRows(codes, mois, false).replace(/<td><\/td><\/tr>/g, "</tr>");
     $("#rc-ventes").innerHTML = ventesRows(codes, mois);
