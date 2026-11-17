@@ -4463,7 +4463,7 @@
     $("#bet-rem-xls").classList.toggle("hidden", !peutExcelBet());
     $("#bet-rem-pdf").classList.toggle("hidden", !(canBet() || isGlobal()));
     $("#bet-ctrl-card").classList.toggle("hidden", !(canBet() || isGlobal())); // contrôle des GG : CC autorisés seulement
-    $("#bet-hist-card").classList.add("hidden"); // Historique des contrôles retiré à la demande (17/11/2026)
+    $("#bet-hist-card").classList.toggle("hidden", !(canBet() || isGlobal()) || !db.bet.some((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois)); // seulement les contrôles enregistrés
     $("#bet-kpis").classList.toggle("hidden", !(canBet() || isGlobal()));
     listeSemaines("#bet-rem-rows", "#bet-rem-dates");
     limiter3("#bet-rem-rows", $("#bet-rem-q").value);
@@ -4548,7 +4548,7 @@
     const deja = pOuverte && bq && bq !== "ALL" ? db.bet.find((r) => r.boutique === bq && r.date === pOuverte) : null;
     $("#bet-ctrl-info").innerHTML = ctrlOuvert
       ? (isAdmin() ? "Choisissez la période, saisissez GG Rapide et GG Zone : l'écart se calcule avec le total des surplus déclarés." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> directement dans les cases ci-dessus (" + betPeriode($("#bet-date").value) + ") — l'écart se calcule avec les surplus déclarés." + (deja ? " ✏️ Déjà saisi : vous pouvez le <b>mettre à jour</b> " + (pOuverte === today() ? "aujourd'hui et demain" : "jusqu'à ce soir") + " si les GG ont changé." : ""))
-      : "🔒 Le contrôle des GG se fait <b>le 15</b> (du 1er au 15, mise à jour possible le 16) et <b>le dernier jour du mois</b> (du 1er à la fin du mois, mise à jour possible le 1er du mois suivant). Prochain contrôle : <b>" + fmtDate(prochain) + "</b>. Chaque matin, déclarez seulement le surplus du jour ci-dessus.";
+      : "🧮 Saisissez GG Rapide et GG Zone à tout moment pour <b>simuler l'écart</b> " + betPeriode($("#bet-date").value) + ". L'enregistrement (historique) se fait <b>le 15</b> (mise à jour le 16) et <b>le dernier jour du mois</b> (mise à jour le 1er). Prochain enregistrement : <b>" + fmtDate(prochain) + "</b>.";
     $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
     $("#bet-save").disabled = !bq || bq === "ALL" || !canBet();
     renderBetRem(bq, mois);
@@ -4564,7 +4564,8 @@
     ["#bet-rem-date", "#bet-rem-montant", "#bet-rem-save"].forEach((id) => holdR.appendChild($(id)));
     const remOk = canBet() && bq && bq !== "ALL";
     const cumulMois = sumBy(db.betRem.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois), (r) => r.montant);
-    const saisieOk = ctrlOuvert && bq && bq !== "ALL" && (canBet() || isAdmin());
+    const saisieOk = bq && bq !== "ALL" && (canBet() || isAdmin()); // cases GG toujours ouvertes : simulation de l'écart à tout moment
+    const enregOk = ctrlOuvert; // enregistrement (historique) : le 15/16 et en fin de mois / le 1er ; l'admin à tout moment
     const perK = $("#bet-date").value;
     // Hors contrôle : dernier contrôle du mois (fin de mois, sinon le 15) de chaque boutique
     const derniers = (bq === "ALL" ? db.boutiques.map((b) => b.code) : [bq]).map((c) => db.bet.filter((r) => r.boutique === c && r.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date))[0]).filter(Boolean);
@@ -4592,6 +4593,8 @@
     if (saisieOk) {
       slot("rapide").appendChild($("#bet-rapide")); slot("zone").appendChild($("#bet-zone"));
       slot("ecart").appendChild($("#bet-ecart")); slot("save").appendChild($("#bet-save"));
+      $("#bet-save").classList.toggle("hidden", !enregOk);
+      const simNote = slot("save"); if (!enregOk) simNote.insertAdjacentHTML("beforeend", '<small class="surplus-cumul">🧮 Simulation — enregistrement le 15/16 et en fin de mois</small>');
       $("#bet-fonds").value = r2_(surplusP); betMajEcart();
       const dj = db.bet.find((r) => r.boutique === bq && r.date === perK);
       if (dj && $("#bet-rapide").dataset.per !== bq + perK) { $("#bet-rapide").value = dj.rapide; $("#bet-zone").value = dj.zone; betMajEcart(); }
