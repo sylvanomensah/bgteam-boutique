@@ -5231,7 +5231,7 @@
     const k = (label, val, sub, cls) => '<div class="kpi ' + (cls || "") + '"><div class="label">' + label + '</div><div class="value">' + val + (sub ? "<small>" + sub + "</small>" : "") + "</div></div>";
     $("#fr-kpis").innerHTML = k("Courses (crédit vente)", money2(sumBy(courses, (c) => c.cout)), courses.length + " course" + (courses.length > 1 ? "s" : "") + " · achats + frais") +
       k("Estimation des ventes", money2(sumBy(courses, (c) => c.valeur)), "prix de vente × quantité achetée") +
-      k("Vendu en caisse", money2(sumBy(ventes, (x) => x.montant)), num(sumBy(ventes, (x) => x.qte)) + " article(s)" + " · coût d'achat sorti " + money2(sumBy(ventes, (x) => x.consomme))) +
+      k("Vendu en caisse", money2(sumBy(ventes, (x) => x.montant)), num(sumBy(ventes, (x) => x.qte)) + " article(s)" + (admin ? " · crédit consommé " + money2(sumBy(ventes, (x) => x.consomme)) : "")) +
       (admin ? k("Bénéfice estimé", money2(sumBy(courses, (c) => c.valeur - c.cout)), "somme des marges des produits achetés", "hero") +
         k("Retraits", money2(sumBy(retraits, (r) => r.montant)), retraits.length + " retrait" + (retraits.length > 1 ? "s" : "")) : "");
     // Concordance avec le Stock frigo (depuis le début) : achats − coût vendu ± corrections = stock au coût d'achat ; estimation − vendu ≈ stock au prix de vente
@@ -5240,11 +5240,7 @@
     const stAchat = r2_(sumBy(toutC, (c) => c.cout) - sumBy(toutV, (x) => x.consomme) + ajV);
     const stVente = r2_(db.products.reduce((a, p) => a + codes.reduce((b, bq) => b + Math.max(0, stockFrigoOf(p.code, bq)), 0) * Number(p.pv || 0), 0));
     const attendu = r2_(sumBy(toutC, (c) => c.valeur) - sumBy(toutV, (x) => x.montant)), ecartPv = r2_(stVente - attendu);
-    $("#fr-kpis").innerHTML += toutC.length ? k("Stock restant au coût d'achat", money2(stAchat),
-      "achats des courses " + money2(sumBy(toutC, (c) => c.cout)) + " − coût d'achat vendu " + money2(sumBy(toutV, (x) => x.consomme)) + (Math.abs(ajV) > 0.005 ? (ajV < 0 ? " − " : " + ") + "corrections " + money2(Math.abs(ajV)) : "") + " (depuis le début)") +
-      k("Estimation des ventes du stock disponible", money2(stVente), "estimation des ventes " + money2(sumBy(toutC, (c) => c.valeur)) + " − vendu en caisse " + money2(sumBy(toutV, (x) => x.montant)) + " = " + money2(attendu) +
-        (Math.abs(ecartPv) > 0.5 ? " · écart " + (ecartPv > 0 ? "+" : "−") + money2(Math.abs(ecartPv)) + " : produits vendus à un autre prix que prévu ou prix de vente modifié" : " ✔")) +
-      (admin ? k("Bénéfice restant dans le stock", money2(r2_(stVente - stAchat)), "bénéfice estimé − bénéfice déjà réalisé par les ventes (" + money2(r2_(sumBy(toutV, (x) => x.montant - x.consomme))) + ")", "hero") : "") : "";
+    // Cartes de concordance avec Opérations retirées à la demande (17/11/2026)
     $("#fr-bq-card").classList.toggle("hidden", scope.length < 2);
     if (scope.length > 1) {
       $("#fr-bq-head").innerHTML = "<tr><th>Boutique</th><th class=\"num\">Vendu en caisse</th><th class=\"num\">Estimation des ventes</th><th class=\"num\">Crédit vente restant</th>" + (admin ? '<th class="num">Bénéfice estimé</th><th class="num">Retraits</th>' : "") + "</tr>";
