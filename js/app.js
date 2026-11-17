@@ -2070,7 +2070,7 @@
     $("#v-rows").innerHTML = rows.length ? rows.map((s) =>
       '<tr class="' + (s.valide === "OUI" ? "" : "off") + '">' +
       "<td>" + fmtDate(s.date) + "</td><td>" + heureOf(s) + "</td><td>" + esc(s.nom) + pendingBadge(productByCode(s.code)) +
-      '</td><td class="num">' + num(s.qte) + '</td><td class="num"><b>' + money(lineTotal(s)) + '</b></td><td class="num">' + beneHtml(beneOf(s)) + "</td><td>" + ccLabel(s.cc) +
+      '</td><td class="num">' + num(s.qte) + '</td><td class="num"><b>' + money(lineTotal(s)) + '</b></td><td class="num admin-only">' + beneHtml(beneOf(s)) + "</td><td>" + ccLabel(s.cc) +
       (vendeurOf(s) ? '<span class="sub">' + esc(vendeurOf(s)) + "</span>" : "") +
       "</td><td>" + esc(boutiqueName(saleBoutique(s))) + '</td><td class="num">' + s.ticket +
       '</td><td class="keep">' + (admin ? '<button class="btn small" data-toggle="' + s.id + '">' + badge(s) + "</button>" : badge(s)) +
@@ -2082,7 +2082,7 @@
     const totBene = valides.reduce((a, s) => a + (beneOf(s) || 0), 0);
     $("#v-foot").innerHTML = '<tr><td colspan="3">TOTAL ' + (cc === "ALL" ? (b === "ALL" ? "DES VENTES" : "— " + esc(boutiqueName(b))) : "— " + esc(ccName(cc))) +
       " · " + num(tot.tickets) + " ticket" + (tot.tickets > 1 ? "s" : "") + '</td><td class="num">' + num(tot.qte) +
-      '</td><td class="num">' + money(tot.ca) + '</td><td class="num">' + beneHtml(valides.length ? totBene : null) + '</td><td colspan="5">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
+      '</td><td class="num">' + money(tot.ca) + '</td><td class="num admin-only">' + beneHtml(valides.length ? totBene : null) + '</td><td colspan="5">' + (rows.length !== valides.length ? "(ventes NON exclues)" : "") + "</td></tr>";
     $("#v-refresh-info").innerHTML = (rtLive ? '<span class="live-dot"></span>En direct · ' : "") + "mis à jour à " +
       new Date(lastReload || Date.now()).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
@@ -2431,7 +2431,7 @@
       productOptions(l.code) + '<option value="__new__">➕ Nouveau produit…</option></select>' + pendingBadge(productByCode(l.code)) + "</td>" +
       '<td class="num"><input type="number" min="1" data-f="qte" value="' + esc(l.qte) + '"></td>' +
       '<td class="num"><input type="number" min="0" data-f="total" value="' + esc(l.total) + '"></td>' +
-      '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
+      '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num admin-only" data-c="mu"></td>' +
       '<td><button class="btn small danger" data-rmline="' + i + '" title="Retirer">✕</button></td></tr>'
     ).join("");
     updateCourseCalc();
@@ -3118,7 +3118,7 @@
       // Bénéfice réalisé de la semaine (lundi → aujourd'hui) : marges des ventes du frigo, à la place des dépenses
       const lundiS = mondayOf(today());
       const benefSem = db.fgSorties.filter((x) => codes.includes(x.boutique) && x.date >= lundiS && x.date <= today()).reduce((acc, x) => acc + x.montant - x.consomme, 0);
-      k.push(["Bénéfice réalisé de la semaine", money0(benefSem), benefSem < 0 ? "danger" : "hero-good", 'title="Marges des ventes du frigo du ' + fmtDate(lundiS) + " au " + fmtDate(today()) + '"']);
+      if (admin) k.push(["Bénéfice réalisé de la semaine", money0(benefSem), benefSem < 0 ? "danger" : "hero-good", 'title="Marges des ventes du frigo du ' + fmtDate(lundiS) + " au " + fmtDate(today()) + '"']);
     }
     // Soldes, retraits et journal : administrateur
     if (admin) {
@@ -3171,7 +3171,7 @@
     const reste = Math.max(0, Math.round(base * 100) / 100);
     $("#rm-info").innerHTML = '<div class="info-row"><span>Boutique</span><span><b>' + esc(boutiqueName(remBq)) + "</b></span></div>" +
       '<div class="info-row"><span>Ventes de la semaine du ' + fmtDate(w) + "</span><span><b>" + money2(fs.ventes) + "</b></span></div>" +
-      (frigo
+      (frigo && isAdmin()
         ? '<div class="info-row"><span>&nbsp;&nbsp;dont montant de l\'achat (frigo)</span><span>' + money2(fs.achat) + "</span></div>" +
           '<div class="info-row"><span>&nbsp;&nbsp;dont bénéfice réalisé</span><span>' + money2(Math.max(0, fs.ventes - fs.achat)) + "</span></div>"
         : "") +
@@ -4448,16 +4448,16 @@
       const estimStock = codesFg.reduce((a, c) => { const p = db.products.find((y) => y.code === c), q = stockFrigoOf(c, bq); return a + (p && q > 0 ? q * Number(p.pv || 0) : 0); }, 0);
       // Bénéfice attendu du stock disponible = estimation des ventes − stock restant au coût d'achat
       const benefAttendu = Math.round((estimStock - Math.max(0, f.restant)) * 100) / 100;
-      h += '<div class="fg-card vert"><div class="fg-duo"><div><span>Estimation des ventes du stock disponible</span><b>' + money2(estimStock) + "</b></div>" +
+      if (!admin) h += '<div class="fg-card vert"><span>Estimation des ventes du stock disponible</span><b>' + money2(estimStock) + "</b><small>valeur de vente de tous les articles actuellement disponibles</small></div>";
+      else h += '<div class="fg-card vert"><div class="fg-duo"><div><span>Estimation des ventes du stock disponible</span><b>' + money2(estimStock) + "</b></div>" +
         '<div><span>Bénéfice attendu du stock disponible</span><b class="' + (benefAttendu < 0 ? "rouge-txt" : "vert-txt") + '">' + money2(benefAttendu) + "</b></div></div>" +
         "<small>Valeur potentielle de vente de tous les articles actuellement disponibles · bénéfice attendu = estimation − stock restant au coût d'achat (" + money2(Math.max(0, f.restant)) + ")</small></div>";
       // 2e ligne : coût d'achat vendu | bénéfice réalisé (semaine en cours)
       h += '<div class="fg-card"><span>Coût d\'achat vendu de la semaine</span><b>' + money2(sw.cout) + "</b><small>stock au début " + money2(Math.max(0, sw.restantDebut)) + " + achats de la semaine " + money2(sw.dotations) +
         " − stock restant " + money2(Math.max(0, sw.restantFin)) + (sw.raz > 0.005 ? " · dont remise à zéro du frigo " + money2(sw.raz) + " (non comptée comme vendue)" : "") + (Math.abs(sw.pertes) > 0.005 ? " · dont " + (sw.pertes > 0 ? "pertes de stock " : "surplus de stock −") + money2(Math.abs(sw.pertes)) + " (corrections de l'admin)" : "") + "</small></div>";
-      h += '<div class="fg-card vert"><span>Bénéfice réalisé de la semaine</span><b class="vert-txt">' + money2(sw.benef) + "</b><small>somme des marges des ventes du " + fmtDate(lundiC) + " au " + fmtDate(t) + " (prix de vente − coût d'achat)</small></div>";
+      if (admin) h += '<div class="fg-card vert"><span>Bénéfice réalisé de la semaine</span><b class="vert-txt">' + money2(sw.benef) + "</b><small>somme des marges des ventes du " + fmtDate(lundiC) + " au " + fmtDate(t) + " (prix de vente − coût d'achat)</small></div>";
       // 3e ligne : total à reverser lundi (pleine largeur)
-      h += '<div class="fg-card fg-total fg-plein"><span>Total des recettes à reverser lundi ' + fmtDate(lundiRev) + "</span><b>" + money2(sw.total) + "</b><small>coût d'achat vendu de la semaine " + money2(sw.cout) +
-        " + bénéfice réalisé de la semaine " + money2(sw.benef) + "</small></div>";
+      h += '<div class="fg-card fg-total fg-plein"><span>Total des recettes à reverser lundi ' + fmtDate(lundiRev) + "</span><b>" + money2(sw.total) + "</b><small>" + (admin ? "coût d'achat vendu de la semaine " + money2(sw.cout) + " + bénéfice réalisé de la semaine " + money2(sw.benef) : "ventes du frigo de la semaine") + "</small></div>";
       // 4e ligne : déjà reversé | reste à reverser (orange = en attente, rouge = en retard)
       h += '<div class="fg-card"><span>Montant déjà reversé</span><b>' + money2(sw.recu) + "</b><small>versements confirmés pour la semaine du " + fmtDate(lundiC) +
         (sw.attente > 0 ? " · ⏳ " + money2(sw.attente) + " déclarés, en attente de confirmation" : "") + "</small></div>";
@@ -4636,7 +4636,7 @@
       '<div class="sum-row"><span>Total des frais</span><span>' + money2(frais) + "</span></div>" +
       '<div class="sum-row big"><span>TOTAL DE LA COURSE = CRÉDIT VENTE</span><span>' + money2(total) + "</span></div>" +
       '<div class="sum-row"><span>Estimation des ventes (prix de vente × quantité)</span><b>' + money2(s.vente) + "</b></div>" +
-      '<div class="sum-row"><span>Bénéfice estimé</span><b>' + margeHtml(marge, s.vente > 0 ? (marge / s.vente) * 100 : null) + "</b></div>";
+      (isAdmin() ? '<div class="sum-row"><span>Bénéfice estimé</span><b>' + margeHtml(marge, s.vente > 0 ? (marge / s.vente) * 100 : null) + "</b></div>" : "");
   }
   // Lignes de course : même principe que « recopiez le reçu du marché » (Entrées de stock) :
   // produit choisi dans le catalogue, quantité, prix total payé → prix d'achat unitaire, prix de vente du catalogue, marge unitaire
@@ -4645,7 +4645,7 @@
       '<div class="fc-sug hidden"></div></div></td>' +
       '<td class="num"><input type="number" min="1" data-k="qte" value="' + esc(l.qte) + '"></td>' +
       '<td class="num"><input type="number" min="0" data-k="total" value="' + esc(l.total) + '"></td>' +
-      '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num" data-c="mu"></td>' +
+      '<td class="num" data-c="pu"></td><td class="num" data-c="pv"></td><td class="num admin-only" data-c="mu"></td>' +
       '<td><button class="btn small danger" data-fc-rm="' + i + '" title="Retirer">✕</button></td></tr>').join("");
     majFcCalc();
   }
@@ -4753,8 +4753,8 @@
     const pu = q > 0 ? tot / q : 0, mu = pv - pu;
     $("#fgnp-calc").innerHTML = '<div class="sum-row"><span>Prix d\'achat unitaire</span><b>' + (q > 0 && f.elements.total.value !== "" ? money2(pu) : "—") + "</b></div>" +
       '<div class="sum-row"><span>Prix de vente</span><b>' + (pv > 0 ? money2(pv) : "—") + "</b></div>" +
-      '<div class="sum-row"><span>Marge unitaire</span><b>' + (q > 0 && pv > 0 ? margeHtml(mu, (mu / pv) * 100) : "—") + "</b></div>" +
-      (q > 0 && pv > 0 ? '<div class="sum-row"><span>Bénéfice estimé sur la quantité</span><b>' + margeHtml(mu * q, null) + "</b></div>" : "");
+      (isAdmin() ? '<div class="sum-row"><span>Marge unitaire</span><b>' + (q > 0 && pv > 0 ? margeHtml(mu, (mu / pv) * 100) : "—") + "</b></div>" +
+      (q > 0 && pv > 0 ? '<div class="sum-row"><span>Bénéfice estimé sur la quantité</span><b>' + margeHtml(mu * q, null) + "</b></div>" : "") : "");
   }
   function ouvrirFgNouveauProduit(idx, nom) {
     fgnpLigne = idx;
@@ -4816,7 +4816,7 @@
     if (bad) return toast("Complétez chaque ligne : produit, quantité et prix total payé.");
     if (sansPv) return toast("« " + sansPv.nom + " » n'a pas de prix de vente : définissez-le d'abord dans Stock.");
     const total = s.achats + s.deplacement + s.sachet + s.autres;
-    if (!confirm("Enregistrer la course du frigo de " + boutiqueName(bq) + " ?\n\nTotal de la course (crédit vente ajouté) : " + money2(total) + "\nEstimation des ventes : " + money2(s.vente) + "\nBénéfice estimé : " + money2(s.vente - total))) return;
+    if (!confirm("Enregistrer la course du frigo de " + boutiqueName(bq) + " ?\n\nTotal de la course (crédit vente ajouté) : " + money2(total) + "\nEstimation des ventes : " + money2(s.vente) + (isAdmin() ? "\nBénéfice estimé : " + money2(s.vente - total) : ""))) return;
     const lignes = s.ok.map(s.calc).map((r) => ({ nom: r.nom, code: r.code, qte: r.qte, achat: r.pu, vente: r.pv }));
     act(async () => {
       chk(await sb.rpc("frigo_ajouter_course", { p_boutique: bq, p_date: $("#fc-date").value || today(), p_lignes: lignes, p_deplacement: s.deplacement, p_sachet: s.sachet, p_autres: s.autres, p_autres_lib: s.autresLib }));
@@ -4929,17 +4929,17 @@
       ["Crédit restant (stock au coût d'achat)", money2(Math.max(0, s("restantFin"))), s("restantFin") <= db.settings.frigoSeuil ? "warn" : "", 'title="À la fin de la semaine' + (fin > today() ? " (aujourd'hui)" : "") + '"'],
       ["Chiffre d'affaires de la semaine", money2(s("ca"))],
       ["Coût d'achat vendu", money2(s("cout")), "", 'title="Crédit restant au début (' + money2(s("restantDebut")) + ") + dotations de la semaine (" + money2(s("dotations")) + ") − crédit restant à la fin (" + money2(s("restantFin")) + ')"'],
-      ["Bénéfice généré", money2(s("benef")), "hero-good"],
-      ["Total à reverser", money2(s("total")), "", 'title="Coût d\'achat vendu + bénéfice généré"'],
+      ...(isAdmin() ? [["Bénéfice généré", money2(s("benef")), "hero-good"]] : []),
+      ["Total à reverser", money2(s("total")), "", isAdmin() ? 'title="Coût d\'achat vendu + bénéfice généré"' : ""],
       ["Montant reçu", money2(s("recu")) + (attente > 0 ? ' <small class="muted">⏳ ' + money2(attente) + "</small>" : ""), "", 'title="Reversements validés pour cette semaine' + (attente > 0 ? " — " + money2(attente) + " déclarés en attente de validation" : "") + '"'],
       ["Solde de la semaine", money2(Math.max(0, solde)), solde > 0.5 ? "danger" : "hero-good"],
       ["Reliquat semaines précédentes", money2(s("reliquatAvant")), s("reliquatAvant") > 0.5 ? "danger" : ""]
     ]);
     $("#fr-calc").innerHTML = "Semaine du <b>" + fmtDate(w) + "</b> au <b>" + fmtDate(fin) + "</b> : coût d'achat vendu = crédit restant au début <b>" + money2(s("restantDebut")) + "</b> + dotations de la semaine <b>" + money2(s("dotations")) +
-      "</b> − crédit restant à la fin <b>" + money2(s("restantFin")) + "</b> = <b>" + money2(s("cout")) + "</b> · total à reverser = " + money2(s("cout")) + " + bénéfice " + money2(s("benef")) + " = <b>" + money2(s("total")) + "</b>.";
+      "</b> − crédit restant à la fin <b>" + money2(s("restantFin")) + "</b> = <b>" + money2(s("cout")) + "</b>" + (isAdmin() ? " · total à reverser = " + money2(s("cout")) + " + bénéfice " + money2(s("benef")) + " = <b>" + money2(s("total")) + "</b>." : " · total à reverser = <b>" + money2(s("total")) + "</b>.");
     $("#fr-multi-wrap").classList.toggle("hidden", une);
     $("#fr-multi").innerHTML = une ? "" : infos.map(({ b, i }) => "<tr><td><b>" + esc(b.nom) + '</b></td><td class="num">' + money2(i.dotations) + '</td><td class="num">' + money2(Math.max(0, i.restantFin)) + '</td><td class="num">' + money2(i.cout) +
-      '</td><td class="num">' + money2(i.benef) + '</td><td class="num"><b>' + money2(i.total) + '</b></td><td class="num">' + money2(i.recu) + (i.attente > 0 ? ' <small class="muted">⏳ ' + money2(i.attente) + "</small>" : "") + '</td><td class="num">' +
+      '</td><td class="num admin-only">' + money2(i.benef) + '</td><td class="num"><b>' + money2(i.total) + '</b></td><td class="num">' + money2(i.recu) + (i.attente > 0 ? ' <small class="muted">⏳ ' + money2(i.attente) + "</small>" : "") + '</td><td class="num">' +
       (i.solde > 0.5 ? '<b class="neg">' + money2(i.solde) + "</b>" : '<span class="pos">0</span>') + '</td><td class="num">' + (i.reliquatAvant > 0.5 ? '<b class="neg">' + money2(i.reliquatAvant) + "</b>" : "0") + "</td></tr>").join("");
 
     // Fiche du lundi : par boutique et par collaborateur (mouvements de la semaine uniquement)
@@ -4958,7 +4958,7 @@
       if (!ccs.length) return;
       ccs.sort().forEach((cc) => {
         const g = parCc[cc];
-        lignes.push("<tr><td>" + esc(b.nom) + "</td><td>" + esc(cc === "ADMIN" ? "Administrateur" : cc === "?" ? "—" : ccName(cc)) + '</td><td class="num">' + money2(r2(g.cout)) + '</td><td class="num">' + money2(r2(g.ca - g.cout)) +
+        lignes.push("<tr><td>" + esc(b.nom) + "</td><td>" + esc(cc === "ADMIN" ? "Administrateur" : cc === "?" ? "—" : ccName(cc)) + '</td><td class="num">' + money2(r2(g.cout)) + '</td><td class="num admin-only">' + money2(r2(g.ca - g.cout)) +
           '</td><td class="num">' + money2(r2(g.ca)) + '</td><td class="num">' + money2(r2(g.recu)) + (g.attente > 0 ? ' <small class="muted">(⏳ ' + money2(r2(g.attente)) + ")</small>" : "") + '</td><td class="num">' + money2(r2(g.ca - g.recu)) + "</td><td></td></tr>");
       });
       const reliquat = i.solde;
@@ -4966,7 +4966,7 @@
         : reliquat > 0.5 && i.attente >= reliquat - 0.5 ? '<span class="badge warn">⏳ À valider</span>'
         : reliquat > 0.5 ? '<span class="badge danger">Reliquat ' + money2(reliquat) + "</span>"
         : i.total > 0 || i.recu > 0 ? '<span class="badge ok">✓ Soldé</span>' : "";
-      lignes.push('<tr class="total-row"><td colspan="2"><b>Total ' + esc(b.nom) + '</b></td><td class="num"><b>' + money2(i.cout) + '</b></td><td class="num"><b>' + money2(i.benef) +
+      lignes.push('<tr class="total-row"><td colspan="2"><b>Total ' + esc(b.nom) + '</b></td><td class="num"><b>' + money2(i.cout) + '</b></td><td class="num admin-only"><b>' + money2(i.benef) +
         '</b></td><td class="num"><b>' + money2(i.total) + '</b></td><td class="num"><b>' + money2(i.recu) + '</b></td><td class="num"><b' + (reliquat > 0.5 ? ' class="neg"' : "") + ">" + money2(Math.max(0, reliquat)) + "</b></td><td>" + etat + "</td></tr>");
     });
     $("#fr-fiches").innerHTML = lignes.join("") || '<tr><td colspan="8" class="empty">Aucune vente ni reversement pour cette semaine.</td></tr>';
