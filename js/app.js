@@ -4444,7 +4444,7 @@
   $("#bet-date").addEventListener("change", () => { $("#bet-fonds").dataset.auto = ""; renderBet(); });
   function renderBetRem(bq, mois) {
     const peut = canBet() && bq && bq !== "ALL";
-    $("#bet-rem-card").classList.toggle("hidden", !canBet());
+    $("#bet-rem-card").classList.add("hidden"); // la déclaration se fait dans la case « Surplus » en haut
     const jours = betJoursRem(), dcur = $("#bet-rem-date").value;
     $("#bet-rem-date").innerHTML = jours.map((d) => '<option value="' + d + '">' + (d === today() ? "Aujourd'hui — " : "Hier (rattrapage avant midi) — ") + fmtDate(d) + "</option>").join("");
     if (jours.includes(dcur)) $("#bet-rem-date").value = dcur;
@@ -4513,7 +4513,7 @@
     if (!confirm((deja ? "⚠ Un surplus est déjà déclaré pour ce jour (" + money0(deja.montant) + ") : elle sera remplacée.\n\n" : "") + "Surplus 1er Bet — " + boutiqueName(bq) + " — " + fmtDate(d) + "\nMontant : " + money0(Number(v)) + "\n\nConfirmer ?")) return;
     act(async () => {
       chk(await sb.from("bet_remontees").upsert({ boutique: bq, date: d, montant: Number(v), saisi_par: me.nom || me.email || "" }, { onConflict: "boutique,date" }));
-      $("#bet-rem-montant").value = "";
+      $("#bet-rem-montant").dataset.cle = ""; // la case affichera le montant enregistré
     }, "Surplus du " + fmtDate(d) + " déclaré : " + money0(Number(v)) + ".", e.target);
   });
   $("#bet-rem-rows").addEventListener("click", (e) => {
@@ -4560,6 +4560,10 @@
     // Les 4 cases : le contrôle des GG se fait directement dedans (le 15/16 et en fin de mois / le 1er)
     const hold = $("#bet-form");
     ["#bet-rapide", "#bet-zone", "#bet-ecart", "#bet-save"].forEach((id) => hold.appendChild($(id))); // on met les champs à l'abri avant de redessiner
+    const holdR = $("#bet-rem-card");
+    ["#bet-rem-date", "#bet-rem-montant", "#bet-rem-save"].forEach((id) => holdR.appendChild($(id)));
+    const remOk = canBet() && bq && bq !== "ALL";
+    const cumulMois = sumBy(db.betRem.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois), (r) => r.montant);
     const saisieOk = ctrlOuvert && bq && bq !== "ALL" && (canBet() || isAdmin());
     const perK = $("#bet-date").value;
     // Hors contrôle : dernier contrôle du mois (fin de mois, sinon le 15) de chaque boutique
@@ -4570,10 +4574,22 @@
     $("#bet-kpis").innerHTML =
       '<div class="kpi' + (saisieOk ? " kpi-saisie" : "") + '"><div class="label">GG Rapide <small>' + esc(libP) + '</small></div><div class="value">' + (saisieOk ? '<span data-slot="rapide"></span>' : money0(D((r) => r.rapide))) + "</div></div>" +
       '<div class="kpi' + (saisieOk ? " kpi-saisie" : "") + '"><div class="label">GG Zone <small>' + esc(libP) + '</small></div><div class="value">' + (saisieOk ? '<span data-slot="zone"></span>' : money0(D((r) => r.zone))) + "</div></div>" +
-      '<div class="kpi"><div class="label">Surplus déclarés <small>' + esc(saisieOk ? betPeriode(perK) : "mois") + '</small></div><div class="value">' + money0(surplusP) + "</div></div>" +
+      (remOk
+        ? '<div class="kpi kpi-saisie kpi-surplus"><div class="label">Surplus du jour <span data-slot="rdate"></span></div><div class="value"><span class="surplus-ligne"><span data-slot="rmontant"></span><span data-slot="rsave"></span></span>' +
+          '<small class="surplus-cumul">Cumul du mois : <b>' + money0(cumulMois) + "</b>" + (saisieOk ? " · période du contrôle : <b>" + money0(surplusP) + "</b>" : "") + "</small></div></div>"
+        : '<div class="kpi"><div class="label">Surplus déclarés <small>' + esc(saisieOk ? betPeriode(perK) : "mois") + '</small></div><div class="value">' + money0(surplusP) + "</div></div>") +
       '<div class="kpi ' + (saisieOk ? "kpi-saisie" : ecD < -0.5 ? "danger" : ecD > 0.5 ? "warn" : "hero-good") + '"><div class="label">Écart <small>' + esc(libP) + '</small></div><div class="value">' + (saisieOk ? '<span data-slot="ecart"></span><span data-slot="save"></span>' : (ecD > 0 ? "+" : "") + money0(ecD)) + "</div></div>";
+    const slot = (n) => $("#bet-kpis [data-slot=\"" + n + "\"]");
+    if (remOk) {
+      slot("rdate").appendChild($("#bet-rem-date")); slot("rmontant").appendChild($("#bet-rem-montant")); slot("rsave").appendChild($("#bet-rem-save"));
+      $("#bet-rem-save").textContent = "Enregistrer";
+      // Le surplus déjà déclaré pour le jour choisi apparaît dans la case ; sinon elle est vide pour le déclarer
+      const dR = $("#bet-rem-date").value, djR = db.betRem.find((r) => r.boutique === bq && r.date === dR), cle = bq + dR + (djR ? djR.montant : "");
+      if ($("#bet-rem-montant").dataset.cle !== cle) { $("#bet-rem-montant").value = djR ? djR.montant : ""; $("#bet-rem-montant").dataset.cle = cle; }
+      $("#bet-rem-montant").placeholder = djR ? "" : "Montant";
+      $("#bet-rem-save").title = djR ? "Mettre à jour le surplus du " + fmtDate(dR) : "Déclarer le surplus du " + fmtDate(dR);
+    }
     if (saisieOk) {
-      const slot = (n) => $("#bet-kpis [data-slot=\"" + n + "\"]");
       slot("rapide").appendChild($("#bet-rapide")); slot("zone").appendChild($("#bet-zone"));
       slot("ecart").appendChild($("#bet-ecart")); slot("save").appendChild($("#bet-save"));
       $("#bet-fonds").value = r2_(surplusP); betMajEcart();

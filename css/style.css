@@ -1162,3 +1162,11 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 #bet-kpis .kpi-saisie { outline: 2px solid var(--primary, #4f46e5); }
 #bet-kpis .kpi-saisie input { width: 100%; font-size: 1.3rem; font-weight: 800; padding: 6px 10px; margin-top: 4px; }
 #bet-kpis #bet-save { margin-top: 8px; width: 100%; }
+
+/* 1er Bet : déclaration du surplus directement dans la case */
+#bet-kpis .kpi-surplus .label { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
+#bet-kpis .kpi-surplus .label select { width: auto; font-size: .85rem; padding: 4px 8px; text-transform: none; }
+#bet-kpis .surplus-ligne { display: flex; gap: 8px; align-items: center; }
+#bet-kpis .surplus-ligne input { flex: 1 1 auto; min-width: 0; }
+#bet-kpis .surplus-ligne .btn { flex: 0 0 auto; width: auto !important; margin-top: 4px; }
+#bet-kpis .surplus-cumul { display: block; margin-top: 6px; font-size: .8rem; font-weight: 500; color: var(--muted, #6b7280); }
