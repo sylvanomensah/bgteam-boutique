@@ -1152,3 +1152,5 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 /* Frigo : proposition de rachat */
 #fg-rachat tr.rachat-oui > td { background: #fffaf0; }
 #fg-rachat .rachat-q { color: #b45309; font-size: 1.05rem; }
+.fd-mini .mini.reel { background: #e8f7ee; color: #17804a; border: 1px solid #b7e4c7; }
+.fd-mini .mini.reel.neg { background: #fdecec; color: var(--danger); border-color: #f5c2c2; }
