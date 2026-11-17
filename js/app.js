@@ -4531,6 +4531,21 @@
     const p15 = mois + "-15", pFin = lastDayOfMonth(mois + "-01"), dcur = $("#bet-date").value;
     $("#bet-date").innerHTML = '<option value="' + p15 + '">' + betPeriode(p15) + '</option><option value="' + pFin + '">' + betPeriode(pFin) + "</option>";
     $("#bet-date").value = [p15, pFin].includes(dcur) ? dcur : (mois === today().slice(0, 7) && today() > p15 ? pFin : p15);
+    // Contrôle des GG : le CC le fait le 15 (période du 1er au 15) et le dernier jour du mois (du 1er à la fin) ;
+    // rattrapage possible le lendemain matin avant midi. L'admin peut saisir à tout moment.
+    const hier = addDays(today(), -1), matin = new Date().getHours() < 12;
+    const pOuverte = [p15, pFin].find((d) => d === today() || (d === hier && matin));
+    const ctrlOuvert = isAdmin() || (!!pOuverte && mois === pOuverte.slice(0, 7));
+    if (!isAdmin() && pOuverte) $("#bet-date").value = pOuverte;
+    $("#bet-date").disabled = !isAdmin();
+    $("#bet-fonds").readOnly = !isAdmin(); // CC : total des surplus déclarés, calculé automatiquement
+    if (!isAdmin()) $("#bet-fonds").dataset.auto = "";
+    $("#bet-form").classList.toggle("hidden", !ctrlOuvert);
+    const moisCourant = today().slice(0, 7), p15c = moisCourant + "-15", pFinc = lastDayOfMonth(moisCourant + "-01");
+    const prochain = today() <= p15c ? p15c : pFinc;
+    $("#bet-ctrl-info").innerHTML = ctrlOuvert
+      ? (isAdmin() ? "Choisissez la période, saisissez GG Rapide et GG Zone : l'écart se calcule avec le total des surplus déclarés." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> " + betPeriode($("#bet-date").value) + " — l'écart se calcule avec le total des surplus déclarés.")
+      : "🔒 Le contrôle des GG se fait <b>le 15</b> (du 1er au 15) et <b>le dernier jour du mois</b> (du 1er à la fin du mois). Prochain contrôle : <b>" + fmtDate(prochain) + "</b>. Chaque matin, déclarez seulement le surplus du jour ci-dessus.";
     $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
     $("#bet-save").disabled = !bq || bq === "ALL" || !canBet();
     renderBetRem(bq, mois);

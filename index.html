@@ -1046,8 +1046,7 @@
       <div class="toolbar"><h1 style="margin:0;margin-right:auto" id="bet-titre">1er Bet</h1>
         <label class="cc-filter">Boutique<select id="bet-boutique"></select></label>
         <label class="cc-filter">Mois<input type="month" id="bet-mois"></label></div>
-      <div class="kpis" id="bet-kpis" style="margin-top:12px"></div>
-      <div class="card" id="bet-rem-card">
+      <div class="card" id="bet-rem-card" style="margin-top:12px">
         <h2>💰 Surplus du jour</h2>
         <div class="form form-inline">
           <label>Jour<select id="bet-rem-date"></select></label>
@@ -1056,6 +1055,7 @@
         </div>
         <p class="hint" style="margin:6px 0 0" id="bet-rem-info"></p>
       </div>
+      <div class="kpis" id="bet-kpis"></div>
       <div class="card">
         <div class="toolbar"><h2 style="margin-right:auto">Surplus du mois</h2><button class="btn small" id="bet-rem-pdf" title="Imprimer ou enregistrer en PDF">🖨 Imprimer / PDF</button> <button class="btn small hidden" id="bet-rem-xls" title="Télécharger pour Excel">📊 Excel</button><input id="bet-rem-q" type="search" class="fr-q" list="bet-rem-dates" placeholder="Choisir une date…"><datalist id="bet-rem-dates"></datalist></div>
         <div class="table-wrap"><table class="table">
@@ -1064,7 +1064,8 @@
         </table></div>
       </div>
       <div class="card" id="bet-ctrl-card">
-        <h2>Contrôle de la période</h2>
+        <h2>📊 Contrôle des GG (le 15 et en fin de mois)</h2>
+        <p class="hint" id="bet-ctrl-info" style="margin:0 0 8px"></p>
         <div class="form form-inline" id="bet-form">
           <label>Période de contrôle<select id="bet-date"></select></label>
           <label>GG Rapide<input type="number" min="0" step="any" id="bet-rapide" inputmode="decimal" placeholder="0"></label>
