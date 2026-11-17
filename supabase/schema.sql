@@ -1773,12 +1773,41 @@ end $$;
 revoke all on function public.frigo_reinitialiser(text) from public, anon;
 grant execute on function public.frigo_reinitialiser(text) to authenticated;
 
+-- 1er Bet : une saisie par boutique et par jour (GG Rapide, GG Zone, total des fonds remontés) ; écart calculé par l'application
+create table if not exists public.bet_saisies (
+  id uuid primary key default gen_random_uuid(),
+  boutique text not null references public.boutiques(code) on update cascade on delete cascade,
+  date date not null default current_date,
+  gg_rapide numeric not null default 0 check (gg_rapide >= 0),
+  gg_zone numeric not null default 0 check (gg_zone >= 0),
+  fonds numeric not null default 0 check (fonds >= 0),
+  saisi_par text not null default '',
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (boutique, date)
+);
+alter table public.bet_saisies enable row level security;
+drop policy if exists bet_select on public.bet_saisies;
+create policy bet_select on public.bet_saisies for select to authenticated
+  using (public.is_global() or (public.is_member() and boutique = public.my_boutique()));
+drop policy if exists bet_insert on public.bet_saisies;
+create policy bet_insert on public.bet_saisies for insert to authenticated
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and date <= current_date));
+drop policy if exists bet_update on public.bet_saisies;
+create policy bet_update on public.bet_saisies for update to authenticated
+  using (public.is_admin() or (public.is_member() and boutique = public.my_boutique() and created_by = auth.uid() and created_at > now() - interval '2 hours'))
+  with check (public.is_admin() or (public.is_member() and boutique = public.my_boutique()));
+drop policy if exists bet_delete on public.bet_saisies;
+create policy bet_delete on public.bet_saisies for delete to authenticated
+  using (public.is_admin() or (created_by = auth.uid() and created_at > now() - interval '2 hours'));
+grant select, insert, update, delete on public.bet_saisies to authenticated;
+
 -- Temps réel : diffuse les nouvelles ventes, entrées et courses aux écrans ouverts
 -- (les règles de sécurité ci-dessus s'appliquent aussi à cette diffusion).
 do $$
 declare t text;
 begin
-  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'credit_ajustements', 'credit_demandes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations', 'frigo_ajustements'] loop
+  foreach t in array array['sales', 'entries', 'courses', 'ccs', 'boutiques', 'conges', 'charges', 'remontees', 'bobines_mvts', 'stocks_initiaux', 'retraits', 'credit_achats', 'credit_versements', 'credit_soldes', 'credit_ventes', 'credit_ajustements', 'credit_demandes', 'frigo_courses', 'frigo_ventes', 'frigo_retraits', 'frigo_dotations', 'frigo_ajustements', 'bet_saisies'] loop
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

@@ -118,6 +118,7 @@
       <button data-view="frigo" class="need-frigo"><svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M5 10h14"/><path d="M9 5v2M9 13v3"/></svg><span>Frigo</span></button>
       <button data-view="bobines" class="need-bobines"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg><span>Bobines</span></button>
       <button data-view="facture"><svg viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg><span>Facturation</span></button>
+      <button data-view="bet"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10"/><path d="M15 9.5c0-1.4-1.3-2.5-3-2.5s-3 1.1-3 2.5 1.3 2 3 2.5 3 1.1 3 2.5-1.3 2.5-3 2.5-3-1.1-3-2.5"/></svg><span>1er Bet</span></button>
       <button data-view="rh" class="need-rh"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>RH</span></button>
       <button data-view="compte"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg><span>Mon compte</span></button>
       <button data-view="parametres" class="admin-only"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg><span>Paramètres</span></button>
@@ -1040,6 +1041,34 @@
     </section>
 
     <!-- FACTURATION -->
+    <!-- 1ER BET : GG Rapide, GG Zone, total des fonds remontés et écart (calculé) -->
+    <section id="view-bet" class="view">
+      <div class="toolbar"><h1 style="margin:0;margin-right:auto" id="bet-titre">1er Bet</h1>
+        <label class="cc-filter">Boutique<select id="bet-boutique"></select></label>
+        <label class="cc-filter">Mois<input type="month" id="bet-mois"></label></div>
+      <div class="kpis" id="bet-kpis" style="margin-top:12px"></div>
+      <div class="card">
+        <h2>Saisie</h2>
+        <div class="form form-inline" id="bet-form">
+          <label>Date<input type="date" id="bet-date"></label>
+          <label>GG Rapide<input type="number" min="0" step="any" id="bet-rapide" inputmode="decimal" placeholder="0"></label>
+          <label>GG Zone<input type="number" min="0" step="any" id="bet-zone" inputmode="decimal" placeholder="0"></label>
+          <label>Total fond remonté<input type="number" min="0" step="any" id="bet-fonds" inputmode="decimal" placeholder="0"></label>
+          <label>Écart (calculé)<input id="bet-ecart" readonly tabindex="-1"></label>
+          <button class="btn success" id="bet-save" style="align-self:flex-end">Enregistrer</button>
+        </div>
+        <p class="hint" style="margin:6px 0 0">Écart = Total fond remonté − (GG Rapide + GG Zone). Négatif = il manque de l'argent ; positif = excédent.</p>
+      </div>
+      <div class="card">
+        <div class="toolbar"><h2 style="margin-right:auto">Historique</h2><input id="bet-q" type="search" class="fr-q" list="bet-dates" placeholder="Choisir une date…"><datalist id="bet-dates"></datalist></div>
+        <div class="table-wrap"><table class="table">
+          <thead><tr><th>Date</th><th>Boutique</th><th class="num">GG Rapide</th><th class="num">GG Zone</th><th class="num">Total fond remonté</th><th class="num">Écart</th><th>Saisi par</th><th></th></tr></thead>
+          <tbody id="bet-rows"></tbody>
+          <tfoot id="bet-foot"></tfoot>
+        </table></div>
+      </div>
+    </section>
+
     <section id="view-facture" class="view">
       <h1 class="no-print">Facturation</h1>
       <div class="card no-print">

@@ -31,7 +31,7 @@
   let dashComPage = false; // admin : page « Commissions du crédit télécom » du tableau de bord
 
   function emptyDb() {
-    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], crContacts: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [], fgAjust: [] };
+    return { settings: { nom: "BGTeam", devise: "FCFA", ccList: [] }, products: [], entries: [], sales: [], users: [], courses: [], boutiques: [], conges: [], fiches: [], charges: [], remontees: [], bobines: [], stocksInit: [], retraits: [], anniv: [], crAchats: [], crVers: [], crSoldes: [], crVentes: [], crAjust: [], crDemandes: [], crContacts: [], fgCourses: [], fgVentes: [], fgRetraits: [], fgSorties: [], fgDotations: [], fgLignes: [], fgAjust: [], bet: [] };
   }
   const isAdmin = () => !!me && me.role === "admin";
 
@@ -148,6 +148,9 @@
     let fgSorties = [];
     try { fgSorties = chk(await sb.rpc("frigo_sorties")) || []; } catch (e) { fgSorties = []; }
     // Stock frigo : lignes des courses (quantités ; prix d'achat pour l'admin)
+    // 1er Bet : saisies (GG Rapide, GG Zone, total des fonds remontés)
+    let betSaisies = [];
+    try { betSaisies = await fetchAll("bet_saisies", "date"); } catch (e) { betSaisies = []; }
     // Corrections du stock frigo faites par l'admin (écart d'inventaire)
     let fgAjust = [];
     try { fgAjust = await fetchAll("frigo_ajustements", "created_at"); } catch (e) { fgAjust = []; }
@@ -220,6 +223,7 @@
       fgLignes: fgLignes.map((x) => ({ courseId: x.course_id, boutique: x.boutique, date: x.date, createdAt: x.created_at, code: x.code || "", nom: x.nom || x.code || "",
         qte: Number(x.qte) || 0, achat: x.achat == null ? null : Number(x.achat), transfert: !!x.transfert })),
       fgVentes: fgVentes.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), cc: x.cc ? String(x.cc) : "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
+      bet: (betSaisies || []).map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, rapide: Number(x.gg_rapide) || 0, zone: Number(x.gg_zone) || 0, fonds: Number(x.fonds) || 0, saisiPar: x.saisi_par || "", createdBy: x.created_by, createdAt: x.created_at })),
       fgAjust: (fgAjust || []).map((x) => ({ id: x.id, boutique: x.boutique, code: x.code, qte: Number(x.qte) || 0, coutUnit: x.cout_unit == null ? null : Number(x.cout_unit), date: x.date, note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       fgRetraits: fgRetraits.map((x) => ({ id: x.id, boutique: x.boutique, date: x.date, montant: Number(x.montant), note: x.note || "", saisiPar: x.saisi_par || "", createdAt: x.created_at })),
       crContacts: (crContacts || []).map((x) => ({ cc: String(x.cc), boutique: x.boutique || "", tel: x.telephone || "" })),
@@ -470,6 +474,7 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_retraits" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_dotations" }, onChange)
       .on("postgres_changes", { event: "*", schema: "public", table: "frigo_ajustements" }, onChange)
+      .on("postgres_changes", { event: "*", schema: "public", table: "bet_saisies" }, onChange)
       .subscribe((status) => { rtLive = status === "SUBSCRIBED"; if (currentView === "ventes") renderSalesHistory(); });
   }
   function stopRealtime() {
@@ -776,7 +781,7 @@
   // CC autorisé par l'admin à gérer les fiches RH (onglet Fiche CC uniquement)
   function isRhCc() { if (isAdmin()) return false; const c = me && me.cc ? ccByCode(me.cc) : null; return !!(c && c.actif && c.gereRh); }
   // Menus retirés (remplacés par Frigo → Nouvelle course et Frigo → Stock frigo). Le code est gardé : remettre ici pour les réactiver.
-  const MENUS_RETIRES = ["stock", "entrees"];
+  const MENUS_RETIRES = ["stock", "entrees", "facture"]; // Facturation remplacée par 1er Bet (17/11/2026)
   function canView(view) {
     if (MENUS_RETIRES.includes(view)) return false;
     if (view === "rh" && isRhCc()) return true;
@@ -786,6 +791,7 @@
     if (view === "bobines") return bobinesDroit() !== "non";
     if (view === "credit") return canCreditSaisie() || isGlobal() || !!myBoutiqueCode(); // tous les CC voient le crédit de leur boutique
     if (view === "frigo") return canFrigo();
+    if (view === "bet") return isAdmin() || isGlobal() || !!myBoutiqueCode();
     return true;
   }
   function show(view) {
@@ -844,7 +850,7 @@
     document.title = db.settings.nom + " — Boutique";
     ({
       dashboard: renderDashboard, caisse: renderCaisse, ventes: renderVentes, stats: renderStats,
-      stock: renderStock, entrees: renderEntrees, fonds: renderFonds, bobines: renderBobines, credit: renderCredit, frigo: renderFrigo, facture: renderFacture, parametres: renderParametres, rh: renderRh, compte: () => { renderCompte(); renderBioCard(); }
+      stock: renderStock, entrees: renderEntrees, fonds: renderFonds, bobines: renderBobines, credit: renderCredit, frigo: renderFrigo, facture: renderFacture, parametres: renderParametres, bet: renderBet, rh: renderRh, compte: () => { renderCompte(); renderBioCard(); }
     })[view]();
   }
   function productOptions(selected) {
@@ -4409,6 +4415,70 @@
       : '<tr><td colspan="8" class="empty">Aucune vente du frigo sur cette période : pas encore de proposition.</td></tr>';
   }
   $("#fg-rachat-jours").addEventListener("change", () => renderRachat(frigoScope()));
+  // ---------- 1er Bet ----------
+  const betEcart = (r) => r2_((Number(r.fonds) || 0) - ((Number(r.rapide) || 0) + (Number(r.zone) || 0)));
+  const betEcartHtml = (v) => Math.abs(v) < 0.005 ? '<span class="pos">0</span>' : '<b class="' + (v < 0 ? "neg" : "pos") + '">' + (v > 0 ? "+" : "−") + money0(Math.abs(v)) + "</b>";
+  function betMajEcart() {
+    const v = betEcart({ rapide: $("#bet-rapide").value, zone: $("#bet-zone").value, fonds: $("#bet-fonds").value });
+    $("#bet-ecart").value = (v > 0 ? "+" : "") + num(v);
+    $("#bet-ecart").classList.toggle("neg", v < 0); $("#bet-ecart").classList.toggle("pos", v > 0);
+  }
+  ["#bet-rapide", "#bet-zone", "#bet-fonds"].forEach((id) => $(id).addEventListener("input", betMajEcart));
+  function renderBet() {
+    const glob = isAdmin() || isGlobal(), sel = $("#bet-boutique"), cur = sel.value || (glob ? "ALL" : myBoutiqueCode());
+    sel.innerHTML = (glob ? '<option value="ALL">Toutes les boutiques</option>' : "") + db.boutiques.filter((b) => glob || b.code === myBoutiqueCode()).map((b) => '<option value="' + esc(b.code) + '">' + esc(b.nom) + "</option>").join("");
+    sel.value = [...sel.options].some((o) => o.value === cur) ? cur : sel.options[0] ? sel.options[0].value : "";
+    sel.disabled = !glob;
+    if (!$("#bet-mois").value) $("#bet-mois").value = today().slice(0, 7);
+    if (!$("#bet-date").value) $("#bet-date").value = today();
+    $("#bet-date").max = today();
+    const bq = sel.value, mois = $("#bet-mois").value;
+    $("#bet-titre").textContent = "1er Bet — " + fmtMonth(mois + "-01");
+    $("#bet-save").disabled = !bq || bq === "ALL";
+    betMajEcart();
+    const liste = db.bet.filter((r) => (bq === "ALL" || r.boutique === bq) && r.date.slice(0, 7) === mois).sort((a, b) => b.date.localeCompare(a.date) || boutiqueName(a.boutique).localeCompare(boutiqueName(b.boutique)));
+    const T = (f) => liste.reduce((a, r) => a + f(r), 0), ec = r2_(T(betEcart));
+    $("#bet-kpis").innerHTML = kpiHtml([
+      ["GG Rapide (mois)", money0(T((r) => r.rapide))],
+      ["GG Zone (mois)", money0(T((r) => r.zone))],
+      ["Total fond remonté (mois)", money0(T((r) => r.fonds))],
+      ["Écart (mois)", (ec > 0 ? "+" : "") + money0(ec), ec < -0.5 ? "danger" : ec > 0.5 ? "warn" : "hero-good"]
+    ]);
+    $("#bet-rows").innerHTML = liste.length ? liste.map((r) => {
+      const canDel = isAdmin() || (r.createdBy === me.id && Date.now() - new Date(r.createdAt).getTime() < EDIT_WINDOW_MS);
+      return "<tr><td>" + esc(jourLong(r.date)) + "</td><td>" + esc(boutiqueName(r.boutique)) + '</td><td class="num">' + money0(r.rapide) + '</td><td class="num">' + money0(r.zone) +
+        '</td><td class="num"><b>' + money0(r.fonds) + '</b></td><td class="num">' + betEcartHtml(betEcart(r)) + "</td><td>" + esc(r.saisiPar || "—") + "</td><td>" +
+        (canDel ? '<button class="btn small danger" data-bet-del="' + r.id + '" title="Supprimer">✕</button>' : "") + "</td></tr>";
+    }).join("") : '<tr><td colspan="8" class="empty">Aucune saisie en ' + esc(fmtMonth(mois + "-01")) + ".</td></tr>";
+    $("#bet-foot").innerHTML = liste.length ? '<tr class="total-row"><td colspan="2"><b>TOTAL DU MOIS</b></td><td class="num"><b>' + money0(T((r) => r.rapide)) + '</b></td><td class="num"><b>' + money0(T((r) => r.zone)) +
+      '</b></td><td class="num"><b>' + money0(T((r) => r.fonds)) + '</b></td><td class="num">' + betEcartHtml(ec) + "</td><td></td><td></td></tr>" : "";
+    listeSemaines("#bet-rows", "#bet-dates");
+    limiter3("#bet-rows", $("#bet-q").value);
+  }
+  ["#bet-boutique", "#bet-mois"].forEach((id) => $(id).addEventListener("change", renderBet));
+  $("#bet-q").addEventListener("input", renderBet);
+  $("#bet-save").addEventListener("click", (e) => {
+    const bq = $("#bet-boutique").value, d = $("#bet-date").value;
+    if (!bq || bq === "ALL") return toast("Choisissez une boutique.");
+    if (!d || d > today()) return toast("Choisissez une date (pas dans le futur).");
+    const r = { rapide: $("#bet-rapide").value.trim(), zone: $("#bet-zone").value.trim(), fonds: $("#bet-fonds").value.trim() };
+    if (r.rapide === "" || r.zone === "" || r.fonds === "") return toast("Remplissez GG Rapide, GG Zone et Total fond remonté (0 si rien).");
+    const v = { gg_rapide: Number(r.rapide), gg_zone: Number(r.zone), fonds: Number(r.fonds) };
+    if (!(v.gg_rapide >= 0 && v.gg_zone >= 0 && v.fonds >= 0)) return toast("Montant invalide.");
+    const deja = db.bet.find((x) => x.boutique === bq && x.date === d);
+    const ec = betEcart({ rapide: v.gg_rapide, zone: v.gg_zone, fonds: v.fonds });
+    if (!confirm((deja ? "⚠ Une saisie existe déjà pour " + boutiqueName(bq) + " le " + fmtDate(d) + " : elle sera remplacée.\n\n" : "") +
+      "1er Bet — " + boutiqueName(bq) + " — " + fmtDate(d) + "\n\nGG Rapide : " + money0(v.gg_rapide) + "\nGG Zone : " + money0(v.gg_zone) + "\nTotal fond remonté : " + money0(v.fonds) +
+      "\nÉcart : " + (ec > 0 ? "+" : "") + money0(ec) + "\n\nConfirmer ?")) return;
+    act(async () => {
+      chk(await sb.from("bet_saisies").upsert({ boutique: bq, date: d, ...v, saisi_par: me.nom || me.email || "" }, { onConflict: "boutique,date" }));
+      ["#bet-rapide", "#bet-zone", "#bet-fonds"].forEach((id) => { $(id).value = ""; });
+    }, "1er Bet enregistré : écart " + (ec > 0 ? "+" : "") + money0(ec) + ".", e.target);
+  });
+  $("#bet-rows").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-bet-del]"); if (!b) return;
+    if (confirm("Supprimer cette saisie 1er Bet ?")) act(async () => chk(await sb.from("bet_saisies").delete().eq("id", b.dataset.betDel)), "Saisie supprimée.", b);
+  });
   function renderFrigo() {
     const glob = fgGlobal(), admin = isAdmin(), t = today(), mois = t.slice(0, 7);
     const bcur = $("#fg-boutique").value || "ALL";
