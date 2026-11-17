@@ -1132,9 +1132,9 @@
     $("#dc-contacts-wrap").classList.toggle("grise", !actifCom);
     const rappel15 = jourRappelCom();
     $("#dc-contacts-info").innerHTML = !actifCom
-      ? "🔒 <b>Consultation seulement</b> : la page s'active le <b>1er et le 2</b> (dépôt des commissions) et le <b>15</b> (rappel) de chaque mois — prochaine : " + fmtDate(prochainRelanceCom()) + "."
-      : rappel15 ? "📲 <b>Rappel du 15</b> : appuyez sur le bouton vert de chaque CC pour lui rappeler le dépôt des commissions le 1er et le 2 " + esc(moisProchainTxt()) + " (une seule relance par CC)."
-      : "📲 <b>Dépôt des commissions (1er et 2)</b> : appuyez sur le bouton vert de chaque CC qui doit la commission des mois passés (une seule relance par CC).";
+      ? "🔒 Prochaine relance : " + fmtDate(prochainRelanceCom())
+      : rappel15 ? "📲 <b>Rappel du 15</b>"
+      : "📲 <b>Dépôt des commissions (1er et 2)</b>";
     $("#dc-contacts").innerHTML = contacts.length ? contacts.map((x) => {
       const reste = x.boutique ? commissionInfo(x.boutique).aDeclarer : 0, tel = String(x.tel || "").trim(), env = relanceEnvoyees.commission.has(x.cc);
       if (env && tel) return "<tr><td>" + esc(x.boutique ? boutiqueName(x.boutique) : "Non affecté") + "</td><td><b>" + esc(ccName(x.cc)) + "</b></td><td>" +
@@ -1184,7 +1184,7 @@
         ? (liste.length ? "<b>" + liste.length + " CC</b> n'ont pas encore déclaré le crédit restant lu sur la puce aujourd'hui." : "✅ <b>Toutes les boutiques ont fait le contrôle</b> du crédit restant aujourd'hui.")
         : (liste.length ? "<b>" + liste.length + " CC</b> n'ont pas encore versé la commission des mois passés (en surbrillance)." : "✅ <b>Toutes les boutiques ont versé</b> la commission des mois passés.");
       zone.innerHTML = '<div class="dc-relance-tete"><p>' + intro + (lectureSeule ? " 🔒 <b>Consultation seulement</b> : la relance se fait le 1er et le 2 du mois (prochaine : " + fmtDate(premierDuMois(addDays(premierDuMois(today()), 32))) + ")."
-          : " Appuyez sur le bouton vert de chaque CC : WhatsApp s'ouvre avec le message déjà écrit, il suffit d'appuyer sur Envoyer.") + "</p>" +
+          : "") + "</p>" +
         (lectureSeule ? "" : restants.length ? '<button class="btn small success" id="dc-relance-suivant">💬 Ouvrir le suivant (' + restants.length + " restant" + (restants.length > 1 ? "s" : "") + ")</button>" : '<span class="badge ok">✓ Tous relancés</span>') + "</div>" +
         affiche.map((x) => {
           const tel = String(x.tel || "").trim(), env = envoyees.has(x.cc);
@@ -1305,7 +1305,7 @@
     if (fgRelanceOuvert && liste.length) {
       const restants = liste.filter((x) => !fgRelanceEnvoyees.has(x.cc));
       zone.innerHTML = '<div class="dc-relance-tete"><p><b>' + liste.length + " CC</b> n'ont pas encore remonté les fonds du frigo des semaines terminées." +
-        (lundi ? " Appuyez sur le bouton vert : WhatsApp s'ouvre avec le message déjà écrit (une seule relance par CC)." : " 🔒 <b>Consultation seulement</b> : le rappel se fait le lundi.") + "</p>" +
+        (lundi ? "" : " 🔒 <b>Consultation seulement</b> : le rappel se fait le lundi.") + "</p>" +
         (!lundi ? "" : restants.length ? '<button class="btn small success" id="dc-fg-suivant">💬 Ouvrir le suivant (' + restants.length + " restant" + (restants.length > 1 ? "s" : "") + ")</button>" : '<span class="badge ok">✓ Tous relancés</span>') + "</div>" +
         liste.map((x) => {
           const tel = String(x.tel || "").trim(), env = fgRelanceEnvoyees.has(x.cc);
@@ -3176,7 +3176,7 @@
       }
       $("#rm-save").disabled = !remBq || remonteeVerrouillee();
       if (remBq && remonteeVerrouillee()) $("#rm-info").innerHTML += '<p class="hint neg" style="margin:8px 0 0">🔒 <b>Les remontées se font uniquement le lundi.</b> Prochain versement : <b>lundi ' + fmtDate(prochainLundi()) +
-        "</b> (ventes de la semaine du " + fmtDate(mondayOf(t)) + " au " + fmtDate(weekEnd(mondayOf(t))) + ", en complément de ce qui est déjà versé).</p>";
+        "</b>.</p>";
       syncRmNote(); // liste des CC qui peuvent recevoir les espèces
     }
 
@@ -4698,9 +4698,7 @@
     const moisCourant = today().slice(0, 7), p15c = moisCourant + "-15", pFinc = lastDayOfMonth(moisCourant + "-01");
     const prochain = pFinc;
     const deja = pOuverte && bq && bq !== "ALL" ? db.bet.find((r) => r.boutique === bq && r.date === pOuverte) : null;
-    $("#bet-ctrl-info").innerHTML = ctrlOuvert
-      ? (isAdmin() ? "Saisissez GG Rapide et GG Zone dans les cases : l'écart se calcule avec le total des surplus du mois (admin : enregistrement possible à tout moment)." : "📊 <b>Contrôle du jour :</b> saisissez <b>GG Rapide</b> et <b>GG Zone</b> directement dans les cases ci-dessus (" + betPeriode($("#bet-date").value) + ") — l'écart se calcule avec les surplus déclarés." + (deja ? " ✏️ Déjà saisi : vous pouvez le <b>mettre à jour</b> " + (pOuverte === today() ? "aujourd'hui et demain" : "jusqu'à ce soir") + " si les GG ont changé." : ""))
-      : "🧮 Saisissez GG Rapide et GG Zone à tout moment pour <b>simuler l'écart</b> " + betPeriode($("#bet-date").value) + ". L'enregistrement (historique) se fait <b>le dernier jour du mois</b> (mise à jour possible le 1er du mois suivant). Prochain enregistrement : <b>" + fmtDate(prochain) + "</b>.";
+    $("#bet-ctrl-info").innerHTML = ctrlOuvert ? "📊 Enregistrez les GG du mois." : "🧮 Simulation · enregistrement le " + fmtDate(prochain) + ".";
     $("#bet-titre").textContent = fmtMonth(mois + "-01");
     $("#bet-save").disabled = !bq || bq === "ALL" || !canBet();
     renderBetRem(bq, mois);
@@ -4738,7 +4736,7 @@
       $("#bet-rem-save").textContent = "Enregistrer";
       const ouvertR = betJoursRem().length > 0;
       $("#bet-rem-date").classList.toggle("hidden", !ouvertR); $("#bet-rem-montant").disabled = !ouvertR;
-      if (!ouvertR) slot("rsave").insertAdjacentHTML("afterend", '<small class="surplus-cumul">🔒 Le surplus d’hier se déclare le matin, <b>avant midi</b>. Prochaine déclaration : demain matin (surplus d’aujourd’hui).</small>');
+      if (!ouvertR) slot("rsave").insertAdjacentHTML("afterend", '<small class="surplus-cumul">🔒 Demain matin, avant midi.</small>');
       // Le surplus déjà déclaré pour le jour choisi apparaît dans la case ; sinon elle est vide pour le déclarer
       const dR = $("#bet-rem-date").value, djR = db.betRem.find((r) => r.boutique === bq && r.date === dR), cle = bq + dR + (djR ? djR.montant : "");
       if ($("#bet-rem-montant").dataset.cle !== cle) { $("#bet-rem-montant").value = djR ? djR.montant : ""; $("#bet-rem-montant").dataset.cle = cle; }

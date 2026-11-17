@@ -178,7 +178,7 @@
         <div class="card">
           <h2>Bénéfice net par boutique</h2>
           <div class="chart-box"><canvas id="ch-boutiques"></canvas></div>
-          <p class="hint" style="margin:6px 0 0">Bénéfice net = marge brute (ventes − coût d'achat des produits vendus) − charges de la boutique.</p>
+          <p class="hint explication" style="margin:6px 0 0">Bénéfice net = marge brute (ventes − coût d'achat des produits vendus) − charges de la boutique.</p>
         </div>
       </div>
 
@@ -416,7 +416,7 @@
       <h1>Stock &amp; catalogue</h1>
       <div class="card filterbar">
         <label style="min-width:280px">Boutique<select id="s-boutique"></select></label>
-        <p class="hint admin-only" style="margin:0">STOCK ACTUEL = Stock initial + Entrées validées − Ventes validées − Stock transféré au frigo (les ventes des produits du frigo sortent du Stock frigo). Le stock initial se saisit par boutique : choisissez une boutique, puis modifiez la colonne « Stock initial » (Entrée pour valider).</p>
+        <p class="hint explication admin-only" style="margin:0">STOCK ACTUEL = Stock initial + Entrées validées − Ventes validées − Stock transféré au frigo (les ventes des produits du frigo sortent du Stock frigo). Le stock initial se saisit par boutique : choisissez une boutique, puis modifiez la colonne « Stock initial » (Entrée pour valider).</p>
       </div>
       <div class="kpis" id="stock-kpis"></div>
       <div class="card">
@@ -485,7 +485,7 @@
           </div>
           <div class="course-summary" id="co-summary"></div>
         </div>
-        <p class="hint">La marge tient compte des frais (répartis sur les produits au prorata de leur prix d'achat) et du prix de vente défini par l'administrateur. La photo du reçu est obligatoire. Un vendeur peut modifier ou annuler sa course pendant <b>2 heures</b> ; ensuite seul l'administrateur peut le faire.</p>
+        <p class="hint explication">La marge tient compte des frais (répartis sur les produits au prorata de leur prix d'achat) et du prix de vente défini par l'administrateur. La photo du reçu est obligatoire. Un vendeur peut modifier ou annuler sa course pendant <b>2 heures</b> ; ensuite seul l'administrateur peut le faire.</p>
         <div class="actions"><button class="btn success" id="co-save">Enregistrer la course</button></div>
       </div>
       <div class="card">
@@ -495,7 +495,7 @@
           <label>Rechercher par CC<select id="eh-cc"></select></label>
           <label>Date d'entrée<select id="eh-date"></select></label>
         </div>
-        <p class="hint">Choisissez une date (ou cliquez sur une date de la liste) pour revoir le détail de toutes les courses de ce jour.</p>
+        <p class="hint explication">Choisissez une date (ou cliquez sur une date de la liste) pour revoir le détail de toutes les courses de ce jour.</p>
         <div class="table-wrap">
           <table class="table">
             <thead><tr><th></th><th>Date</th><th class="num">Produits</th><th class="num">Quantité totale</th><th class="num">Montant total</th><th>CC</th><th>Saisi par</th></tr></thead>
@@ -512,7 +512,7 @@
         <label>Boutique<select id="fd-boutique"></select></label>
         <label>Mois<input type="month" id="fd-mois"></label>
         <div class="fd-mini admin-only" id="fd-mini"></div>
-        <p class="hint" style="margin:0">Chaque lundi, le CC chargé des entrées remonte les fonds de vente de la semaine écoulée (lundi → dimanche). Ils sont comparés aux ventes déclarées dans l'application.</p>
+        <p class="hint explication" style="margin:0">Chaque lundi, le CC chargé des entrées remonte les fonds de vente de la semaine écoulée (lundi → dimanche). Ils sont comparés aux ventes déclarées dans l'application.</p>
       </div>
       <div class="kpis" id="fd-kpis"></div>
 
@@ -549,7 +549,7 @@
 
       <div class="card" id="fd-match-card">
         <div class="toolbar"><h2 style="margin-right:auto">Rapprochement ventes déclarées / fonds remontés</h2><input id="fd-match-q" type="search" class="fr-q" list="fd-match-sem" placeholder="Choisir une semaine…"><datalist id="fd-match-sem"></datalist></div>
-        <p class="hint">Écart = fonds remontés − ventes déclarées. Un écart négatif signifie qu'il manque de l'argent.</p>
+        <p class="hint explication">Écart = fonds remontés − ventes déclarées. Un écart négatif signifie qu'il manque de l'argent.</p>
         <div class="table-wrap"><table class="table">
           <thead><tr><th>Semaine</th><th>Boutique</th><th class="num">Ventes déclarées</th><th class="num">Fonds remontés</th><th class="num">Écart</th><th>Statut</th></tr></thead>
           <tbody id="fd-match"></tbody><tfoot id="fd-match-foot"></tfoot>
@@ -719,7 +719,7 @@
               <label>Mode<select id="cv-mode"><option>Espèces</option><option>Mobile money</option></select></label>
             </div>
             <div class="actions"><button class="btn primary" id="cv-save">Déclarer le versement</button></div>
-            <p class="hint" style="margin:8px 0 0">Le solde diminue quand l'administrateur confirme avoir reçu l'argent.</p>
+            <p class="hint explication" style="margin:8px 0 0">Le solde diminue quand l'administrateur confirme avoir reçu l'argent.</p>
           </div>
         </div>
       </div>
@@ -740,7 +740,7 @@
         </div>
         <div class="hist-sec" data-hist="ventes">
           <h3 class="sub-title">📈 Ventes de crédit</h3>
-          <p class="hint" style="margin-top:0">Vente d'un jour = contrôle précédent + recharges (commission comprise) + ajustements − contrôle du jour. Une vente négative (⚠) signale une recharge non déclarée.</p>
+          <p class="hint explication" style="margin-top:0">Vente d'un jour = contrôle précédent + recharges (commission comprise) + ajustements − contrôle du jour. Une vente négative (⚠) signale une recharge non déclarée.</p>
           <div class="table-wrap"><table class="table">
             <thead><tr><th>Jour</th><th>Boutique</th><th class="num">Vendu YAS</th><th class="num">Vendu MOOV</th><th class="num">Total</th></tr></thead>
             <tbody id="cvc-rows"></tbody>
@@ -808,7 +808,7 @@
       <!-- Stock frigo (format du menu Stock) -->
       <div id="fg-stock" class="hidden">
         <div class="card filterbar">
-          <p class="hint" style="margin:0">STOCK FRIGO = Quantités achetées dans les courses du frigo − Ventes en caisse de ces produits dans la boutique. Toutes les boutiques utilisent ce stock : la Caisse ne vend que ce qui est dans le frigo de la boutique.</p>
+          <p class="hint explication" style="margin:0">STOCK FRIGO = Quantités achetées dans les courses du frigo − Ventes en caisse de ces produits dans la boutique. Toutes les boutiques utilisent ce stock : la Caisse ne vend que ce qui est dans le frigo de la boutique.</p>
         </div>
         <div class="kpis" id="fs-kpis"></div>
         <div class="card">
@@ -858,7 +858,7 @@
         </div>
         <div class="card">
           <div class="toolbar"><h2 style="margin-right:auto">Courses</h2><input id="fr-courses-q" type="search" list="fr-courses-dates" placeholder="Rechercher une course (date, boutique, saisi par…)"><datalist id="fr-courses-dates"></datalist></div>
-          <p class="hint" style="margin:0 0 8px">Cliquez sur une course pour voir son contenu.</p>
+          <p class="hint explication" style="margin:0 0 8px">Cliquez sur une course pour voir son contenu.</p>
           <div class="table-wrap fr-courses-wrap"><table class="table">
             <thead id="fr-courses-head"></thead>
             <tbody id="fr-courses"></tbody>
@@ -886,7 +886,7 @@
         <!-- Reversement hebdomadaire à BGTeam : coût d'achat vendu + bénéfice réalisé -->
         <div class="card hidden" id="fr-card">
           <h2 id="frv-titre">💼 Reversement à BGTeam</h2>
-          <p class="hint" style="margin-top:0">Recettes à reverser = <b>coût d'achat des produits vendus + bénéfice réalisé</b> = chiffre d'affaires encaissé. Le capital des marchandises vendues ET le bénéfice sont reversés intégralement chaque lundi.</p>
+          <p class="hint explication" style="margin-top:0">Recettes à reverser = <b>coût d'achat des produits vendus + bénéfice réalisé</b> = chiffre d'affaires encaissé. Le capital des marchandises vendues ET le bénéfice sont reversés intégralement chaque lundi.</p>
           <div class="form form-inline" style="margin-bottom:8px"><label>Semaine<select id="fr-semaine"></select></label></div>
           <div class="kpis" id="frv-kpis"></div>
           <p class="hint" style="margin:0 0 10px" id="fr-calc"></p>
@@ -899,7 +899,7 @@
             <thead><tr><th>Boutique</th><th>Collaborateur</th><th class="num">Coût d'achat vendu</th><th class="num admin-only">Bénéfice réalisé</th><th class="num">Montant attendu</th><th class="num">Montant reçu</th><th class="num">Reliquat</th><th>État</th></tr></thead>
             <tbody id="fr-fiches"></tbody>
           </table></div>
-          <p class="hint" style="margin:6px 0 0">Attendu = ventes encaissées par le collaborateur (caisse) ; reçu = reversements déclarés par lui dans Fonds &amp; dépenses. Le reliquat de la boutique est celui qui compte : un CC peut reverser pour ses collègues.</p>
+          <p class="hint explication" style="margin:6px 0 0">Attendu = ventes encaissées par le collaborateur (caisse) ; reçu = reversements déclarés par lui dans Fonds &amp; dépenses. Le reliquat de la boutique est celui qui compte : un CC peut reverser pour ses collègues.</p>
         </div>
 
         <!-- Ventes du frigo du jour : faites en Caisse, déduites automatiquement -->
@@ -994,7 +994,7 @@
         <div class="card hidden" id="fg-rachat">
           <div class="toolbar"><h2 style="margin-right:auto" id="fg-rachat-titre">🛒 Proposition de rachat</h2>
             <label class="cc-filter">Période<select id="fg-rachat-jours"><option value="7">7 derniers jours</option><option value="14">14 derniers jours</option><option value="30" selected>30 derniers jours</option></select></label></div>
-          <p class="hint" style="margin:0 0 8px">Produits qui se vendent le plus dans cette boutique, et quantité conseillée pour tenir <b>2 semaines</b> (ventes moyennes − stock actuel du frigo).</p>
+          <p class="hint explication" style="margin:0 0 8px">Produits qui se vendent le plus dans cette boutique, et quantité conseillée pour tenir <b>2 semaines</b> (ventes moyennes − stock actuel du frigo).</p>
           <div class="table-wrap"><table class="table">
             <thead><tr><th>#</th><th>Produit</th><th class="num">Vendus</th><th class="num">Par semaine</th><th class="num">Stock actuel</th><th class="num">Tient encore</th><th class="num">À racheter</th><th class="num">Ventes (FCFA)</th></tr></thead>
             <tbody id="fg-rachat-rows"></tbody>
@@ -1119,7 +1119,7 @@
         </div>
         <div class="card">
           <h2>Sauvegarde des données</h2>
-          <p class="hint">Les données sont stockées en ligne (Supabase) et partagées entre tous les appareils. Téléchargez tout de même une copie de temps en temps.</p>
+          <p class="hint explication">Les données sont stockées en ligne (Supabase) et partagées entre tous les appareils. Téléchargez tout de même une copie de temps en temps.</p>
           <div class="actions col">
             <button class="btn" id="p-export">Télécharger une sauvegarde (.json)</button>
             <label class="btn file">Importer une sauvegarde (ajoute les ventes et entrées)<input type="file" id="p-import" accept=".json,application/json"></label>
@@ -1131,7 +1131,7 @@
           <h2>Utilisateurs</h2>
           <button class="btn primary" id="u-new">+ Créer un utilisateur</button>
         </div>
-        <p class="hint">Vous pouvez <b>créer un compte</b> vous-même avec un mot de passe temporaire, ou laisser la personne s'inscrire (« Créer un compte ») puis la <b>valider</b> ici. <b>🔑 Réinitialiser</b> donne un nouveau mot de passe temporaire à quelqu'un qui a oublié le sien : à sa prochaine connexion, il devra choisir son propre mot de passe. Un <b>vendeur</b> fait la caisse, consulte les ventes, le stock et les tickets, et ajoute des entrées de stock. Il ne voit pas l'accueil, les statistiques, les prix d'achat ni les paramètres, ne modifie pas les prix et ne peut ni annuler ni supprimer. Liez un vendeur à son CC pour que la caisse utilise automatiquement son code.</p>
+        <p class="hint explication">Vous pouvez <b>créer un compte</b> vous-même avec un mot de passe temporaire, ou laisser la personne s'inscrire (« Créer un compte ») puis la <b>valider</b> ici. <b>🔑 Réinitialiser</b> donne un nouveau mot de passe temporaire à quelqu'un qui a oublié le sien : à sa prochaine connexion, il devra choisir son propre mot de passe. Un <b>vendeur</b> fait la caisse, consulte les ventes, le stock et les tickets, et ajoute des entrées de stock. Il ne voit pas l'accueil, les statistiques, les prix d'achat ni les paramètres, ne modifie pas les prix et ne peut ni annuler ni supprimer. Liez un vendeur à son CC pour que la caisse utilise automatiquement son code.</p>
         <div class="table-wrap">
           <table class="table">
             <thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>CC lié</th><th>Statut</th><th></th></tr></thead>
@@ -1228,7 +1228,7 @@
           <h2>Boutiques</h2>
           <button class="btn primary" id="bq-new">+ Nouvelle boutique</button>
         </div>
-        <p class="hint">Jusqu'à 10 boutiques. Tapez le nom puis Entrée pour le modifier. Chaque vente est rattachée à la boutique de son CC au moment de la vente.</p>
+        <p class="hint explication">Jusqu'à 10 boutiques. Tapez le nom puis Entrée pour le modifier. Chaque vente est rattachée à la boutique de son CC au moment de la vente.</p>
         <div class="table-wrap"><table class="table bq-list">
           <thead><tr><th>Boutique</th><th>Code</th><th>CC affectés</th><th class="num">En service</th><th>Statut</th><th></th></tr></thead>
           <tbody id="bq-rows"></tbody>
@@ -1245,7 +1245,7 @@
           <button class="btn primary" id="cc-new">+ Nouveau CC</button>
         </div>
         <details class="help"><summary>Comment ça marche ?</summary>
-          <p class="hint"><b>Nom du CC</b> : tapez un nom puis Entrée, il s'affichera partout à côté du code (« CC 01 — Nom »). Lier un vendeur à un CC sans nom lui donne automatiquement le nom du vendeur. Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant. Les autorisations se règlent dans l'onglet <b>🔐 Autorisations</b>.</p>
+          <p class="hint explication"><b>Nom du CC</b> : tapez un nom puis Entrée, il s'affichera partout à côté du code (« CC 01 — Nom »). Lier un vendeur à un CC sans nom lui donne automatiquement le nom du vendeur. Chaque vente garde son CC et le nom du vendeur au moment de la vente. Quand un vendeur quitte l'entreprise, enregistrez son <b>départ</b> : ses ventes restent dans les statistiques. Pour un nouveau vendeur, créez un <b>nouveau CC</b> (recommandé) ou <b>affectez</b> un CC existant. Les autorisations se règlent dans l'onglet <b>🔐 Autorisations</b>.</p>
         </details>
         <div class="cc-grid" id="cc-rows"></div>
       </div>
@@ -1308,7 +1308,7 @@
         <label>Montant<input type="number" name="montant" min="1" required></label>
         <label class="full">Libellé<input name="libelle" placeholder="Ex. : loyer de novembre"></label>
       </div>
-      <p class="hint">Une charge « Générale » (sans boutique) est déduite du bénéfice global, pas de celui d'une boutique.</p>
+      <p class="hint explication">Une charge « Générale » (sans boutique) est déduite du bénéfice global, pas de celui d'une boutique.</p>
       <div class="actions">
         <button class="btn" value="cancel" formnovalidate>Annuler</button>
         <button class="btn primary" value="ok">Enregistrer</button>

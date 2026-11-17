@@ -1350,3 +1350,6 @@ tr.fr-course-detail > td { background: #fafbff; padding: 8px 12px 14px; }
 /* Code PIN administrateur */
 #pin-dialog { max-width: 360px; }
 #pin-dialog .pin-input { font-size: 1.6rem; letter-spacing: .6em; text-align: center; font-weight: 800; }
+
+/* Simplification (17/11/2026) : textes d'explication masqués */
+.explication { display: none !important; }
